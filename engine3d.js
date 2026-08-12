@@ -377,14 +377,24 @@ const onSidewalk = (x, z) => {
 };
 
 // ---------- Renderer / scene ----------
-let renderer, scene, camera, clock, sun;
+let renderer, scene, camera, clock, sun, composer;
 const buildings = []; // {x,z,hw,hd}
 let ground, winTex;
 function makeSky() {
-  const c = document.createElement('canvas'); c.width = 16; c.height = 256; const g = c.getContext('2d');
-  const grd = g.createLinearGradient(0, 0, 0, 256);
-  grd.addColorStop(0, '#3d6ea5'); grd.addColorStop(.5, '#8fb8dd'); grd.addColorStop(.82, '#dcd0bf'); grd.addColorStop(1, '#e8cf9e');
-  g.fillStyle = grd; g.fillRect(0, 0, 16, 256);
+  const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 0, H);
+  grd.addColorStop(0, '#2e5f9e'); grd.addColorStop(.45, '#7fa9d0'); grd.addColorStop(.72, '#e8bf96'); grd.addColorStop(.92, '#f0c184'); grd.addColorStop(1, '#eec489');
+  g.fillStyle = grd; g.fillRect(0, 0, W, H);
+  // low warm sun with glow
+  const sx = W * .68, sy = H * .70;
+  const glow = g.createRadialGradient(sx, sy, 2, sx, sy, 110);
+  glow.addColorStop(0, 'rgba(255,238,200,.95)'); glow.addColorStop(.18, 'rgba(255,205,130,.55)'); glow.addColorStop(1, 'rgba(255,190,110,0)');
+  g.fillStyle = glow; g.fillRect(0, 0, W, H);
+  // hazy streaked clouds
+  g.globalAlpha = .16; g.fillStyle = '#fbe6c8';
+  for (let i = 0; i < 9; i++) { const y = rand(H * .2, H * .62), w = rand(70, 190), h = rand(4, 10);
+    g.beginPath(); g.ellipse(rand(0, W), y, w, h, 0, 0, TAU); g.fill(); }
+  g.globalAlpha = 1;
   const tex = new T.CanvasTexture(c); if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
 }
 function initThree() {
@@ -397,16 +407,25 @@ function initThree() {
   renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
   scene = new T.Scene();
   scene.background = makeSky();
-  scene.fog = new T.Fog('#d7cdbb', 70, 165);
+  scene.fog = new T.Fog('#ecc9a0', 60, 175);
   camera = new T.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
-  const hemi = new T.HemisphereLight('#bcd6f2', '#6b5a3a', 0.5); scene.add(hemi);
-  const amb = new T.AmbientLight('#ffffff', 0.1); scene.add(amb);
-  sun = new T.DirectionalLight('#fff1cf', 1.55); sun.position.set(40, 80, 20); sun.castShadow = true;
+  const hemi = new T.HemisphereLight('#a8c4e8', '#6b5335', 0.42); scene.add(hemi);
+  const amb = new T.AmbientLight('#ffe9d0', 0.12); scene.add(amb);
+  // low golden-hour sun for long cinematic shadows
+  sun = new T.DirectionalLight('#ffc178', 1.7); sun.position.set(36, 48, 20); sun.castShadow = true;
   sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004;
   const sc = sun.shadow.camera; sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 260;
   scene.add(sun); scene.add(sun.target);
+  // post: bloom + gamma
+  if (window.EffectComposer) {
+    composer = new window.EffectComposer(renderer);
+    composer.addPass(new window.RenderPass(scene, camera));
+    const bloom = new window.UnrealBloomPass(new T.Vector2(innerWidth, innerHeight), 0.32, 0.55, 0.82);
+    composer.addPass(bloom);
+    composer.addPass(new window.ShaderPass(window.GammaCorrectionShader));
+  }
   clock = new T.Clock();
-  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+  addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); if (composer) composer.setSize(innerWidth, innerHeight); });
 }
 
 // ground texture: district colours + sidewalks + road grid + lane dashes
@@ -438,27 +457,77 @@ function makeGroundTexture() {
   for (let v = -HALF; v <= HALF; v += STEP) { const p = px(v) + u(ROADW) / 2;
     g.beginPath(); g.moveTo(p, 0); g.lineTo(p, S); g.stroke(); g.beginPath(); g.moveTo(0, p); g.lineTo(S, p); g.stroke(); }
   g.setLineDash([]);
+  // zebra crossings at every intersection
+  g.fillStyle = 'rgba(230,228,220,.75)';
+  for (let vx = -HALF; vx <= HALF; vx += STEP) for (let vz = -HALF; vz <= HALF; vz += STEP) {
+    const ix = px(vx), iz = px(vz), rw = u(ROADW);
+    for (let s2 = 2; s2 < rw - 2; s2 += 7) {
+      g.fillRect(ix + s2, iz - u(1.6), 4, u(1.1));           // north arm
+      g.fillRect(ix + s2, iz + rw + u(0.5), 4, u(1.1));      // south arm
+      g.fillRect(ix - u(1.6), iz + s2, u(1.1), 4);           // west arm
+      g.fillRect(ix + rw + u(0.5), iz + s2, u(1.1), 4);      // east arm
+    }
+  }
   const tex = new T.CanvasTexture(c); tex.anisotropy = 8; return tex;
 }
 function makeWindowTexture() {
-  const S = 256, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
-  g.fillStyle = '#d2ccbe'; g.fillRect(0, 0, S, S);
-  const cols = 4, rows = 7, padx = 12, pady = 10, ww = (S - padx * (cols + 1)) / cols, wh = (S - pady * (rows + 1)) / rows;
-  for (let r = 0; r < rows; r++) for (let cc = 0; cc < cols; cc++) {
-    const x = padx + cc * (ww + padx), y = pady + r * (wh + pady);
-    g.fillStyle = Math.random() < .22 ? '#ffd98a' : '#39454f'; g.fillRect(x, y, ww, wh);
-    g.strokeStyle = '#20242a'; g.lineWidth = 2; g.strokeRect(x, y, ww, wh);
-    g.beginPath(); g.moveTo(x + ww / 2, y); g.lineTo(x + ww / 2, y + wh); g.moveTo(x, y + wh / 2); g.lineTo(x + ww, y + wh / 2); g.stroke();
-    // AC box under some windows
-    if (Math.random() < .25) { g.fillStyle = '#8a8680'; g.fillRect(x + ww * .3, y + wh, ww * .4, pady * .5); }
-    // grime streak under the sill
-    if (Math.random() < .5) { const gr = g.createLinearGradient(0, y + wh, 0, y + wh + pady * 1.6);
-      gr.addColorStop(0, 'rgba(40,35,25,.30)'); gr.addColorStop(1, 'rgba(40,35,25,0)');
-      g.fillStyle = gr; g.fillRect(x - 2, y + wh, ww + 4, pady * 1.6); }
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  // plaster base with tonal patches
+  g.fillStyle = '#d8d2c2'; g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 26; i++) { g.globalAlpha = .05; g.fillStyle = Math.random() < .5 ? '#b8ad96' : '#efe9da';
+    g.fillRect(rand(0, S), rand(0, S), rand(40, 150), rand(30, 110)); }
+  g.globalAlpha = 1;
+  const floors = 7, cols = 4, padx = 22, ww = (S - padx * (cols + 1)) / cols;
+  const fh = S / floors;
+  for (let f = 0; f < floors; f++) {
+    const yTop = f * fh;
+    // floor ledge / cornice
+    g.fillStyle = 'rgba(60,55,45,.35)'; g.fillRect(0, yTop, S, 3);
+    g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(0, yTop + 3, S, 2);
+    if (f === floors - 1) { // ground floor: shop shutters
+      for (let cc = 0; cc < cols; cc++) {
+        const x = padx + cc * (ww + padx), y = yTop + fh * .18, h = fh * .74;
+        g.fillStyle = pick(['#7f8a92', '#9a8a6a', '#7d9484', '#a08878']); g.fillRect(x - 6, y, ww + 12, h);
+        g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 1.5;
+        for (let s2 = 0; s2 < h; s2 += 5) { g.beginPath(); g.moveTo(x - 6, y + s2); g.lineTo(x + ww + 6, y + s2); g.stroke(); }
+        g.fillStyle = 'rgba(30,28,24,.5)'; g.fillRect(x - 8, y - 8, ww + 16, 8); // signboard shadow
+      }
+      continue;
+    }
+    for (let cc = 0; cc < cols; cc++) {
+      const x = padx + cc * (ww + padx), y = yTop + fh * .22, wh = fh * .52;
+      // frame + glass with sky reflection
+      g.fillStyle = '#3a3f46'; g.fillRect(x - 3, y - 3, ww + 6, wh + 6);
+      const lit = Math.random() < .18;
+      const gl = g.createLinearGradient(0, y, 0, y + wh);
+      if (lit) { gl.addColorStop(0, '#ffe2a8'); gl.addColorStop(1, '#e8a94f'); }
+      else { gl.addColorStop(0, '#9db4c4'); gl.addColorStop(.5, '#5f7484'); gl.addColorStop(1, '#3c4a56'); }
+      g.fillStyle = gl; g.fillRect(x, y, ww, wh);
+      g.strokeStyle = 'rgba(20,22,26,.7)'; g.lineWidth = 2;
+      g.beginPath(); g.moveTo(x + ww / 2, y); g.lineTo(x + ww / 2, y + wh); g.stroke();
+      // balcony with railing on some
+      if (Math.random() < .3) {
+        g.fillStyle = 'rgba(50,46,40,.85)'; g.fillRect(x - 8, y + wh + 2, ww + 16, 4);
+        g.strokeStyle = 'rgba(50,46,40,.8)'; g.lineWidth = 1.6;
+        for (let b = 0; b <= ww + 16; b += 6) { g.beginPath(); g.moveTo(x - 8 + b, y + wh + 6); g.lineTo(x - 8 + b, y + wh + 18); g.stroke(); }
+        g.fillStyle = 'rgba(50,46,40,.85)'; g.fillRect(x - 8, y + wh + 18, ww + 16, 3);
+      } else if (Math.random() < .3) {
+        g.fillStyle = '#9a948a'; g.fillRect(x + ww * .25, y + wh + 4, ww * .5, 12); // AC unit
+        g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x + ww * .25, y + wh + 16, ww * .5, 2);
+      }
+      // grime streak
+      if (Math.random() < .5) { const gr = g.createLinearGradient(0, y + wh, 0, y + wh + 26);
+        gr.addColorStop(0, 'rgba(45,38,26,.3)'); gr.addColorStop(1, 'rgba(45,38,26,0)');
+        g.fillStyle = gr; g.fillRect(x - 4, y + wh, ww + 8, 26); }
+    }
   }
-  // overall weathering
-  g.globalAlpha = .06; for (let i = 0; i < 1400; i++) { g.fillStyle = Math.random() < .5 ? '#000' : '#fff'; g.fillRect(Math.random() * S, Math.random() * S, 2, 2); } g.globalAlpha = 1;
-  const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
+  // base AO: darken toward the street
+  const ao = g.createLinearGradient(0, S - fh * 1.4, 0, S);
+  ao.addColorStop(0, 'rgba(30,25,18,0)'); ao.addColorStop(1, 'rgba(30,25,18,.42)');
+  g.fillStyle = ao; g.fillRect(0, S - fh * 1.4, S, fh * 1.4);
+  // weathering speckle
+  g.globalAlpha = .05; for (let i = 0; i < 2400; i++) { g.fillStyle = Math.random() < .5 ? '#000' : '#fff'; g.fillRect(Math.random() * S, Math.random() * S, 2, 2); } g.globalAlpha = 1;
+  const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; tex.anisotropy = 4; return tex;
 }
 function buildCity() {
   const gt = makeGroundTexture(); if ('sRGBEncoding' in T) gt.encoding = T.sRGBEncoding;
@@ -551,7 +620,7 @@ function scatterProps() {
   for (let i = 0; i < 60 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
     const pole = new T.Mesh(new T.CylinderGeometry(.08, .1, 5, 6), mat('#444')); pole.position.set(p.x, 2.5, p.z); pole.castShadow = true; scene.add(pole);
     const arm = new T.Mesh(boxGeo, mat('#444')); arm.scale.set(.9, .1, .1); arm.position.set(p.x + .4, 4.8, p.z); scene.add(arm);
-    const lamp = new T.Mesh(new T.SphereGeometry(.2, 10, 8), mat('#ffe9a8', .3)); lamp.position.set(p.x + .8, 4.7, p.z); scene.add(lamp);
+    const lamp = new T.Mesh(new T.SphereGeometry(.2, 10, 8), new T.MeshStandardMaterial({ color: '#ffe9a8', emissive: '#ffca6a', emissiveIntensity: 1.6, roughness: .4 })); lamp.position.set(p.x + .8, 4.7, p.z); scene.add(lamp);
     buildings.push({ x: p.x, z: p.z, hw: .35, hd: .35 }); }
 }
 function roadSpot() { for (let i = 0; i < 24; i++) { const x = rand(-HALF, HALF), z = rand(-HALF, HALF); if (onRoad(x, z)) return { x, z }; } return null; }
@@ -591,23 +660,72 @@ function spawnCows(n) {
 }
 
 // ---------- Vehicle: auto-rickshaw ----------
+function wheel(r, w) { const g = new T.Group();
+  const tyre = new T.Mesh(new T.TorusGeometry(r * .72, r * .3, 10, 18), mat('#16161a', .95)); g.add(tyre);
+  const hub = new T.Mesh(new T.CylinderGeometry(r * .42, r * .42, w, 12), new T.MeshStandardMaterial({ color: '#b9bec4', roughness: .35, metalness: .7 }));
+  hub.rotation.x = Math.PI / 2; g.add(hub); g.rotation.y = Math.PI / 2; return g; }
+function glassMat() { return new T.MeshStandardMaterial({ color: '#1c2b38', roughness: .12, metalness: .35 }); }
+function chromeLight(warm) { return new T.MeshStandardMaterial({ color: warm ? '#ffdf9a' : '#ffffff', emissive: warm ? '#ffb84d' : '#dfe8ff', emissiveIntensity: .8, roughness: .2, metalness: .4 }); }
+// classic Mumbai auto-rickshaw: rounded cowl, black+colour body, canvas hood
 function buildAuto(color) {
-  const g = new T.Group(); const boxGeo = new T.BoxGeometry(1, 1, 1);
-  const body = new T.Mesh(boxGeo, mat(color)); body.scale.set(1.8, 1.1, 2.6); body.position.y = 1; g.add(body);
-  const canopy = new T.Mesh(boxGeo, mat('#111')); canopy.scale.set(1.9, 1.0, 1.6); canopy.position.set(0, 2, -.2); g.add(canopy);
-  const front = new T.Mesh(boxGeo, mat(color)); front.scale.set(1.2, 1.2, .8); front.position.set(0, 1.1, 1.5); g.add(front);
-  const wsh = new T.Mesh(boxGeo, mat('#223')); wsh.scale.set(1.3, .8, .1); wsh.position.set(0, 1.6, 1.9); g.add(wsh);
+  const g = new T.Group();
+  const bodyM = mat(color, .55), blackM = mat('#1c1c20', .7);
+  // tub
+  const tub = new T.Mesh(new T.CylinderGeometry(.95, 1.0, .9, 18, 1, false, 0, Math.PI), blackM);
+  tub.rotation.y = -Math.PI / 2; tub.scale.set(1, 1, 1.9); tub.position.set(0, .85, -.35); g.add(tub);
+  const floor = new T.Mesh(new T.BoxGeometry(1.8, .5, 2.9), blackM); floor.position.set(0, .62, 0); g.add(floor);
+  // rounded front cowl
+  const cowl = new T.Mesh(new T.SphereGeometry(.85, 18, 14), bodyM); cowl.scale.set(1.02, .9, 1.15); cowl.position.set(0, 1.05, 1.15); g.add(cowl);
+  // windshield
+  const wsh = new T.Mesh(new T.CylinderGeometry(.8, .8, .75, 14, 1, true, -Math.PI * .32, Math.PI * .64), glassMat());
+  wsh.rotation.y = Math.PI; wsh.position.set(0, 1.72, 1.05); g.add(wsh);
+  // canvas hood (rounded half-cylinder)
+  const hood = new T.Mesh(new T.CylinderGeometry(.92, .92, 2.0, 16, 1, false, 0, Math.PI), mat('#22221f', .95));
+  hood.rotation.z = Math.PI / 2; hood.rotation.y = Math.PI / 2; hood.scale.set(1, 1, 1.05); hood.position.set(0, 1.78, -.45); g.add(hood);
+  // colour skirt panels
+  const skirt = new T.Mesh(new T.BoxGeometry(1.85, .5, 2.2), bodyM); skirt.position.set(0, 1.02, -.5); g.add(skirt);
+  // headlight + meter
+  const hl = new T.Mesh(new T.SphereGeometry(.13, 12, 10), chromeLight(true)); hl.position.set(0, 1.28, 1.98); g.add(hl);
+  // wheels: 1 front, 2 rear
+  const fw = wheel(.42, .22); fw.position.set(0, .42, 1.55); g.add(fw);
+  for (const sx of [-.85, .85]) { const w = wheel(.42, .22); w.position.set(sx, .42, -1.05); g.add(w); }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+// rounded passenger car: hatch / sedan / taxi / cop
+function buildCar(kind, color) {
+  const g = new T.Group();
+  const col = kind === 'taxi' ? '#e8b820' : kind === 'cop' ? '#22334e' : color || pick(['#b8bcc2', '#8a2f28', '#2d4a6b', '#d8d5cc', '#5c6156', '#7d3b52']);
+  const bodyM = mat(col, .42);
+  const sedan = kind === 'sedan' || kind === 'taxi' || kind === 'cop';
+  const L = sedan ? 4.4 : 3.7;
+  // lower body with rounded nose/tail
+  const body = new T.Mesh(new T.BoxGeometry(1.75, .62, L * .72), bodyM); body.position.set(0, .78, 0); g.add(body);
+  const nose = new T.Mesh(new T.SphereGeometry(.62, 14, 10), bodyM); nose.scale.set(1.35, .52, 1.1); nose.position.set(0, .74, L * .36); g.add(nose);
+  const tail = new T.Mesh(new T.SphereGeometry(.62, 14, 10), bodyM); tail.scale.set(1.35, .52, .9); tail.position.set(0, .76, -L * .36); g.add(tail);
+  // cabin: rounded greenhouse
+  const cab = new T.Mesh(new T.SphereGeometry(.95, 18, 12), glassMat()); cab.scale.set(.88, .62, sedan ? 1.25 : 1.05); cab.position.set(0, 1.35, -L * .04); g.add(cab);
+  const roof = new T.Mesh(new T.SphereGeometry(.9, 18, 12), bodyM); roof.scale.set(.86, .3, sedan ? 1.2 : 1.0); roof.position.set(0, 1.62, -L * .04); g.add(roof);
+  // lights + bumpers
+  for (const sx of [-.55, .55]) { const hl = new T.Mesh(new T.SphereGeometry(.09, 10, 8), chromeLight(true)); hl.position.set(sx, .82, L * .46); g.add(hl);
+    const tl = new T.Mesh(new T.BoxGeometry(.22, .1, .05), new T.MeshStandardMaterial({ color: '#a02020', emissive: '#901515', emissiveIntensity: .7 })); tl.position.set(sx, .82, -L * .455); g.add(tl); }
+  const bump = new T.Mesh(new T.BoxGeometry(1.7, .16, .1), mat('#3a3d42', .5)); bump.position.set(0, .52, L * .46); g.add(bump);
   // wheels
-  const wg = new T.CylinderGeometry(.5, .5, .3, 12);
-  const fw = new T.Mesh(wg, mat('#111')); fw.rotation.z = Math.PI / 2; fw.position.set(0, .5, 1.7); g.add(fw);
-  for (const sx of [-.9, .9]) { const w = new T.Mesh(wg, mat('#111')); w.rotation.z = Math.PI / 2; w.position.set(sx, .5, -1); g.add(w); }
+  for (const [sx, sz] of [[-.85, L * .3], [.85, L * .3], [-.85, -L * .3], [.85, -L * .3]]) {
+    const w = wheel(.44, .24); w.position.set(sx, .44, sz); g.add(w); }
+  if (kind === 'taxi') { const sign = new T.Mesh(new T.BoxGeometry(.5, .18, .3), mat('#111', .6)); sign.position.set(0, 1.9, -L * .04); g.add(sign);
+    const stripe = new T.Mesh(new T.BoxGeometry(1.78, .12, L * .7), mat('#111', .8)); stripe.position.set(0, 1.02, 0); g.add(stripe); }
+  if (kind === 'cop') { const bar = new T.Mesh(new T.BoxGeometry(1.1, .14, .34), mat('#ff3b3b')); bar.position.set(0, 1.86, -L * .04); g.add(bar); g.userData.bar = bar; }
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
 const vehicles = [];
 function spawnVehicles(n) {
   for (let i = 0; i < n; i++) { const p = roadSpot(); if (!p) continue;
-    const g = buildAuto(pick(['#f4c20d', '#1abc9c', '#e67e22'])); g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU);
+    const r = Math.random();
+    const g = r < .4 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
+              r < .6 ? buildCar('hatch') : r < .85 ? buildCar('sedan') : buildCar('taxi');
+    g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU);
     scene.add(g); vehicles.push({ g, yaw: g.rotation.y, speed: 0, ai: true, aiDir: rand(0, TAU), aiTimer: 0 }); }
 }
 
@@ -712,7 +830,7 @@ let wanted = 0, heat = 0, wantedTimer = 0;
 const cops = [];
 function crime(a) { heat += a; if (heat >= 3) { heat = 0; wanted = clamp(wanted + 1, 0, 5); wantedTimer = 12; updateStars(); if (cops.length < wanted) spawnCop(); } }
 function spawnCop() { const p = roadSpot(); if (!p) return;
-  const g = buildAuto('#1a3a6b'); const bar = new T.Mesh(new T.BoxGeometry(1.6, .3, .6), mat('#ff3b3b')); bar.position.y = 2.6; g.add(bar); g.userData.bar = bar;
+  const g = buildCar('cop');
   g.position.set(p.x, 0, p.z); scene.add(g);
   cops.push({ g, yaw: 0, speed: 0, corrupt: Math.random() < .55 }); }
 function updateStars() { let s = ''; for (let i = 0; i < wanted; i++) s += '★'; $('stars').textContent = s; siren(wanted > 0); }
@@ -765,7 +883,7 @@ function update(dt) {
   if (di !== curDistrict) { curDistrict = di; $('distName').textContent = DISTRICTS[di].name; showBanner(DISTRICTS[di].greet, DISTRICTS[di].fact); }
 
   // sun follows player so shadows stay crisp
-  if (sun) { sun.position.set(player.pos.x + 40, 85, player.pos.z + 22); sun.target.position.copy(player.pos); sun.target.updateMatrixWorld(); }
+  if (sun) { sun.position.set(player.pos.x + 36, 48, player.pos.z + 20); sun.target.position.copy(player.pos); sun.target.updateMatrixWorld(); }
   // camera follow
   const target = player.inVehicle ? player.inVehicle.g.position : player.pos;
   const cd = player.inVehicle ? 10 : cam.dist;
@@ -860,7 +978,7 @@ function updateHUD() {
 // ---------- loop ----------
 function frame() { requestAnimationFrame(frame); if (!renderer) return; const dt = Math.min(.05, clock.getDelta());
   if (previewOn) { updatePreview(dt); if (pRenderer) pRenderer.render(pScene, pCam); }
-  else { if (started) update(dt); renderer.render(scene, camera); } }
+  else { if (started) update(dt); if (composer) composer.render(); else renderer.render(scene, camera); } }
 
 // ---------- Character creator preview ----------
 let pRenderer, pScene, pCam, pChar, previewOn = true, pClock;
