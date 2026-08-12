@@ -3,3 +3,10 @@ package-lock.json
 package.json
 shot-*.png
 smoketest.mjs
+
+node_modules/
+vendor/three.js
+dbg.mjs
+smoke3d.mjs
+smokeart.mjs
+s3-*.png

@@ -3,93 +3,94 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-<title>Desi Streets</title>
+<title>Rickshaw Raja</title>
 <style>
-  :root { --saffron:#ff9933; --green:#138808; --ink:#0d0d12; }
+  :root { --saffron:#ff9933; --green:#138808; --ink:#0c0b10; --panel:rgba(16,14,22,.62); }
   * { margin:0; padding:0; box-sizing:border-box; }
   html,body { height:100%; overflow:hidden; background:var(--ink);
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; color:#fff; }
-  #game { display:block; width:100vw; height:100vh; touch-action:none; cursor:crosshair; }
+  canvas { display:block; }
+  #game { position:fixed; inset:0; width:100vw; height:100vh; touch-action:none; }
 
-  /* ---- Start screen ---- */
-  #menu { position:fixed; inset:0; display:flex; flex-direction:column;
-    align-items:center; justify-content:center; text-align:center;
-    background:radial-gradient(circle at 50% 30%, #2a2140, #0d0d12 70%); z-index:20; }
-  #menu h1 { font-size:clamp(44px,10vw,110px); font-weight:900; letter-spacing:2px;
-    background:linear-gradient(90deg,var(--saffron),#fff 45%,var(--green));
+  /* ---------- Character creator / title ---------- */
+  #creator { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column;
+    background:radial-gradient(circle at 50% 20%, #2a2140, #0c0b10 72%); overflow:auto; }
+  #creator .top { text-align:center; padding:26px 16px 6px; }
+  #creator h1 { font-size:clamp(40px,9vw,92px); font-weight:900; letter-spacing:2px; line-height:.92;
+    background:linear-gradient(90deg,var(--saffron),#fff 48%,var(--green));
     -webkit-background-clip:text; background-clip:text; color:transparent;
-    text-shadow:0 4px 30px rgba(255,153,51,.25); line-height:.95; }
-  #menu .sub { margin-top:6px; opacity:.75; font-size:clamp(13px,2.4vw,20px);
-    letter-spacing:6px; text-transform:uppercase; }
-  #menu button { margin-top:34px; padding:16px 46px; font-size:22px; font-weight:800;
-    border:0; border-radius:40px; cursor:pointer; color:#1a1200;
-    background:linear-gradient(90deg,var(--saffron),#ffb866);
-    box-shadow:0 10px 30px rgba(255,153,51,.4); transition:transform .1s; }
-  #menu button:active { transform:scale(.96); }
-  #menu .keys { margin-top:30px; max-width:520px; opacity:.85; font-size:14px; line-height:1.9; }
-  #menu .keys b { color:var(--saffron); }
-  #menu .flag { width:120px; height:80px; margin-bottom:18px; border-radius:8px; overflow:hidden;
-    box-shadow:0 8px 26px rgba(0,0,0,.5); display:flex; flex-direction:column; }
-  #menu .flag i { flex:1; display:block; }
-  #menu .flag i:nth-child(1){ background:var(--saffron); }
-  #menu .flag i:nth-child(2){ background:#fff; position:relative; }
-  #menu .flag i:nth-child(3){ background:var(--green); }
-  #menu .flag .chakra { position:absolute; inset:0; margin:auto; width:22px; height:22px;
-    border:2.5px solid #0a3d91; border-radius:50%; }
+    text-shadow:0 4px 30px rgba(255,153,51,.25); }
+  #creator .sub { opacity:.7; letter-spacing:6px; text-transform:uppercase; font-size:clamp(11px,2.2vw,15px); margin-top:6px; }
+  #creator .body { flex:1; display:flex; gap:24px; padding:14px clamp(14px,4vw,50px) 24px;
+    align-items:stretch; justify-content:center; flex-wrap:wrap; }
+  #preview { width:min(46vw,440px); height:min(60vh,520px); min-width:280px; min-height:340px;
+    border-radius:20px; background:linear-gradient(180deg,#1b1730,#100d1c);
+    border:1px solid rgba(255,255,255,.08); box-shadow:0 20px 60px rgba(0,0,0,.5); }
+  #opts { width:min(46vw,460px); min-width:280px; display:flex; flex-direction:column; gap:14px; }
+  .grp .lbl { font-size:11px; letter-spacing:2px; text-transform:uppercase; opacity:.6; margin-bottom:7px; font-weight:700; }
+  .swatches { display:flex; flex-wrap:wrap; gap:8px; }
+  .sw { width:34px; height:34px; border-radius:9px; cursor:pointer; border:2px solid transparent; transition:transform .1s; }
+  .sw:active { transform:scale(.9); }
+  .sw.on { border-color:#fff; box-shadow:0 0 0 2px var(--saffron); }
+  .chips { display:flex; flex-wrap:wrap; gap:8px; }
+  .chip { padding:8px 14px; border-radius:20px; cursor:pointer; font-weight:700; font-size:13px;
+    background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); }
+  .chip.on { background:var(--saffron); color:#1a1200; border-color:var(--saffron); }
+  #nameIn { width:100%; padding:11px 14px; border-radius:12px; border:1px solid rgba(255,255,255,.14);
+    background:rgba(255,255,255,.06); color:#fff; font-size:15px; font-weight:700; }
+  #enterBtn { margin-top:6px; padding:16px; font-size:20px; font-weight:900; border:0; border-radius:16px;
+    cursor:pointer; color:#1a1200; background:linear-gradient(90deg,var(--saffron),#ffb866);
+    box-shadow:0 12px 30px rgba(255,153,51,.4); }
+  #enterBtn:active { transform:scale(.98); }
+  .rowsplit { display:flex; gap:18px; flex-wrap:wrap; }
+  .rowsplit .grp { flex:1; min-width:130px; }
+  .hintline { font-size:12px; opacity:.6; margin-top:2px; }
 
-  /* ---- HUD ---- */
-  #hud { position:fixed; inset:0; pointer-events:none; z-index:10; }
-  .panel { position:absolute; background:rgba(13,13,18,.55); backdrop-filter:blur(6px);
-    border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:10px 14px; }
-  #stats { top:14px; left:14px; min-width:190px; }
-  #stats .row { display:flex; align-items:center; gap:8px; margin:5px 0; font-weight:700; font-size:14px; }
-  #stats .lbl { width:60px; opacity:.6; font-size:11px; text-transform:uppercase; letter-spacing:1px; }
+  /* ---------- HUD ---------- */
+  #hud { position:fixed; inset:0; pointer-events:none; z-index:10; display:none; }
+  .panel { position:absolute; background:var(--panel); backdrop-filter:blur(6px);
+    border:1px solid rgba(255,255,255,.08); border-radius:14px; padding:9px 13px; }
+  #stats { top:14px; left:14px; min-width:180px; }
+  #stats .row { display:flex; align-items:center; gap:8px; margin:4px 0; font-weight:700; font-size:13px; }
+  #stats .lbl { width:48px; opacity:.55; font-size:10px; text-transform:uppercase; letter-spacing:1px; }
   .bar { flex:1; height:9px; border-radius:6px; background:rgba(255,255,255,.12); overflow:hidden; }
-  .bar > i { display:block; height:100%; width:100%; transition:width .2s; }
+  .bar > i { display:block; height:100%; }
   #hpFill { background:linear-gradient(90deg,#ff4d4d,#ff8a5c); }
-  #fuelFill{ background:linear-gradient(90deg,#38d,#5cf); }
-  #cash { top:14px; right:14px; font-size:26px; font-weight:900; color:#8ef58e;
-    text-shadow:0 2px 10px rgba(0,0,0,.6); font-variant-numeric:tabular-nums; }
-  #stars { position:absolute; top:58px; right:14px; font-size:22px; letter-spacing:2px; text-align:right;
-    filter:drop-shadow(0 2px 6px rgba(0,0,0,.6)); min-height:26px; }
-  #speedo { bottom:16px; right:16px; text-align:right; }
-  #speedo .kmh { font-size:40px; font-weight:900; font-variant-numeric:tabular-nums; line-height:1; }
-  #speedo .unit { opacity:.5; font-size:12px; letter-spacing:2px; }
-  #gearv { color:var(--saffron); font-weight:800; font-size:13px; }
-  #mission { bottom:16px; left:16px; max-width:min(46vw,430px); }
-  #mission .tag { color:var(--saffron); font-size:11px; letter-spacing:2px; text-transform:uppercase; }
-  #mission .txt { font-size:15px; font-weight:600; margin-top:2px; line-height:1.35; }
-  #toast { position:fixed; top:22%; left:50%; transform:translateX(-50%); z-index:15;
-    text-align:center; pointer-events:none; }
-  #toast .big { font-size:clamp(30px,7vw,64px); font-weight:900; letter-spacing:2px;
-    opacity:0; transition:opacity .3s, transform .3s; text-shadow:0 4px 24px rgba(0,0,0,.7); }
-  #hint { position:fixed; bottom:88px; left:50%; transform:translateX(-50%); z-index:12;
-    background:rgba(255,153,51,.92); color:#1a1200; font-weight:800; font-size:14px;
-    padding:8px 18px; border-radius:30px; opacity:0; transition:opacity .2s; }
-  #minimap { position:absolute; top:14px; left:50%; transform:translateX(-50%);
-    border-radius:12px; border:2px solid rgba(255,255,255,.15);
-    box-shadow:0 6px 24px rgba(0,0,0,.5); }
-  #district { position:absolute; top:200px; left:50%; transform:translateX(-50%);
-    background:rgba(13,13,18,.6); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,.1);
-    padding:5px 14px; border-radius:20px; font-size:13px; font-weight:800; letter-spacing:.5px;
-    white-space:nowrap; }
-  #bribe { position:absolute; bottom:130px; left:50%; transform:translateX(-50%);
-    background:rgba(30,180,90,.92); color:#04210f; font-weight:800; font-size:14px;
-    padding:8px 18px; border-radius:30px; opacity:0; transition:opacity .15s; }
-  #banner { position:fixed; left:0; right:0; bottom:20%; z-index:14; text-align:center;
-    pointer-events:none; opacity:0; transition:opacity .5s, transform .5s; transform:translateY(16px); }
+  #fuelFill { background:linear-gradient(90deg,#38d,#5cf); }
+  #cash { top:14px; right:14px; font-size:24px; font-weight:900; color:#8ef58e; text-shadow:0 2px 10px rgba(0,0,0,.6); }
+  #stars { position:absolute; top:52px; right:14px; font-size:20px; text-align:right; min-height:24px;
+    filter:drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
+  #district { position:absolute; top:14px; left:50%; transform:translateX(-50%);
+    background:var(--panel); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,.1);
+    padding:6px 16px; border-radius:20px; font-size:14px; font-weight:800; }
+  #controls { bottom:14px; left:14px; font-size:12px; line-height:1.7; max-width:340px; }
+  #controls b { color:var(--saffron); }
+  #speedo { bottom:14px; right:14px; text-align:right; }
+  #speedo .kmh { font-size:34px; font-weight:900; line-height:1; }
+  #speedo .unit { opacity:.5; font-size:11px; letter-spacing:2px; }
+  #hint { position:fixed; bottom:96px; left:50%; transform:translateX(-50%); z-index:12;
+    background:rgba(255,153,51,.94); color:#1a1200; font-weight:800; font-size:13px;
+    padding:7px 16px; border-radius:24px; opacity:0; transition:opacity .2s; }
+  #toast { position:fixed; top:22%; left:50%; transform:translateX(-50%); z-index:13; text-align:center; pointer-events:none; }
+  #toast .big { font-size:clamp(26px,6vw,52px); font-weight:900; opacity:0; transition:opacity .3s,transform .3s;
+    text-shadow:0 4px 24px rgba(0,0,0,.7); }
+  #banner { position:fixed; left:0; right:0; bottom:22%; z-index:12; text-align:center; pointer-events:none;
+    opacity:0; transition:opacity .5s,transform .5s; transform:translateY(16px); }
   #banner.show { opacity:1; transform:translateY(0); }
-  #banner .bTitle { font-size:clamp(30px,6vw,58px); font-weight:900; letter-spacing:1px;
+  #banner .bTitle { font-size:clamp(26px,5vw,50px); font-weight:900;
     background:linear-gradient(90deg,var(--saffron),#fff 55%,var(--green));
-    -webkit-background-clip:text; background-clip:text; color:transparent;
-    text-shadow:0 4px 30px rgba(0,0,0,.6); }
-  #banner .bFact { margin-top:8px; font-size:clamp(13px,2.2vw,17px); opacity:.9; font-weight:600;
-    max-width:640px; margin-left:auto; margin-right:auto; padding:0 20px; line-height:1.5;
-    text-shadow:0 2px 12px rgba(0,0,0,.8); }
+    -webkit-background-clip:text; background-clip:text; color:transparent; text-shadow:0 4px 30px rgba(0,0,0,.6); }
+  #banner .bFact { margin-top:8px; font-size:clamp(12px,2vw,16px); opacity:.9; font-weight:600;
+    max-width:620px; margin:8px auto 0; padding:0 20px; line-height:1.5; text-shadow:0 2px 12px rgba(0,0,0,.8); }
+  #loading { position:fixed; inset:0; z-index:30; display:flex; align-items:center; justify-content:center;
+    background:var(--ink); font-weight:800; letter-spacing:1px; }
+  #loading.hide { display:none; }
+
+  /* touch */
   #touch { position:fixed; inset:0; z-index:11; pointer-events:none; display:none; }
-  .thumb { position:absolute; pointer-events:auto; width:74px; height:74px; border-radius:50%;
+  .thumb { position:absolute; pointer-events:auto; width:66px; height:66px; border-radius:50%;
     background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.25);
-    display:flex; align-items:center; justify-content:center; font-size:26px; font-weight:900;
+    display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:900;
     user-select:none; -webkit-user-select:none; }
   @media (hover:none){ #touch.on { display:block; } }
 </style>
@@ -97,50 +98,66 @@
 <body>
   <canvas id="game"></canvas>
 
-  <div id="hud" hidden>
-    <canvas id="minimap" width="180" height="180"></canvas>
+  <div id="loading">Loading the city…</div>
+
+  <div id="hud">
     <div class="panel" id="stats">
-      <div class="row"><span class="lbl">Health</span><span class="bar"><i id="hpFill"></i></span></div>
-      <div class="row"><span class="lbl">Fuel</span><span class="bar"><i id="fuelFill"></i></span></div>
+      <div class="row"><span class="lbl">Health</span><span class="bar"><i id="hpFill" style="width:100%"></i></span></div>
+      <div class="row"><span class="lbl">Fuel</span><span class="bar"><i id="fuelFill" style="width:100%"></i></span></div>
     </div>
     <div id="cash" class="panel">₹0</div>
     <div id="stars"></div>
-    <div class="panel" id="speedo"><div class="kmh"><span id="kmh">0</span></div>
-      <div class="unit">KM/H · <span id="gearv">ON FOOT</span></div></div>
-    <div class="panel" id="mission"><div class="tag">Mission</div><div class="txt" id="mtxt">—</div></div>
-    <div id="hint"></div>
     <div id="district">📍 <span id="distName">—</span></div>
-    <div id="bribe"></div>
+    <div class="panel" id="controls" id="ctl"></div>
+    <div class="panel" id="speedo"><div class="kmh"><span id="kmh">0</span></div><div class="unit">KM/H · <span id="gearv">ON FOOT</span></div></div>
+    <div id="hint"></div>
   </div>
 
   <div id="toast"><div class="big" id="toastBig"></div></div>
-
   <div id="banner"><div class="bTitle" id="bTitle"></div><div class="bFact" id="bFact"></div></div>
 
   <div id="touch">
-    <div class="thumb" id="tLeft"  style="left:22px;  bottom:150px;">◀</div>
-    <div class="thumb" id="tRight" style="left:120px; bottom:150px;">▶</div>
-    <div class="thumb" id="tGas"   style="right:22px; bottom:210px;">▲</div>
-    <div class="thumb" id="tBrake" style="right:22px; bottom:120px;">▼</div>
-    <div class="thumb" id="tAct"   style="right:120px;bottom:150px; font-size:20px;">F</div>
+    <div class="thumb" id="tUp"    style="left:70px; bottom:150px;">▲</div>
+    <div class="thumb" id="tDown"  style="left:70px; bottom:60px;">▼</div>
+    <div class="thumb" id="tLeft"  style="left:14px; bottom:105px;">◀</div>
+    <div class="thumb" id="tRight" style="left:126px;bottom:105px;">▶</div>
+    <div class="thumb" id="tAct"   style="right:20px;bottom:150px;font-size:16px;">F</div>
+    <div class="thumb" id="tPunch" style="right:96px;bottom:110px;font-size:16px;">👊</div>
+    <div class="thumb" id="tSpit"  style="right:20px;bottom:60px;font-size:16px;">💦</div>
   </div>
 
-  <div id="menu">
-    <div class="flag"><i></i><i><span class="chakra"></span></i><i></i></div>
-    <h1>DESI<br>STREETS</h1>
-    <div class="sub">Ek Sheher · Nau Duniya</div>
-    <button id="playBtn">▶ Enter the City</button>
-    <div class="keys">
-      <b>WASD / Arrows</b> drive &amp; walk &nbsp;·&nbsp; <b>F</b> enter / exit &amp; jack vehicles<br>
-      <b>Space</b> handbrake &nbsp;·&nbsp; <b>H</b> horn &nbsp;·&nbsp; <b>B</b> bribe a cop &nbsp;·&nbsp; <b>M</b> mute<br>
-      Cross <b>nine districts</b> — Dilli, Bambai, Marwar, Kashi, Punjab, Kerala, Kolkata,
-      Chennai, Goa — each its own world of food, faith and traffic. Run culture-soaked jobs
-      for ₹. Cause chaos and the <b>police</b> come — but this is India: find the
-      <b>corrupt cop</b> (gold badge) and <b>bribe</b> your stars away. The honest ones (white cap)
-      you cannot buy.
+  <!-- ---------- Character creator ---------- -->
+  <div id="creator">
+    <div class="top">
+      <h1>RICKSHAW RAJA</h1>
+      <div class="sub">Ek Sheher · Nau Duniya · Ek Raja</div>
+    </div>
+    <div class="body">
+      <canvas id="preview"></canvas>
+      <div id="opts">
+        <div class="grp"><div class="lbl">Your Raja's Name</div>
+          <input id="nameIn" maxlength="18" placeholder="Raja Bahadur" value="Raja Bahadur"></div>
+        <div class="grp"><div class="lbl">Skin Tone</div><div class="swatches" id="swSkin"></div></div>
+        <div class="rowsplit">
+          <div class="grp"><div class="lbl">Turban (Raja style)</div>
+            <div class="chips" id="chTurban"></div>
+            <div class="swatches" id="swTurban" style="margin-top:8px"></div></div>
+        </div>
+        <div class="rowsplit">
+          <div class="grp"><div class="lbl">Beard</div><div class="chips" id="chBeard"></div></div>
+          <div class="grp"><div class="lbl">Moustache</div><div class="chips" id="chMoustache"></div></div>
+        </div>
+        <div class="rowsplit">
+          <div class="grp"><div class="lbl">Kurta</div><div class="swatches" id="swKurta"></div></div>
+          <div class="grp"><div class="lbl">Dhoti / Pyjama</div><div class="swatches" id="swDhoti"></div></div>
+        </div>
+        <button id="enterBtn">▶ Enter the City</button>
+        <div class="hintline">Traditional looks only — kurta, sherwani, dhoti, pagdi. Drag the preview to spin your Raja.</div>
+      </div>
     </div>
   </div>
 
-  <script src="game.js"></script>
+  <script src="vendor/three.min.js"></script>
+  <script src="engine3d.js"></script>
 </body>
 </html>

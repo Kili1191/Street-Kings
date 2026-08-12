@@ -1,32 +1,49 @@
-<h1 align="center">🛺 Desi Streets</h1>
+<h1 align="center">🛺 Rickshaw Raja</h1>
 
 <p align="center">
-  <strong>An open-world, GTA-style top-down driving game set in an Indian city.</strong><br>
-  Drive, jack autos, dodge traffic, dodge cows, outrun the cops. Runs in any browser.
+  <strong>A 3D, third-person, open-world game across nine Indian districts.</strong><br>
+  Build your turbaned Raja, roam the streets, drive an auto-rickshaw, throw hands,
+  paan-spit, and bribe the cops. Runs in any modern browser — no install.
 </p>
+
+<p align="center"><em>Now in 3D (Three.js). The original top-down build lives on as <a href="classic.html">Classic 2D mode</a>.</em></p>
 
 ---
 
 ## ▶ Play it
 
-**Option A — just open it:** download the repo and double-click `index.html`.
+**Option A — just open it:** download the repo and open `index.html` in a browser
+(the 3D game). `classic.html` is the original 2D version.
 
 **Option B — host it free (GitHub Pages):**
 1. Push this repo to GitHub.
 2. Repo **Settings → Pages → Source: `main` branch, `/root`**.
 3. Your game goes live at `https://<username>.github.io/desi-streets/`.
 
-No build step, no dependencies — it's plain HTML + JavaScript + Canvas.
+No build step. The only dependency is **Three.js**, vendored in `vendor/three.min.js`
+so it works fully offline.
 
-## 🎮 Controls
+## 🧔🏽 Character creator
+
+Before you spawn, build your **Raja** — traditional looks only:
+
+- **Skin tone**, **kurta** colour, **dhoti / pyjama** colour
+- **Pagdi (turban)** on/off with a jewelled *kalgi* plume, in nine colours
+- **Beard** — clean / stubble / full / long — and **moustache** on/off
+- Name your Raja; drag the live 3D preview to spin him
+
+## 🎮 Controls (3D)
 
 | Key | Action |
 | --- | --- |
-| **W A S D** / **Arrow keys** | Drive & walk |
-| **F** | Enter / exit a vehicle · carjack a moving one |
-| **Space** | Handbrake |
-| **H** | Horn |
-| **M** | Mute / unmute |
+| **W A S D** | Move (camera-relative) |
+| **Mouse drag** | Look / orbit the camera |
+| **Shift** | Sprint |
+| **F** | Enter / exit the auto-rickshaw |
+| **J** | Punch (knock down NPCs) |
+| **T** | Paan-spit 🔴 (leaves a red splat) |
+| **B** | Bribe a nearby cop |
+| **H** | Horn (in vehicle) |
 
 *(On phones and tablets, on-screen thumb controls appear automatically.)*
 
