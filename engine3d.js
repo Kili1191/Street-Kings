@@ -166,7 +166,109 @@ function buildCharacter(o) {
   grp.scale.setScalar(0.53); // ~1.85 m tall
   return grp;
 }
+// ---------- Rigged human (GLB) system ----------
+let HERO = null; // { scene, clips, height }
+function loadHero(cb) {
+  const B = window.HERO_ASSETS;
+  if (!B || !window.GLTFLoader || !window.skeletonClone) { cb(null); return; }
+  const dec = b64 => { const raw = atob(b64), u = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) u[i] = raw.charCodeAt(i); return u.buffer; };
+  try {
+    const L = new window.GLTFLoader();
+    L.parse(dec(B.raja), '', av => {
+      const clips = {}; let left = 3;
+      const done = () => { if (--left > 0) return;
+        const box = new T.Box3().setFromObject(av.scene);
+        cb({ scene: av.scene, clips, height: Math.max(0.1, box.max.y - box.min.y) }); };
+      // official RPM clips: authored for this exact skeleton, no retargeting needed
+      const grab = (b64, name) => L.parse(dec(b64), '', an => { const c = (an.animations || [])[0];
+        if (c) { c.name = name; clips[name] = c; } done(); }, done);
+      grab(B.idle, 'Idle'); grab(B.walk, 'Walk'); grab(B.run, 'Run');
+    }, () => cb(null));
+  } catch (e) { cb(null); }
+}
+// accessories authored in metres around the head centre
+const ACC = { turbY: 0.10, turbZ: 0.0, beardY: -0.085, beardZ: 0.055, mouY: -0.045, mouZ: 0.095 };
+function buildHeadgear(o) {
+  const g = new T.Group();
+  if (o.turban) {
+    const tM = mat(o.turbanColor, .6);
+    const dome = new T.Mesh(new T.SphereGeometry(0.125, 20, 12, 0, TAU, 0, Math.PI / 2), tM); dome.position.y = ACC.turbY; g.add(dome);
+    const wrap = new T.Mesh(new T.TorusGeometry(0.115, 0.038, 10, 22), tM); wrap.rotation.x = Math.PI / 2; wrap.position.y = ACC.turbY + 0.01; g.add(wrap);
+    const wrap2 = new T.Mesh(new T.TorusGeometry(0.122, 0.03, 10, 22), tM); wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, ACC.turbY - 0.025, 0.006); g.add(wrap2);
+    const jewel = new T.Mesh(new T.SphereGeometry(0.022, 10, 10), mat('#ffd700', .25)); jewel.position.set(0, ACC.turbY + 0.015, 0.115); g.add(jewel);
+    const plume = new T.Mesh(new T.ConeGeometry(0.02, 0.12, 8), mat('#f5f5f5', .7)); plume.position.set(0, ACC.turbY + 0.14, 0.04); plume.rotation.x = -0.25; g.add(plume);
+  }
+  if (o.beard && o.beard !== 'none') {
+    const bM = mat('#171310', .85);
+    const b = new T.Mesh(new T.SphereGeometry(0.085, 14, 12), bM);
+    if (o.beard === 'stubble') b.scale.set(1.0, .55, .62);
+    else if (o.beard === 'full') b.scale.set(1.02, .85, .7);
+    else b.scale.set(1.0, 1.5, .7);
+    b.position.set(0, ACC.beardY - (o.beard === 'long' ? 0.05 : 0), ACC.beardZ); g.add(b);
+  }
+  if (o.moustache) { const m = new T.Mesh(new T.TorusGeometry(0.035, 0.012, 8, 14, Math.PI), mat('#171310', .85));
+    m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, ACC.mouY, ACC.mouZ); g.add(m); }
+  g.traverse(x => { if (x.isMesh) x.castShadow = true; });
+  return g;
+}
+function makeHuman(o) {
+  const grp = new T.Group();
+  const model = window.skeletonClone(HERO.scene);
+  const s = 1.8 / HERO.height; model.scale.setScalar(s);
+  grp.add(model);
+  const skinTint = new T.Color('#ffffff').lerp(new T.Color(o.skin), 0.55);
+  model.traverse(n => { if (!(n.isMesh || n.isSkinnedMesh)) return;
+    n.castShadow = true; n.frustumCulled = false;
+    const mn = (n.material && n.material.name) || '';
+    n.material = n.material.clone();
+    if (/Outfit_Top/i.test(mn)) n.material.color = new T.Color(o.kurta);            // kurta
+    else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // dhoti/pyjama
+    else if (/Skin|Body/i.test(mn)) n.material.color = skinTint;                     // face + body skin tone
+    else if (/Headwear/i.test(mn)) n.visible = false;                                // replaced by our pagdi
+    else if (/Beard/i.test(mn)) n.visible = o.beard !== 'none';                      // the avatar's real beard
+    else if (/visor/i.test(n.name) || /visor/i.test(mn)) n.visible = false; });
+  grp.updateMatrixWorld(true);
+  let head = null, neck = null, spine = null, rArm = null, lArm = null, rLeg = null;
+  model.traverse(n => { if (!n.isBone) return; const nm = n.name;
+    if (/Head$/.test(nm)) head = n; else if (/Neck$/.test(nm)) neck = n; else if (/Spine2$/.test(nm)) spine = n;
+    else if (/RightArm$/.test(nm)) rArm = n; else if (/LeftArm$/.test(nm)) lArm = n; else if (/RightUpLeg$/.test(nm)) rLeg = n; });
+  const V = new T.Vector3();
+  if (head) { const ws = head.getWorldScale(V).x || 1;
+    // the avatar has a real beard mesh, so only the pagdi is attached here
+    const acc = buildHeadgear({ turban: o.turban, turbanColor: o.turbanColor }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.085 / ws, 0.005 / ws); head.add(acc); }
+  if (neck && o.kurta) { const ws = neck.getWorldScale(V).x || 1;
+    const scarf = new T.Group(); const sM = mat(o.kurta, .8);
+    const loop = new T.Mesh(new T.TorusGeometry(0.085, 0.028, 8, 18), sM); loop.rotation.x = Math.PI / 2; loop.position.y = -0.02; scarf.add(loop);
+    for (const sx of [-0.05, 0.05]) { const strip = new T.Mesh(new T.BoxGeometry(0.07, 0.34, 0.015), sM); strip.position.set(sx, -0.2, 0.1); strip.rotation.x = 0.12; scarf.add(strip); }
+    scarf.traverse(x => { if (x.isMesh) x.castShadow = true; });
+    scarf.scale.setScalar(1 / ws); scarf.position.set(0, 0.02 / ws, 0); neck.add(scarf); }
+  const mixer = new T.AnimationMixer(model);
+  const actions = {};
+  for (const nm of ['Idle', 'Walk', 'Run']) { const c = HERO.clips[nm]; if (c) { const a = mixer.clipAction(c); a.enabled = true; a.setEffectiveWeight(nm === 'Idle' ? 1 : 0); a.play(); actions[nm.toLowerCase()] = a; } }
+  grp.userData = { human: { mixer, actions, w: { idle: 1, walk: 0, run: 0 }, head, neck, spine, rArm, lArm, rLeg }, attack: null };
+  return grp;
+}
+function animateHuman(g, moving, dt, speed) {
+  const u = g.userData, h = u.human;
+  // blend weights by state
+  const tgt = { idle: moving ? 0 : 1, walk: moving && speed < 5.5 ? 1 : 0, run: moving && speed >= 5.5 ? 1 : 0 };
+  for (const k in h.w) { h.w[k] = lerp(h.w[k], tgt[k], Math.min(1, dt * 8)); if (h.actions[k]) h.actions[k].setEffectiveWeight(h.w[k]); }
+  if (h.actions.walk) h.actions.walk.setEffectiveTimeScale(clamp(speed / 3.5, .7, 1.4));
+  h.mixer.update(dt);
+  // combat overlay on bones (after mixer wrote the pose)
+  if (u.attack && u.attack.t > 0) {
+    const p = 1 - u.attack.t, ext = Math.sin(clamp(p * 1.25, 0, 1) * Math.PI), k = u.attack.kind;
+    if (h.spine) h.spine.rotation.y += (k === 1 ? -0.55 : 0.4) * ext;
+    if (k === 0 && h.lArm) { h.lArm.rotation.x -= 1.35 * ext; h.lArm.rotation.z += 0.5 * ext; }
+    else if (k === 1 && h.rArm) { h.rArm.rotation.x -= 1.5 * ext; h.rArm.rotation.z -= 0.5 * ext; }
+    else if (k === 2 && h.rLeg) { h.rLeg.rotation.x -= 1.5 * ext; }
+    u.attack.t -= dt * 3.2;
+  }
+}
+const makeCharacter = o => HERO ? makeHuman(o) : buildCharacter(o);
+
 function animateChar(g, moving, dt, speed) {
+  if (g.userData.human) return animateHuman(g, moving, dt, speed);
   const u = g.userData;
   // combat combo: jab (0), cross (1), kick (2) — with weight shift & guard
   if (u.attack && u.attack.t > 0) {
@@ -407,7 +509,7 @@ function spawnNPCs(n) {
     const p = sidewalkSpot() || roadSpot(); if (!p) continue;
     const o = { skin: pick(SKINS), turban: Math.random() < .4, turbanColor: pick(TURBANS),
       kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: Math.random() < .6 };
-    const g = buildCharacter(o); g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
+    const g = makeCharacter(o); g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
     npcs.push({ g, dir: rand(0, TAU), speed: rand(1.2, 2.4), turn: 0, down: 0, t: rand(0, 10) });
   }
 }
@@ -720,8 +822,8 @@ function initPreview() {
   addEventListener('pointermove', e => { if (dr && pChar) { pChar.rotation.y += (e.clientX - lx) * .01; lx = e.clientX; previewSpin = false; } });
 }
 let previewSpin = true, previewYaw = 0;
-function rebuildPreview() { if (pChar) pScene.remove(pChar); pChar = buildCharacter(opts); pChar.scale.setScalar(0.6); pChar.rotation.y = previewYaw; pScene.add(pChar); }
-function updatePreview(dt) { if (previewSpin && pChar) { previewYaw += dt * .6; pChar.rotation.y = previewYaw; } }
+function rebuildPreview() { if (pChar) pScene.remove(pChar); pChar = makeCharacter(opts); pChar.scale.setScalar(HERO ? 0.62 : 0.6); pChar.rotation.y = previewYaw; pScene.add(pChar); }
+function updatePreview(dt) { if (previewSpin && pChar) { previewYaw += dt * .6; pChar.rotation.y = previewYaw; } if (pChar) animateChar(pChar, false, dt, 0); }
 
 // ---------- Creator UI wiring ----------
 function swatchRow(container, colors, current, onPick) {
@@ -755,7 +857,7 @@ function startGame() {
   $('controls').innerHTML = '<b>Thumbstick</b> / WASD move · <b>drag</b> look<br><b>F</b> drive · <b>J</b> fight combo · <b>T</b> paan-spit · <b>B</b> bribe';
   // build player from chosen opts
   player.pos.copy(findSpawn());
-  player.g = buildCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
+  player.g = makeCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
   spawnNPCs(24); spawnCows(8); spawnVehicles(16);
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
@@ -766,6 +868,11 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); initPreview(); wireCreator();
   $('loading').classList.add('hide');
+  // load the rigged human; the creator shows the procedural fallback until ready
+  const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
+  const enable = () => { btn.disabled = false; btn.textContent = '▶ Enter the City'; };
+  const failsafe = setTimeout(enable, 7000);
+  loadHero(h => { clearTimeout(failsafe); if (h) HERO = h; enable(); rebuildPreview(); });
   window.__facefront = () => { previewSpin = false; if (pChar) pChar.rotation.y = 0; };
   window.__facezoom = (y) => { previewSpin = false; if (pChar) pChar.rotation.y = 0; pCam.position.set(0, y, 1.25); pCam.lookAt(0, y, 0); };
   window.__dbg = () => ({ cam: camera.position.toArray().map(v => +v.toFixed(2)),

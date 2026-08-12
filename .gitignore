@@ -10,3 +10,9 @@ dbg.mjs
 smoke3d.mjs
 smokeart.mjs
 s3-*.png
+artifact.html
+face-*.png
+faceshot.mjs
+facezoom.mjs
+joytest.mjs
+vendor-entry.mjs

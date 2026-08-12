@@ -1,5 +1,5 @@
-<h1 align="center">🛺 Sher-e-Sadak</h1>
-<p align="center"><em>“Lion of the Streets”</em></p>
+<h1 align="center">👑 Street Kings</h1>
+<p align="center"><em>Nine Worlds · One City</em></p>
 
 <p align="center">
   <strong>A 3D, third-person, open-world game across nine Indian districts.</strong><br>
@@ -21,8 +21,20 @@
 2. Repo **Settings → Pages → Source: `main` branch, `/root`**.
 3. Your game goes live at `https://<username>.github.io/desi-streets/`.
 
-No build step. The only dependency is **Three.js**, vendored in `vendor/three.min.js`
-so it works fully offline.
+No build step. Three.js (with GLTFLoader) is bundled in `vendor/three-bundle.min.js`
+and the avatar + animations are embedded in `assets/`, so it works fully offline.
+
+## 🧑🏽 A real rigged human
+
+The player and NPCs are a **rigged, realistic human avatar** (visible face, real
+beard) driven by **professional animation clips** — idle, walk and run — blended
+at runtime, with fight moves layered onto the skeleton's bones. Credits:
+
+- Avatar: Ready Player Me sample avatar shipped in the
+  [three.js examples](https://github.com/mrdoob/three.js/tree/dev/examples/models/gltf) (MIT repo)
+- Animations: [Ready Player Me animation library](https://github.com/readyplayerme/animation-library)
+  (free for personal & commercial use per its license)
+- Engine: [three.js](https://threejs.org) (MIT), bundled in `vendor/`
 
 ## 🧔🏽 Character creator
 
@@ -31,14 +43,9 @@ Before you spawn, build your **Raja** — traditional looks only:
 - **Skin tone**, **kurta** colour, **dhoti / pyjama** colour
 - **Pagdi (turban)** on/off with a jewelled *kalgi* plume, in nine colours
 - **Beard** — clean / stubble / full / long — and **moustache** on/off
-- A **painted face** (eyes with irises, brows, nose, lips, skin shading) so the
-  character has a recognisable human face, not a blank head
+- A **real face** — the avatar has actual eyes, brows, nose, ears and a
+  moustache, on a rigged 3D human
 - Name your Raja; drag the live 3D preview to spin him
-
-> **On realism:** the character is a clean *stylised* human built procedurally in
-> the browser. True photoreal humans need an authored, rigged `.glb` model (e.g.
-> exported from Blender / Mixamo, or a CC0 asset). The engine can be extended with
-> `GLTFLoader` to drop one in — see “Ideas for v2”.
 
 ## 🎮 Controls (3D)
 
