@@ -12,6 +12,7 @@ const randi = (a, b) => Math.floor(rand(a, b));
 const pick = a => a[randi(0, a.length)];
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const lerp = (a, b, t) => a + (b - a) * t;
+const angLerp = (a, b, t) => { let d = ((b - a + Math.PI) % TAU) - Math.PI; if (d < -Math.PI) d += TAU; return a + d * t; };
 
 // ---------- Appearance options ----------
 const SKINS   = ['#f0c8a0','#e0ac69','#c68642','#a86b3c','#8d5524','#5c3a21'];
@@ -373,7 +374,7 @@ const DISTRICTS = [
   { name:'Goa', greet:'Welcome to Goa', ground:'#d8c48f', pal:['#e8dcc0','#3fa0a0','#c0563a','#e0b93c'],
     fact:'Goa — Portuguese-white churches, palm beaches and “susegad”: the art of doing nothing, slowly.' },
 ];
-const WORLD = 260, HALF = WORLD / 2, CELL = WORLD / 3, STEP = 20, ROADW = 7, SIDEW = 2.4;
+const WORLD = 320, HALF = WORLD / 2, CELL = WORLD / 3, STEP = 20, ROADW = 7, SIDEW = 2.4;
 function districtAt(x, z) {
   const mx = clamp(Math.floor((x + HALF) / CELL), 0, 2), mz = clamp(Math.floor((z + HALF) / CELL), 0, 2);
   return mz * 3 + mx;
@@ -392,7 +393,7 @@ const onSidewalk = (x, z) => {
 // ---------- Renderer / scene ----------
 let renderer, scene, camera, clock, sun, composer;
 const buildings = []; // {x,z,hw,hd}
-let ground, winTex;
+let ground, winTex, winTexes = [];
 function makeSky() {
   const W = 512, H = 256, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
   const grd = g.createLinearGradient(0, 0, 0, H);
@@ -433,7 +434,7 @@ function initThree() {
   if (window.EffectComposer) {
     composer = new window.EffectComposer(renderer);
     composer.addPass(new window.RenderPass(scene, camera));
-    const bloom = new window.UnrealBloomPass(new T.Vector2(innerWidth, innerHeight), 0.32, 0.55, 0.82);
+    const bloom = new window.UnrealBloomPass(new T.Vector2(innerWidth, innerHeight), 0.2, 0.3, 0.9);
     composer.addPass(bloom);
     composer.addPass(new window.ShaderPass(window.GammaCorrectionShader));
   }
@@ -496,65 +497,82 @@ function makeGroundTexture() {
   }
   const tex = new T.CanvasTexture(c); tex.anisotropy = 8; return tex;
 }
-function makeWindowTexture() {
+function makeFacadeTexture(style) {
+  // style 0: modern flats · 1: old-city arches + shutters · 2: bazaar with painted signboards · 3: patched/weathered mix
   const S = 512, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
-  // plaster base with tonal patches
   g.fillStyle = '#d8d2c2'; g.fillRect(0, 0, S, S);
-  for (let i = 0; i < 26; i++) { g.globalAlpha = .05; g.fillStyle = Math.random() < .5 ? '#b8ad96' : '#efe9da';
-    g.fillRect(rand(0, S), rand(0, S), rand(40, 150), rand(30, 110)); }
+  // Indian walls: big patches of mismatched repaints + exposed brick
+  const patchN = style === 3 ? 34 : 16;
+  for (let i = 0; i < patchN; i++) { g.globalAlpha = style === 3 ? .16 : .07;
+    g.fillStyle = pick(['#b8ad96', '#efe9da', '#c9a15a', '#a9bfc9', '#b8c9a8', '#c67b62']);
+    g.fillRect(rand(0, S), rand(0, S), rand(50, 170), rand(40, 130)); }
+  // exposed brick patches
+  if (style !== 0) for (let i = 0; i < 5; i++) { const bx = rand(0, S - 70), by = rand(S * .3, S - 60);
+    g.globalAlpha = .5; g.fillStyle = '#a85c3e'; g.fillRect(bx, by, rand(36, 70), rand(24, 48));
+    g.globalAlpha = .3; g.strokeStyle = '#7c4029'; g.lineWidth = 1;
+    for (let yy = by; yy < by + 48; yy += 7) { g.beginPath(); g.moveTo(bx, yy); g.lineTo(bx + 70, yy); g.stroke(); } }
   g.globalAlpha = 1;
-  const floors = 7, cols = 4, padx = 22, ww = (S - padx * (cols + 1)) / cols;
-  const fh = S / floors;
+  const floors = 7, cols = 4, padx = 22, ww = (S - padx * (cols + 1)) / cols, fh = S / floors;
   for (let f = 0; f < floors; f++) {
     const yTop = f * fh;
-    // floor ledge / cornice
     g.fillStyle = 'rgba(60,55,45,.35)'; g.fillRect(0, yTop, S, 3);
     g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(0, yTop + 3, S, 2);
-    if (f === floors - 1) { // ground floor: shop shutters
+    if (f === floors - 1) { // ground floor
       for (let cc = 0; cc < cols; cc++) {
-        const x = padx + cc * (ww + padx), y = yTop + fh * .18, h = fh * .74;
-        g.fillStyle = pick(['#7f8a92', '#9a8a6a', '#7d9484', '#a08878']); g.fillRect(x - 6, y, ww + 12, h);
+        const x = padx + cc * (ww + padx), y = yTop + fh * .18, h2 = fh * .74;
+        g.fillStyle = pick(['#7f8a92', '#9a8a6a', '#7d9484', '#a08878']); g.fillRect(x - 6, y, ww + 12, h2);
         g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 1.5;
-        for (let s2 = 0; s2 < h; s2 += 5) { g.beginPath(); g.moveTo(x - 6, y + s2); g.lineTo(x + ww + 6, y + s2); g.stroke(); }
-        g.fillStyle = 'rgba(30,28,24,.5)'; g.fillRect(x - 8, y - 8, ww + 16, 8); // signboard shadow
+        for (let s2 = 0; s2 < h2; s2 += 5) { g.beginPath(); g.moveTo(x - 6, y + s2); g.lineTo(x + ww + 6, y + s2); g.stroke(); }
+        if (style === 2) { // painted signboard with script-like strokes
+          const sb = pick(['#c0392b', '#1a5c8a', '#c9a02b', '#1e7a4a', '#8a2b6b']);
+          g.fillStyle = sb; g.fillRect(x - 8, y - 16, ww + 16, 15);
+          g.strokeStyle = pick(['#ffe9a8', '#ffffff']); g.lineWidth = 2;
+          g.beginPath(); g.moveTo(x - 2, y - 5); g.lineTo(x + ww + 2, y - 5); g.stroke(); // headline bar (devanagari-like)
+          for (let sx2 = x; sx2 < x + ww; sx2 += rand(6, 12)) { g.beginPath(); g.moveTo(sx2, y - 5); g.lineTo(sx2 + rand(-2, 2), y - 12 + rand(0, 4)); g.stroke(); }
+        } else { g.fillStyle = 'rgba(30,28,24,.5)'; g.fillRect(x - 8, y - 8, ww + 16, 8); }
       }
       continue;
     }
     for (let cc = 0; cc < cols; cc++) {
       const x = padx + cc * (ww + padx), y = yTop + fh * .22, wh = fh * .52;
-      // frame + glass with sky reflection
-      g.fillStyle = '#3a3f46'; g.fillRect(x - 3, y - 3, ww + 6, wh + 6);
+      g.fillStyle = style === 1 ? '#4a3a2c' : '#3a3f46'; // frame
+      if (style === 1) { g.beginPath(); g.moveTo(x - 3, y + wh + 3); g.lineTo(x - 3, y + wh * .35); g.arc(x + ww / 2, y + wh * .35, ww / 2 + 3, Math.PI, 0); g.lineTo(x + ww + 3, y + wh + 3); g.closePath(); g.fill(); }
+      else g.fillRect(x - 3, y - 3, ww + 6, wh + 6);
       const lit = Math.random() < .18;
       const gl = g.createLinearGradient(0, y, 0, y + wh);
       if (lit) { gl.addColorStop(0, '#ffe2a8'); gl.addColorStop(1, '#e8a94f'); }
       else { gl.addColorStop(0, '#9db4c4'); gl.addColorStop(.5, '#5f7484'); gl.addColorStop(1, '#3c4a56'); }
-      g.fillStyle = gl; g.fillRect(x, y, ww, wh);
-      g.strokeStyle = 'rgba(20,22,26,.7)'; g.lineWidth = 2;
-      g.beginPath(); g.moveTo(x + ww / 2, y); g.lineTo(x + ww / 2, y + wh); g.stroke();
-      // balcony with railing on some
-      if (Math.random() < .3) {
+      g.fillStyle = gl;
+      if (style === 1 && Math.random() < .45) { // closed wooden shutters instead of glass
+        g.fillStyle = pick(['#2e5d3a', '#7c9e8a', '#5a7d99', '#3f7d5c']);
+        g.fillRect(x, y, ww, wh);
+        g.strokeStyle = 'rgba(0,0,0,.3)'; g.lineWidth = 1.4;
+        for (let yy = y + 3; yy < y + wh; yy += 4) { g.beginPath(); g.moveTo(x, yy); g.lineTo(x + ww, yy); g.stroke(); }
+      } else { g.fillRect(x, y, ww, wh);
+        g.strokeStyle = 'rgba(20,22,26,.7)'; g.lineWidth = 2;
+        g.beginPath(); g.moveTo(x + ww / 2, y); g.lineTo(x + ww / 2, y + wh); g.stroke(); }
+      if (Math.random() < .3) { // balcony
         g.fillStyle = 'rgba(50,46,40,.85)'; g.fillRect(x - 8, y + wh + 2, ww + 16, 4);
         g.strokeStyle = 'rgba(50,46,40,.8)'; g.lineWidth = 1.6;
         for (let b = 0; b <= ww + 16; b += 6) { g.beginPath(); g.moveTo(x - 8 + b, y + wh + 6); g.lineTo(x - 8 + b, y + wh + 18); g.stroke(); }
         g.fillStyle = 'rgba(50,46,40,.85)'; g.fillRect(x - 8, y + wh + 18, ww + 16, 3);
+        if (Math.random() < .5) { g.fillStyle = pick(['#c0392b', '#2980b9', '#e0b93c', '#8e44ad']); g.fillRect(x + rand(-4, ww * .4), y + wh + 7, rand(8, 16), 10); } // drying laundry
       } else if (Math.random() < .3) {
-        g.fillStyle = '#9a948a'; g.fillRect(x + ww * .25, y + wh + 4, ww * .5, 12); // AC unit
+        g.fillStyle = '#9a948a'; g.fillRect(x + ww * .25, y + wh + 4, ww * .5, 12);
         g.fillStyle = 'rgba(0,0,0,.25)'; g.fillRect(x + ww * .25, y + wh + 16, ww * .5, 2);
       }
-      // grime streak
-      if (Math.random() < .5) { const gr = g.createLinearGradient(0, y + wh, 0, y + wh + 26);
-        gr.addColorStop(0, 'rgba(45,38,26,.3)'); gr.addColorStop(1, 'rgba(45,38,26,0)');
+      if (Math.random() < .55) { const gr = g.createLinearGradient(0, y + wh, 0, y + wh + 26);
+        gr.addColorStop(0, 'rgba(45,38,26,.34)'); gr.addColorStop(1, 'rgba(45,38,26,0)');
         g.fillStyle = gr; g.fillRect(x - 4, y + wh, ww + 8, 26); }
     }
   }
-  // base AO: darken toward the street
   const ao = g.createLinearGradient(0, S - fh * 1.4, 0, S);
   ao.addColorStop(0, 'rgba(30,25,18,0)'); ao.addColorStop(1, 'rgba(30,25,18,.42)');
   g.fillStyle = ao; g.fillRect(0, S - fh * 1.4, S, fh * 1.4);
-  // weathering speckle
   g.globalAlpha = .05; for (let i = 0; i < 2400; i++) { g.fillStyle = Math.random() < .5 ? '#000' : '#fff'; g.fillRect(Math.random() * S, Math.random() * S, 2, 2); } g.globalAlpha = 1;
   const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; tex.anisotropy = 4; return tex;
 }
+function makeWindowTexture() { return makeFacadeTexture(0); }
 // district-specific architecture, from studying each city's real streetscape
 function addDistrictArchitecture(di, x, z, w, h, d, boxGeo) {
   const front = z + d / 2;
@@ -619,7 +637,7 @@ function buildCity() {
   const gt = makeGroundTexture(); if ('sRGBEncoding' in T) gt.encoding = T.sRGBEncoding;
   ground = new T.Mesh(new T.PlaneGeometry(WORLD, WORLD), new T.MeshStandardMaterial({ map: gt, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
-  winTex = makeWindowTexture();
+  winTexes = [makeFacadeTexture(0), makeFacadeTexture(1), makeFacadeTexture(2), makeFacadeTexture(1), makeFacadeTexture(2), makeFacadeTexture(3)];
   // buildings on block cells (between roads)
   const boxGeo = new T.BoxGeometry(1, 1, 1);
   for (let bx = -HALF + STEP; bx < HALF; bx += STEP) for (let bz = -HALF + STEP; bz < HALF; bz += STEP) {
@@ -639,7 +657,10 @@ function buildCity() {
       const h = lowRise ? rand(3.5, 7) : isMumbai ? rand(7, 24) : rand(5, 15);
       const w = cw * rand(.72, .92), d = cd * rand(.72, .92);
       const baseCol = di2 === 2 ? pick(['#c67b62', '#d98e75', '#cc8069']) : mute(pick(D.pal)); // Jaipur's mandated pink
-      const bm = new T.MeshStandardMaterial({ color: new T.Color(baseCol), map: winTex, roughness: .92, metalness: .02 });
+      const texPick = (di2 === 0 || di2 === 3) ? pick([winTexes[1], winTexes[2], winTexes[5]])
+        : (di2 === 1 || di2 === 6) ? pick([winTexes[0], winTexes[2], winTexes[5]])
+        : pick(winTexes);
+      const bm = new T.MeshStandardMaterial({ color: new T.Color(baseCol), map: texPick, roughness: .92, metalness: .02 });
       const m = new T.Mesh(boxGeo, bm); m.scale.set(w, h, d); m.position.set(px2, h / 2, pz2); m.castShadow = true; m.receiveShadow = true; scene.add(m);
       if (lowRise) { // Kerala / Goa: steep clay-tile hipped roof
         const roofM = mat(pick(['#a24a30', '#94402a', '#b0563a']), .9);
@@ -753,6 +774,7 @@ function roadSpot() { for (let i = 0; i < 24; i++) { const x = rand(-HALF, HALF)
 function sidewalkSpot() { for (let i = 0; i < 60; i++) { const x = rand(-HALF + 4, HALF - 4), z = rand(-HALF + 4, HALF - 4); if (onSidewalk(x, z) && !blocked(x, z)) return { x, z }; } return null; }
 const LANDMARK_CENTRES = [];
 for (let i = 0; i < 9; i++) LANDMARK_CENTRES.push([((i % 3) - 1) * CELL, (((i / 3) | 0) - 1) * CELL]);
+const landmarks = LANDMARK_CENTRES.map(([x, z], i) => ({ x, z, d: i }));
 function farFromLandmarks(x, z, r) { for (const [lx, lz] of LANDMARK_CENTRES) if ((x - lx) ** 2 + (z - lz) ** 2 < r * r) return false; return true; }
 function findSpawn() {
   for (let i = 0; i < 400; i++) { const p = roadSpot(); if (!p) continue;
@@ -854,12 +876,23 @@ function spawnVehicles(n) {
     const g = r < .4 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
               r < .6 ? buildCar('hatch') : r < .85 ? buildCar('sedan') : buildCar('taxi');
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU);
-    scene.add(g); vehicles.push({ g, yaw: g.rotation.y, speed: 0, ai: true, aiDir: rand(0, TAU), aiTimer: 0 }); }
+    scene.add(g);
+    const v = { g, yaw: g.rotation.y, speed: 0, ai: true, aiDir: rand(0, TAU), aiTimer: 0 };
+    // some autos come with a visible driver you can hire (and haggle with)
+    if (HERO && r < .6 && Math.random() < .55) {
+      const o = { skin: pick(SKINS), turban: Math.random() < .5, turbanColor: pick(TURBANS),
+        kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: true };
+      const d = makeHuman(o); const seat = g.userData.seat || { x: 0, y: .55, z: .3 };
+      g.add(d); d.position.set(seat.x, seat.y, seat.z);
+      if (d.userData.human) d.userData.human.seated = true;
+      v.driver = { g: d, fare: randi(60, 150) };
+    }
+    vehicles.push(v); }
 }
 
 // ---------- Player ----------
 const player = { g: null, pos: new T.Vector3(0, 0, 4), yaw: 0, vel: new T.Vector3(),
-  health: 100, fuel: 100, cash: 0, inVehicle: null, moving: false, speed: 0 };
+  health: 100, fuel: 100, cash: 500, inVehicle: null, moving: false, speed: 0 }; // pocket money for tickets & autos
 const cam = { yaw: 0, pitch: 0.26, dist: 7.5 };
 
 // ---------- Input ----------
@@ -872,6 +905,8 @@ addEventListener('keydown', e => { const k = e.key.toLowerCase();
   if (k === 't') spit();
   if (k === 'h' && player.inVehicle) horn();
   if (k === 'r' && player.inVehicle) { const st = Radio.switch(); toast('\ud83d\udcfb ' + st.name, '#8ef58e'); }
+  if (k === 'e') { if (player.nego) acceptRide(); else tryVisit(); }
+  if (k === 'n' && player.nego) haggle();
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 // mouse drag to orbit
@@ -880,6 +915,7 @@ $('game').addEventListener('pointerdown', e => { dragging = true; lastX = e.clie
 addEventListener('pointerup', () => dragging = false);
 addEventListener('pointermove', e => { if (!dragging || !started) return;
   cam.yaw -= (e.clientX - lastX) * .006; cam.pitch = clamp(cam.pitch - (e.clientY - lastY) * .004, .12, 1.2);
+  cam.freeUntil = performance.now() + 2600;
   lastX = e.clientX; lastY = e.clientY; });
 addEventListener('click', e => { if (started && !dragging) { /* click punch on foot */ } });
 // touch
@@ -927,7 +963,49 @@ function tryEnterExit() {
   }
   let best = null, bd = 6 * 6;
   for (const v of vehicles) { const d = v.g.position.distanceToSquared(player.pos); if (d < bd) { bd = d; best = v; } }
-  if (best) { player.transition = { veh: best, t: 0 }; best.ai = false; best.speed = 0; }
+  if (!best) return;
+  if (best.driver) { // occupied auto: negotiate the fare
+    player.nego = { veh: best, fare: best.driver.fare, tries: 0 };
+    best.ai = false; best.speed = 0;
+    return;
+  }
+  player.transition = { veh: best, t: 0 }; best.ai = false; best.speed = 0;
+}
+function acceptRide() {
+  const n = player.nego; if (!n) return;
+  if (player.cash < n.fare) { toast('Not enough cash (\u20b9' + n.fare + ')', '#ffd24d'); return; }
+  const v = n.veh; player.nego = null;
+  v.hired = true; v.fareDue = n.fare; v.ai = true;
+  // hop in the back seat
+  v.g.add(player.g); player.g.position.set(0, .6, -.85); player.g.rotation.set(0, 0, 0);
+  const u = player.g.userData; if (u.human) u.human.seated = true;
+  player.riding = v; player.rideT = 0; player.rideDur = rand(16, 26);
+  Radio.setOn(true);
+  toast('\ud83d\udee9 Chalo! \u20b9' + n.fare, '#8ef58e');
+}
+function haggle() {
+  const n = player.nego; if (!n) return;
+  n.tries++;
+  if (n.tries <= 2 && Math.random() < .65) {
+    n.fare = Math.max(30, Math.round(n.fare * rand(.6, .85)));
+    n.veh.driver.fare = n.fare;
+    toast('\u201cTheek hai\u2026 \u20b9' + n.fare + '\u201d', '#8ef58e');
+  } else {
+    toast('\u201cNahi nahi!\u201d \u2014 he drives off', '#ff9f43');
+    n.veh.ai = true; player.nego = null;
+  }
+}
+function endRide() {
+  const v = player.riding; if (!v) return;
+  player.cash = Math.max(0, player.cash - (v.fareDue || 0));
+  scene.add(player.g);
+  const door = doorWorld(v);
+  player.pos.set(door.x, 0, door.z); player.g.position.copy(player.pos);
+  player.g.rotation.set(0, v.yaw + Math.PI / 2, 0);
+  const u = player.g.userData; if (u.human) u.human.seated = false;
+  player.riding = null; v.hired = false;
+  Radio.setOn(false);
+  toast('Pahunch gaye! \u2212\u20b9' + (v.fareDue || 0), '#8ef58e');
 }
 function updateTransition(dt) {
   const tr = player.transition, v = tr.veh; tr.t += dt;
@@ -1011,7 +1089,70 @@ function blip(f, d, ty, v) { if (!actx) return; const t = actx.currentTime, o = 
 function cashSnd() { blip(880, .08, 'sine', .3); setTimeout(() => blip(1320, .12, 'sine', .3), 70); }
 function siren(on) { if (!actx) return; if (on && !sirenNode) { const o = actx.createOscillator(), g = actx.createGain(), lfo = actx.createOscillator(), lg = actx.createGain(); o.type = 'sine'; o.frequency.value = 700; lfo.frequency.value = 2; lg.gain.value = 250; lfo.connect(lg); lg.connect(o.frequency); g.gain.value = .04; o.connect(g); g.connect(amaster); o.start(); lfo.start(); sirenNode = { o, lfo }; } else if (!on && sirenNode) { try { sirenNode.o.stop(); sirenNode.lfo.stop(); } catch (e) {} sirenNode = null; } }
 
+// ---------- Monuments: tickets + guided tours with real history ----------
+const MONUMENTS = [
+  { name: 'Jama Masjid', facts: [
+    'Jama Masjid was built by Mughal emperor Shah Jahan between 1644 and 1656 \u2014 one of the largest mosques in India.',
+    'Its great courtyard can hold around 25,000 worshippers at a single prayer.',
+    'The three marble domes carry thin black stripes; the 40 m minarets alternate red sandstone and white marble.'] },
+  { name: 'Film City', facts: [
+    'Mumbai\u2019s Hindi film industry \u2014 Bollywood \u2014 releases more films every year than Hollywood.',
+    'Dadasaheb Phalke shot India\u2019s first full-length feature, Raja Harishchandra, in 1913.',
+    'The black-and-yellow kaali-peeli taxi and the dabbawala lunchbox network are Mumbai street icons.'] },
+  { name: 'Mehrangarh Fort', facts: [
+    'Mehrangarh was begun around 1459 by Rao Jodha, founder of Jodhpur.',
+    'Its walls rise straight from a 120-metre cliff \u2014 among the most imposing forts in India.',
+    'Below it spreads the Blue City: houses washed in indigo to stay cool and mark heritage.'] },
+  { name: 'The Ghats of Kashi', facts: [
+    'Varanasi\u2019s riverfront strings together some 88 ghats along the Ganga.',
+    'Every dusk, priests perform the Ganga Aarti with fire lamps at Dashashwamedh Ghat.',
+    'Kashi is counted among the oldest continuously inhabited cities on Earth.'] },
+  { name: 'Harmandir Sahib', facts: [
+    'The Golden Temple was completed in 1604 under Guru Arjan, the fifth Sikh Guru.',
+    'Maharaja Ranjit Singh gilded the shrine with gold in the early 1800s.',
+    'Its langar kitchen serves free meals to as many as 100,000 visitors a day, all seated as equals.'] },
+  { name: 'St. Francis Church', facts: [
+    'Built in 1503 in Kochi, this is the oldest European church in India.',
+    'Vasco da Gama died in Kochi in 1524 and was first buried here.',
+    'Kerala\u2019s spice coast traded with Rome and Arabia centuries before Europe\u2019s sea route.'] },
+  { name: 'Howrah Bridge', facts: [
+    'Opened in 1943, the 705-metre cantilever was riveted together \u2014 no nuts or bolts.',
+    'It carries roughly 100,000 vehicles and countless pedestrians every day.',
+    'It was renamed Rabindra Setu after the poet Rabindranath Tagore.'] },
+  { name: 'Kapaleeshwarar Temple', facts: [
+    'A Dravidian temple with roots in the 7th century, rebuilt in the 16th after coastal erosion.',
+    'Its gopuram tower rises about 37 metres, crusted with painted stucco gods.',
+    'Outside, look for kolam patterns \u2014 rice-flour designs drawn fresh each dawn.'] },
+  { name: 'Basilica of Bom Jesus', facts: [
+    'Completed in 1605 in Old Goa \u2014 a UNESCO World Heritage church.',
+    'It keeps the remains of St. Francis Xavier, displayed once every ten years.',
+    'Unusually, its red laterite body was left unplastered \u2014 the one great church that isn\u2019t white.'] },
+];
+let tour = null; // { d, i, next, guided }
+function tryVisit() {
+  if (!started || player.inVehicle || player.riding || tour) return;
+  for (const l of landmarks) {
+    if ((l.x - player.pos.x) ** 2 + (l.z - player.pos.z) ** 2 > 18 * 18) continue;
+    const M = MONUMENTS[l.d];
+    if (player.cash >= 90) { player.cash -= 90; tour = { d: l.d, i: 0, next: 0, guided: true };
+      toast('\ud83c\udfab Ticket + guide \u2212\u20b990', '#8ef58e'); }
+    else if (player.cash >= 50) { player.cash -= 50; tour = { d: l.d, i: 0, next: 0, guided: false };
+      toast('\ud83c\udfab Ticket \u2212\u20b950', '#8ef58e'); }
+    else toast('Need \u20b950 for a ticket', '#ffd24d');
+    return;
+  }
+}
+function updateTour(dt, now) {
+  if (!tour) return;
+  if (now >= tour.next) {
+    const M = MONUMENTS[tour.d];
+    showBanner((tour.guided ? '\ud83e\uddd4 Guide \u00b7 ' : '') + M.name, M.facts[tour.i]);
+    tour.i++; tour.next = now + 7000;
+    if (tour.i >= (tour.guided ? M.facts.length : 1)) { tour = null; }
+  }
+}
 // ---------- Desi FM: generative radio (offline, three stations) ----------
+
 const Radio = {
   idx: 0, on: false, nextT: 0, step: 0, bus: null,
   stations: [
@@ -1080,9 +1221,23 @@ function update(dt) {
   const turnKey = (keys['arrowright'] ? 1 : 0) - (keys['arrowleft'] ? 1 : 0);
   if (turnKey) cam.yaw -= turnKey * dt * 1.8;
 
-  if (player.transition) updateTransition(dt);
+  if (player.riding) { // passenger in a hired auto
+    const v = player.riding;
+    player.pos.copy(v.g.position); player.speed = v.speed || 0;
+    player.rideT += dt;
+    animateChar(player.g, false, dt, 0);
+    if (player.rideT >= player.rideDur) endRide();
+  }
+  else if (player.transition) updateTransition(dt);
   else if (player.inVehicle) updateDrive(dt, f, s);
   else updateFoot(dt, f, s);
+  // negotiation: sticky prompt, cancels if you walk away
+  if (player.nego) {
+    const n = player.nego, d2 = n.veh.g.position.distanceToSquared(player.pos);
+    if (d2 > 9 * 9) { n.veh.ai = true; player.nego = null; }
+    else hint('\ud83d\udee9 Auto-wala asks \u20b9' + n.fare + ' \u2014 E hop in \u00b7 N haggle');
+  }
+  updateTour(dt, performance.now());
 
   updateNPCs(dt); updateCows(dt); updateVehicles(dt); updateCops(dt);
   Radio.tick();
@@ -1114,7 +1269,13 @@ function update(dt) {
   if (wanted === 0 && player.health < 100) player.health = clamp(player.health + dt * 2, 0, 100);
   if (!player.inVehicle) player.fuel = clamp(player.fuel + dt * 3, 0, 100);
   if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('hint').style.opacity = 0; }
-  if (!player.inVehicle) { for (const v of vehicles) if (v.g.position.distanceToSquared(player.pos) < 25) { hint('Press F to drive · J punch · T paan-spit'); break; } }
+  if (!player.inVehicle && !player.riding && !player.nego) {
+    let hinted = false;
+    for (const l of landmarks) { if ((l.x - player.pos.x) ** 2 + (l.z - player.pos.z) ** 2 < 18 * 18 && !tour) {
+      hint('\ud83c\udfdb ' + MONUMENTS[l.d].name + ' \u2014 E: visit \u20b950 \u00b7 guide \u20b990'); hinted = true; break; } }
+    if (!hinted) for (const v of vehicles) if (v.g.position.distanceToSquared(player.pos) < 25) {
+      hint(v.driver ? 'F \u2014 hail this auto (driver inside)' : 'Press F to drive \u00b7 J punch \u00b7 T paan-spit'); break; }
+  }
 
   updateHUD(); drawMinimap3d();
 }
@@ -1126,7 +1287,7 @@ function updateFoot(dt, f, s) {
     const l = Math.hypot(dx, dz); dx /= l; dz /= l; }
   const sprint = keys['shift'] ? 1.6 : 1, spd = 4.2 * sprint * mag;
   player.moving = mag > .12; player.speed = player.moving ? spd : 0;
-  if (player.moving) { player.yaw = Math.atan2(dx, dz);
+  if (player.moving) { player.yaw = angLerp(player.yaw, Math.atan2(dx, dz), Math.min(1, dt * 9));
     const nx = player.pos.x + dx * spd * dt, nz = player.pos.z + dz * spd * dt;
     if (!blocked(nx, player.pos.z)) player.pos.x = nx; if (!blocked(player.pos.x, nz)) player.pos.z = nz; }
   player.g.position.copy(player.pos); player.g.rotation.y = player.yaw;
@@ -1137,13 +1298,13 @@ function updateDrive(dt, f, s) {
   if (player.fuel <= 0) v.speed *= .96;
   else v.speed += f * dt * 14;
   v.speed *= .985; v.speed = clamp(v.speed, -8, 20);
-  if (Math.abs(v.speed) > .2) { v.yaw -= s * dt * 1.6 * Math.sign(v.speed) * clamp(Math.abs(v.speed) / 5, .3, 1); }
+  if (Math.abs(v.speed) > .2) { const damp = clamp(1 - Math.abs(v.speed) / 34, .5, 1); v.yaw -= s * dt * 0.95 * damp * Math.sign(v.speed) * clamp(Math.abs(v.speed) / 5, .3, 1); }
   const nx = v.g.position.x + Math.sin(v.yaw) * v.speed * dt, nz = v.g.position.z + Math.cos(v.yaw) * v.speed * dt;
   if (!blocked(nx, v.g.position.z)) v.g.position.x = nx; else v.speed *= -.3;
   if (!blocked(v.g.position.x, nz)) v.g.position.z = nz; else v.speed *= -.3;
   v.g.rotation.y = v.yaw; player.pos.copy(v.g.position);
   if (Math.abs(v.speed) > .1) player.fuel = clamp(player.fuel - Math.abs(v.speed) * dt * .05, 0, 100);
-  player.speed = v.speed; cam.yaw = lerp(cam.yaw, v.yaw, .04);
+  player.speed = v.speed; if (!(cam.freeUntil > performance.now())) cam.yaw = angLerp(cam.yaw, v.yaw, .05);
   animateChar(player.g, false, dt, 0); // seated driving pose
   // run over npcs/cows
   for (const n of npcs) { if (n.down > 0) continue; if (n.g.position.distanceToSquared(v.g.position) < 2.2 && Math.abs(v.speed) > 3) { n.down = 5; n.g.rotation.z = Math.PI / 2; n.g.position.y = .3; crime(1); spark(n.g.position); toast('HIT & RUN', '#ff6b6b'); } }
@@ -1159,6 +1320,7 @@ function updateNPCs(dt) { for (const n of npcs) { if (n.down > 0) { n.down -= dt
   wanderMesh(n, dt); animateChar(n.g, true, dt, n.speed * 2); } }
 function updateCows(dt) { for (const c of cows) wanderMesh(c, dt); }
 function updateVehicles(dt) {
+  for (const v of vehicles) { if (v.driver && v.g.position.distanceToSquared(player.pos) < 70 * 70) animateChar(v.driver.g, false, dt, 0); }
   for (const v of vehicles) { if (v === player.inVehicle || !v.ai) continue;
     v.aiTimer -= dt; if (v.aiTimer <= 0) { v.aiDir = Math.round(v.aiDir / (Math.PI / 2)) * (Math.PI / 2) + (Math.random() < .3 ? (Math.random() < .5 ? Math.PI / 2 : -Math.PI / 2) : 0); v.aiTimer = rand(2, 5); }
     v.speed = lerp(v.speed, 5, .04); const nx = v.g.position.x + Math.sin(v.aiDir) * v.speed * dt, nz = v.g.position.z + Math.cos(v.aiDir) * v.speed * dt;
@@ -1284,7 +1446,7 @@ function drawMinimap3d() {
   g.save();
   g.beginPath(); if (g.roundRect) g.roundRect(0, 0, W, H, 22); else g.rect(0, 0, W, H); g.clip();
   g.fillStyle = '#101014'; g.fillRect(0, 0, W, H);
-  const scale = 3.4, mx = (player.pos.x + HALF) / WORLD * 1024, mz = (player.pos.z + HALF) / WORLD * 1024;
+  const scale = 2.1, mx = (player.pos.x + HALF) / WORLD * 1024, mz = (player.pos.z + HALF) / WORLD * 1024;
   g.translate(W / 2, H / 2 + 20); g.rotate(cam.yaw); g.scale(scale, scale); g.translate(-mx, -mz);
   g.drawImage(mapCanvas, 0, 0);
   g.fillStyle = '#4a86ff';
@@ -1316,6 +1478,9 @@ function boot() {
   window.__tp = (x, z) => { player.pos.set(x, 0, z); if (player.inVehicle) { player.inVehicle.g.position.set(x, 0, z); } };
   window.__tpveh = () => { if (!vehicles.length) return false; const v = vehicles[0];
     player.pos.set(v.g.position.x + 2.2, 0, v.g.position.z); if (player.g) player.g.position.copy(player.pos); return true; };
+  window.__tpdriver = () => { const v = vehicles.find(v2 => v2.driver); if (!v) return false;
+    player.pos.set(v.g.position.x + 2.2, 0, v.g.position.z); if (player.g) player.g.position.copy(player.pos); return true; };
+  window.__state = () => ({ nego: !!player.nego, fare: player.nego ? player.nego.fare : -1, riding: !!player.riding, cash: player.cash });
   window.__facefront = () => { previewSpin = false; if (pChar) pChar.rotation.y = 0; };
   window.__facezoom = (y) => { previewSpin = false; if (pChar) pChar.rotation.y = 0; pCam.position.set(0, y, 1.25); pCam.lookAt(0, y, 0); };
   window.__dbg = () => ({ cam: camera.position.toArray().map(v => +v.toFixed(2)),
