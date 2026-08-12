@@ -33,8 +33,8 @@ function shadeHex(hex, amt) { const n = parseInt(hex.slice(1), 16); let r = (n >
 // paint a full head/face onto an equirectangular texture (face centred at u=0.5)
 function makeFaceTexture(o) {
   const W = 640, H = 320, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
-  const cx = W * .5, browY = H * .33, eyeY = H * .40, noseY = H * .50, mouthY = H * .585, chinY = H * .66;
-  const eyeDX = W * .07, earDX = W * .25, skin = o.skin;
+  const cx = W * .5, browY = H * .40, eyeY = H * .455, noseY = H * .55, mouthY = H * .635, chinY = H * .70;
+  const eyeDX = W * .072, earDX = W * .25, skin = o.skin;
   // base skin + vertical shading
   g.fillStyle = skin; g.fillRect(0, 0, W, H);
   const vg = g.createLinearGradient(0, 0, 0, H);
@@ -151,12 +151,12 @@ function buildCharacter(o) {
   if (o.turban) {
     const tM = mat(o.turbanColor, .6);
     // crown cap (upper hemisphere only) so the face stays visible
-    const dome = new T.Mesh(new T.SphereGeometry(0.29, 22, 12, 0, TAU, 0, Math.PI / 2), tM); dome.scale.set(1.0, .95, 1.0); dome.position.set(0, 0.13, 0); head.add(dome);
-    // stacked wrap rings, lowest sits at the hairline just above the brows
-    const wrap = new T.Mesh(new T.TorusGeometry(0.25, 0.088, 12, 24), tM); wrap.rotation.x = Math.PI / 2; wrap.position.set(0, 0.2, 0); head.add(wrap);
-    const wrap2 = new T.Mesh(new T.TorusGeometry(0.265, 0.078, 12, 24), tM); wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, 0.145, 0.012); head.add(wrap2);
-    const jewel = new T.Mesh(new T.SphereGeometry(0.05, 12, 12), mat('#ffd700', .25)); jewel.position.set(0, 0.23, 0.24); head.add(jewel);
-    const plume = new T.Mesh(new T.ConeGeometry(0.05, 0.3, 10), mat('#f5f5f5', .7)); plume.position.set(0, 0.52, 0.1); plume.rotation.x = -0.3; head.add(plume);
+    const dome = new T.Mesh(new T.SphereGeometry(0.29, 22, 12, 0, TAU, 0, Math.PI / 2), tM); dome.scale.set(1.02, 1.0, 1.02); dome.position.set(0, 0.2, 0); head.add(dome);
+    // wrap rings sit HIGH on the crown so the forehead shows below
+    const wrap = new T.Mesh(new T.TorusGeometry(0.26, 0.085, 12, 24), tM); wrap.rotation.x = Math.PI / 2; wrap.position.set(0, 0.28, 0); head.add(wrap);
+    const wrap2 = new T.Mesh(new T.TorusGeometry(0.275, 0.07, 12, 24), tM); wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, 0.21, 0.012); head.add(wrap2);
+    const jewel = new T.Mesh(new T.SphereGeometry(0.05, 12, 12), mat('#ffd700', .25)); jewel.position.set(0, 0.3, 0.24); head.add(jewel);
+    const plume = new T.Mesh(new T.ConeGeometry(0.05, 0.3, 10), mat('#f5f5f5', .7)); plume.position.set(0, 0.58, 0.1); plume.rotation.x = -0.3; head.add(plume);
   } else {
     const hair = new T.Mesh(new T.SphereGeometry(0.265, 18, 12, 0, TAU, 0, Math.PI / 2.1), mat('#0d0b0a', .85)); hair.scale.set(1, .8, 1); hair.position.set(0, 0.12, 0); head.add(hair);
   }
