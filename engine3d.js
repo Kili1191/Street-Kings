@@ -191,7 +191,10 @@ function loadHero(cb) {
         cb({ scene: av.scene, clips, height: Math.max(0.1, box.max.y - box.min.y) }); };
       // official RPM clips: authored for this exact skeleton, no retargeting needed
       const grab = (b64, name) => L.parse(dec(b64), '', an => { const c = (an.animations || [])[0];
-        if (c) { c.name = name; clips[name] = c; } done(); }, done);
+        if (c) { // strip root-motion translation so the walk loops in place (no snap-back)
+          const tracks = c.tracks.filter(t => t.name.endsWith('.quaternion'));
+          clips[name] = new T.AnimationClip(name, c.duration, tracks); }
+        done(); }, done);
       grab(B.idle, 'Idle'); grab(B.walk, 'Walk'); grab(B.run, 'Run');
     }, () => cb(null));
   } catch (e) { cb(null); }
@@ -304,15 +307,16 @@ function makeHuman(o) {
   const mixer = new T.AnimationMixer(model);
   const actions = {};
   for (const nm of ['Idle', 'Walk', 'Run']) { const c = HERO.clips[nm]; if (c) { const a = mixer.clipAction(c); a.enabled = true; a.setEffectiveWeight(nm === 'Idle' ? 1 : 0); a.play(); actions[nm.toLowerCase()] = a; } }
-  grp.userData = { human: { mixer, actions, w: { idle: 1, walk: 0, run: 0 }, head, neck, spine, rArm, lArm, rLeg, lLeg, rCalf, lCalf, seated: false }, attack: null };
+  grp.userData = { human: { mixer, actions, w: { idle: 1, walk: 0, run: 0 }, gait: rand(.82, 1.18), head, neck, spine, rArm, lArm, rLeg, lLeg, rCalf, lCalf, seated: false }, attack: null };
   return grp;
 }
 function animateHuman(g, moving, dt, speed) {
   const u = g.userData, h = u.human;
   // blend weights by state
-  const tgt = { idle: moving ? 0 : 1, walk: moving && speed < 5.5 ? 1 : 0, run: moving && speed >= 5.5 ? 1 : 0 };
+  const tgt = { idle: moving ? 0 : 1, walk: moving && speed < 4.6 ? 1 : 0, run: moving && speed >= 4.6 ? 1 : 0 };
   for (const k in h.w) { h.w[k] = lerp(h.w[k], tgt[k], Math.min(1, dt * 8)); if (h.actions[k]) h.actions[k].setEffectiveWeight(h.w[k]); }
-  if (h.actions.walk) h.actions.walk.setEffectiveTimeScale(clamp(speed / 3.5, .7, 1.4));
+  if (h.actions.walk) h.actions.walk.setEffectiveTimeScale(clamp(speed / 3.2, .55, 1.3) * h.gait);
+  if (h.actions.run) h.actions.run.setEffectiveTimeScale(clamp(speed / 6, .8, 1.2) * h.gait);
   h.mixer.update(dt);
   if (h.seated) { // driving pose: hips/knees bent, hands on the bar
     const set = (b, x) => { if (b) b.rotation.x = x; };
@@ -790,7 +794,7 @@ function spawnNPCs(n) {
     const o = { skin: pick(SKINS), turban: Math.random() < .4, turbanColor: pick(TURBANS),
       kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: Math.random() < .6 };
     const g = makeCharacter(o); g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
-    npcs.push({ g, dir: rand(0, TAU), speed: rand(1.2, 2.4), turn: 0, down: 0, t: rand(0, 10) });
+    npcs.push({ g, dir: rand(0, TAU), speed: rand(.7, 1.5), turn: 0, down: 0, t: rand(0, 10), pause: 0 });
   }
 }
 // cows
@@ -905,6 +909,7 @@ addEventListener('keydown', e => { const k = e.key.toLowerCase();
   if (k === 't') spit();
   if (k === 'h' && player.inVehicle) horn();
   if (k === 'r' && player.inVehicle) { const st = Radio.switch(); toast('\ud83d\udcfb ' + st.name, '#8ef58e'); }
+  if (k === 'm') toggleBigMap();
   if (k === 'e') { if (player.nego) acceptRide(); else tryVisit(); }
   if (k === 'n' && player.nego) haggle();
 });
@@ -1285,20 +1290,20 @@ function updateFoot(dt, f, s) {
   let dx = 0, dz = 0;
   if (mag > .12) { const ang = cam.yaw; dx = Math.sin(ang) * f - Math.cos(ang) * s; dz = Math.cos(ang) * f + Math.sin(ang) * s;
     const l = Math.hypot(dx, dz); dx /= l; dz /= l; }
-  const sprint = keys['shift'] ? 1.6 : 1, spd = 4.2 * sprint * mag;
+  const sprint = keys['shift'] ? 1.7 : 1, spd = 3.4 * sprint * mag;
   player.moving = mag > .12; player.speed = player.moving ? spd : 0;
   if (player.moving) { player.yaw = angLerp(player.yaw, Math.atan2(dx, dz), Math.min(1, dt * 9));
     const nx = player.pos.x + dx * spd * dt, nz = player.pos.z + dz * spd * dt;
     if (!blocked(nx, player.pos.z)) player.pos.x = nx; if (!blocked(player.pos.x, nz)) player.pos.z = nz; }
   player.g.position.copy(player.pos); player.g.rotation.y = player.yaw;
-  animateChar(player.g, player.moving, dt, 4.2 * sprint);
+  animateChar(player.g, player.moving, dt, 3.4 * sprint);
 }
 function updateDrive(dt, f, s) {
   const v = player.inVehicle;
   if (player.fuel <= 0) v.speed *= .96;
   else v.speed += f * dt * 14;
   v.speed *= .985; v.speed = clamp(v.speed, -8, 20);
-  if (Math.abs(v.speed) > .2) { const damp = clamp(1 - Math.abs(v.speed) / 34, .5, 1); v.yaw -= s * dt * 0.95 * damp * Math.sign(v.speed) * clamp(Math.abs(v.speed) / 5, .3, 1); }
+  if (Math.abs(v.speed) > .2) { const damp = clamp(1 - Math.abs(v.speed) / 34, .5, 1); v.yaw -= s * dt * 0.75 * damp * Math.sign(v.speed) * clamp(Math.abs(v.speed) / 5, .3, 1); }
   const nx = v.g.position.x + Math.sin(v.yaw) * v.speed * dt, nz = v.g.position.z + Math.cos(v.yaw) * v.speed * dt;
   if (!blocked(nx, v.g.position.z)) v.g.position.x = nx; else v.speed *= -.3;
   if (!blocked(v.g.position.x, nz)) v.g.position.z = nz; else v.speed *= -.3;
@@ -1317,7 +1322,9 @@ function wanderMesh(o, dt, speedScale) {
   else o.dir += 2;
 }
 function updateNPCs(dt) { for (const n of npcs) { if (n.down > 0) { n.down -= dt; if (n.down <= 0) { n.g.rotation.z = 0; n.g.position.y = 0; } continue; }
-  wanderMesh(n, dt); animateChar(n.g, true, dt, n.speed * 2); } }
+  if (n.pause > 0) { n.pause -= dt; animateChar(n.g, false, dt, 0); continue; }
+  if (Math.random() < .003) { n.pause = rand(1.5, 5); animateChar(n.g, false, dt, 0); continue; }
+  wanderMesh(n, dt); animateChar(n.g, true, dt, n.speed * 2.4); } }
 function updateCows(dt) { for (const c of cows) wanderMesh(c, dt); }
 function updateVehicles(dt) {
   for (const v of vehicles) { if (v.driver && v.g.position.distanceToSquared(player.pos) < 70 * 70) animateChar(v.driver.g, false, dt, 0); }
@@ -1415,8 +1422,10 @@ function startGame() {
   previewOn = false;
   $('creator').style.display = 'none'; $('hud').style.display = 'block';
   $('joystick').classList.add('on'); $('touch').classList.add('on'); $('minimap3d').classList.add('on');
+  $('minimap3d').style.pointerEvents = 'auto'; $('minimap3d').addEventListener('click', toggleBigMap);
+  $('bigmap').addEventListener('click', toggleBigMap);
   applyHand();
-  $('controls').innerHTML = '<b>Thumbstick</b> / WASD move · <b>drag</b> look<br><b>F</b> drive · <b>J</b> fight · <b>T</b> spit · <b>B</b> bribe · <b>R</b> radio';
+  $('controls').innerHTML = '<b>Thumbstick</b> / WASD move · <b>drag</b> look<br><b>F</b> drive · <b>J</b> fight · <b>T</b> spit · <b>B</b> bribe · <b>R</b> radio · <b>M</b> map';
   // build player from chosen opts
   player.pos.copy(findSpawn());
   player.g = makeCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
@@ -1465,6 +1474,25 @@ function drawMinimap3d() {
   g.fillStyle = '#fff'; g.font = '700 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(DISTRICTS[curDistrict >= 0 ? curDistrict : 4].name, W / 2, 15);
 }
+function drawBigMap() {
+  const cv = $('bigmapcv'); if (!cv || !mapCanvas) return;
+  const g = cv.getContext('2d'), S = cv.width;
+  g.clearRect(0, 0, S, S);
+  g.drawImage(mapCanvas, 0, 0, S, S);
+  g.font = '700 26px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
+    g.fillStyle = 'rgba(0,0,0,.55)'; g.fillText(DISTRICTS[i].name, (mx + .5) * S / 3 + 1, (mz + .5) * S / 3 + 29);
+    g.fillStyle = '#fff'; g.fillText(DISTRICTS[i].name, (mx + .5) * S / 3, (mz + .5) * S / 3 + 28);
+    g.fillStyle = '#ffd700'; g.beginPath(); g.arc((mx + .5) * S / 3, (mz + .5) * S / 3, 9, 0, TAU); g.fill();
+    g.strokeStyle = '#000'; g.lineWidth = 2; g.stroke(); }
+  // player
+  const pxp = (player.pos.x + HALF) / WORLD * S, pzp = (player.pos.z + HALF) / WORLD * S;
+  g.save(); g.translate(pxp, pzp); g.rotate(cam.yaw ? -0 : 0); g.rotate(player.yaw);
+  g.fillStyle = '#ff4d4d'; g.strokeStyle = '#fff'; g.lineWidth = 3;
+  g.beginPath(); g.moveTo(0, -16); g.lineTo(11, 12); g.lineTo(0, 6); g.lineTo(-11, 12); g.closePath(); g.fill(); g.stroke();
+  g.restore();
+}
+function toggleBigMap() { if (!started) return; const el = $('bigmap'); el.classList.toggle('on'); if (el.classList.contains('on')) drawBigMap(); }
 // ---------- Boot ----------
 function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
