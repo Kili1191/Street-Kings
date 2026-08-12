@@ -30,24 +30,51 @@ No build step, no dependencies — it's plain HTML + JavaScript + Canvas.
 
 *(On phones and tablets, on-screen thumb controls appear automatically.)*
 
-## 🌆 What's in the city
+## 🌆 One city, nine Indias
 
-- **A living city** — a procedurally built grid of blocks with roads, dashed lanes,
-  colourful buildings and real Indian shop signage (*Sharma Kirana*, *Apna Dhaba*,
-  *Chai Point*, *Gupta Sweets*…).
-- **Traffic** — hatchbacks, sedans, SUVs, lorries, scooters and **auto-rickshaws**
-  flowing along the roads and turning at junctions.
-- **Pedestrians & cows** — crowds wander (and jaywalk) the streets. Hit a
-  🐄 **holy cow** and the city really doesn't forgive you.
-- **Jack any vehicle** — walk up to a car on foot and press **F** to take it.
-- **Missions** — glowing job markers: auto fares, tiffin runs, chai deliveries,
-  couriers, sweet-box drops. Pick up, deliver, get paid in **₹**.
-- **Wanted system** — commit crimes and earn ★ stars; **police** SUVs with flashing
-  lights and a siren chase you. Break line of sight to lose them.
+You spawn in the middle and drive outward through **nine districts**, each its own
+world with its own colours, buildings, shop signs, landmark and an **arrival banner
+that teaches you a real cultural fact**:
+
+| District | Flavour | Landmark |
+| --- | --- | --- |
+| **Purani Dilli** | Mughal bazaars, kebabs, jalebi | Jama-Masjid-style mosque |
+| **Bambai** | Bollywood + dabbawalas + chawls | "Film City" hillside sign |
+| **Marwar** | Rajasthan's Pink & Blue cities, desert | Hilltop fort |
+| **Kashi** | Varanasi's ghats, sadhus, spirituality | Riverside ghats |
+| **Punjab** | Gurudwara, tractors, bhangra | Golden Temple + sarovar |
+| **Kerala** | Backwaters, churches & temples | White cathedral |
+| **Kolkata** | Yellow taxis, trams, Durga Puja | Howrah-style bridge |
+| **Chennai** | Tamil temples, filter kaapi, Marina | Tiered gopuram |
+| **Goa** | Beaches, feni, susegad | Church + beach |
+
+## 🛺 The streets (the "wtf, I'm really there" effect)
+
+- **Overloaded everything** — bikes carrying a family of five, gas cylinders, a
+  fridge, a mattress, a sofa, a ladder, chickens, sugarcane; cycle-rickshaws,
+  bullock carts and buses with people packed on the roof.
+- **Chaotic traffic** — autos, taxis, lorries, tempos, tractors and scooters that
+  turn wherever, plus potholes and roadside garbage.
+- **A whole zoo** — pedestrians, cows, street dogs, goats, monkeys and pigs.
+  Hit a 🐄 **holy cow** and the heat spikes hard.
+- **Street food on every corner** — dosa, vada pav, momos, pani puri, chai,
+  biryani, jalebi, chaat stalls, steam and all.
+
+## 🎯 Play it your way
+
+- **Total freedom** — jack any vehicle (**F**), drive however you like, cause chaos.
+- **Culture-soaked missions** — carry the **Ganpati idol** to visarjan, deliver
+  **langar** to the gurudwara, run the **dabbawala** tiffins, ferry a **pilgrim** to
+  the ghats, get the **baraat** dancing to the wedding, haul the **Durga idol** to the
+  pandal, serve **filter kaapi** still frothy… each pays in **₹** and teaches you
+  something real.
+- **Bribery, not just bullets** — there's **less police than GTA**, and this is
+  India: when the ★ stars come out, find a **corrupt cop (gold badge)** and press
+  **B** to buy your freedom. Try it on an **honest cop (white cap)** and it backfires.
 - **Driving feel** — per-vehicle acceleration & top speed, grip-based steering,
-  handbrake, reverse, crashes, and a **fuel** gauge.
-- **Minimap, HUD, health, cash, speedo** — and a WebAudio engine, horn, siren and
-  crash sounds with no external asset files.
+  handbrake, reverse, crashes, fuel.
+- **Minimap, HUD, health, cash, speedo** — plus a WebAudio engine, horn, siren and
+  crash sounds, all generated in-browser with **zero asset files**.
 
 ## 🛠 Tech
 

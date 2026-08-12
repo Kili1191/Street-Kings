@@ -69,6 +69,23 @@
   #minimap { position:absolute; top:14px; left:50%; transform:translateX(-50%);
     border-radius:12px; border:2px solid rgba(255,255,255,.15);
     box-shadow:0 6px 24px rgba(0,0,0,.5); }
+  #district { position:absolute; top:200px; left:50%; transform:translateX(-50%);
+    background:rgba(13,13,18,.6); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,.1);
+    padding:5px 14px; border-radius:20px; font-size:13px; font-weight:800; letter-spacing:.5px;
+    white-space:nowrap; }
+  #bribe { position:absolute; bottom:130px; left:50%; transform:translateX(-50%);
+    background:rgba(30,180,90,.92); color:#04210f; font-weight:800; font-size:14px;
+    padding:8px 18px; border-radius:30px; opacity:0; transition:opacity .15s; }
+  #banner { position:fixed; left:0; right:0; bottom:20%; z-index:14; text-align:center;
+    pointer-events:none; opacity:0; transition:opacity .5s, transform .5s; transform:translateY(16px); }
+  #banner.show { opacity:1; transform:translateY(0); }
+  #banner .bTitle { font-size:clamp(30px,6vw,58px); font-weight:900; letter-spacing:1px;
+    background:linear-gradient(90deg,var(--saffron),#fff 55%,var(--green));
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow:0 4px 30px rgba(0,0,0,.6); }
+  #banner .bFact { margin-top:8px; font-size:clamp(13px,2.2vw,17px); opacity:.9; font-weight:600;
+    max-width:640px; margin-left:auto; margin-right:auto; padding:0 20px; line-height:1.5;
+    text-shadow:0 2px 12px rgba(0,0,0,.8); }
   #touch { position:fixed; inset:0; z-index:11; pointer-events:none; display:none; }
   .thumb { position:absolute; pointer-events:auto; width:74px; height:74px; border-radius:50%;
     background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.25);
@@ -92,9 +109,13 @@
       <div class="unit">KM/H · <span id="gearv">ON FOOT</span></div></div>
     <div class="panel" id="mission"><div class="tag">Mission</div><div class="txt" id="mtxt">—</div></div>
     <div id="hint"></div>
+    <div id="district">📍 <span id="distName">—</span></div>
+    <div id="bribe"></div>
   </div>
 
   <div id="toast"><div class="big" id="toastBig"></div></div>
+
+  <div id="banner"><div class="bTitle" id="bTitle"></div><div class="bFact" id="bFact"></div></div>
 
   <div id="touch">
     <div class="thumb" id="tLeft"  style="left:22px;  bottom:150px;">◀</div>
@@ -107,13 +128,16 @@
   <div id="menu">
     <div class="flag"><i></i><i><span class="chakra"></span></i><i></i></div>
     <h1>DESI<br>STREETS</h1>
-    <div class="sub">Open World · Bharat</div>
-    <button id="playBtn">▶ Drive Into the City</button>
+    <div class="sub">Ek Sheher · Nau Duniya</div>
+    <button id="playBtn">▶ Enter the City</button>
     <div class="keys">
       <b>WASD / Arrows</b> drive &amp; walk &nbsp;·&nbsp; <b>F</b> enter / exit &amp; jack vehicles<br>
-      <b>Space</b> handbrake &nbsp;·&nbsp; <b>H</b> horn &nbsp;·&nbsp; <b>M</b> mute<br>
-      Grab the glowing job markers for cash. Hit cops, cars, cows or people and the
-      <b>police</b> come for you — lose them to clear your stars.
+      <b>Space</b> handbrake &nbsp;·&nbsp; <b>H</b> horn &nbsp;·&nbsp; <b>B</b> bribe a cop &nbsp;·&nbsp; <b>M</b> mute<br>
+      Cross <b>nine districts</b> — Dilli, Bambai, Marwar, Kashi, Punjab, Kerala, Kolkata,
+      Chennai, Goa — each its own world of food, faith and traffic. Run culture-soaked jobs
+      for ₹. Cause chaos and the <b>police</b> come — but this is India: find the
+      <b>corrupt cop</b> (gold badge) and <b>bribe</b> your stars away. The honest ones (white cap)
+      you cannot buy.
     </div>
   </div>
 
