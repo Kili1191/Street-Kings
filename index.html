@@ -64,6 +64,8 @@
     background:var(--panel); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,.1);
     padding:6px 16px; border-radius:20px; font-size:14px; font-weight:800; }
   #controls { bottom:14px; left:14px; font-size:12px; line-height:1.7; max-width:340px; }
+  body.righty #controls { left:214px; }
+  body.lefty #controls { left:auto; right:214px; }
   #controls b { color:var(--saffron); }
   #speedo { bottom:14px; right:14px; text-align:right; }
   #speedo .kmh { font-size:34px; font-weight:900; line-height:1; }
@@ -93,10 +95,23 @@
     background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.25);
     display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:900;
     user-select:none; -webkit-user-select:none; }
-  /* thumbstick */
-  #joystick { position:fixed; left:26px; bottom:36px; width:132px; height:132px; z-index:12;
+  /* thumbstick — side depends on handedness */
+  #joystick { position:fixed; bottom:36px; width:132px; height:132px; z-index:12;
     border-radius:50%; background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.18);
     display:none; touch-action:none; }
+  body.lefty #joystick { left:26px; }
+  body.righty #joystick { right:26px; }
+  body.righty #tAct   { left:20px;  right:auto; }
+  body.righty #tPunch { left:96px;  right:auto; }
+  body.righty #tSpit  { left:20px;  right:auto; }
+  body.righty #tRadio { left:96px;  right:auto; }
+  /* GTA-style minimap, opposite the stick */
+  #minimap3d { position:fixed; bottom:24px; width:190px; height:140px; z-index:11;
+    border-radius:14px; border:2px solid rgba(255,255,255,.22);
+    box-shadow:0 8px 24px rgba(0,0,0,.5); background:#101014; display:none; }
+  body.righty #minimap3d { left:14px; }
+  body.lefty #minimap3d { right:14px; }
+  #minimap3d.on { display:block; }
   #joystick.on { display:block; }
   #joyknob { position:absolute; left:50%; top:50%; width:58px; height:58px; margin:-29px 0 0 -29px;
     border-radius:50%; background:rgba(255,153,51,.9); border:2px solid rgba(255,255,255,.6);
@@ -126,10 +141,13 @@
 
   <div id="joystick"><div id="joyknob"></div></div>
 
+  <canvas id="minimap3d" width="380" height="280"></canvas>
+
   <div id="touch">
     <div class="thumb" id="tAct"   style="right:20px;bottom:150px;font-size:16px;">F</div>
     <div class="thumb" id="tPunch" style="right:96px;bottom:110px;font-size:16px;">👊</div>
     <div class="thumb" id="tSpit"  style="right:20px;bottom:60px;font-size:16px;">💦</div>
+    <div class="thumb" id="tRadio" style="right:96px;bottom:200px;font-size:16px;">📻</div>
   </div>
 
   <!-- ---------- Character creator ---------- -->
@@ -143,6 +161,7 @@
       <div id="opts">
         <div class="grp"><div class="lbl">Your Raja's Name</div>
           <input id="nameIn" maxlength="18" placeholder="Raja Bahadur" value="Raja Bahadur"></div>
+        <div class="grp"><div class="lbl">Controls Layout</div><div class="chips" id="chHand"></div></div>
         <div class="grp"><div class="lbl">Skin Tone</div><div class="swatches" id="swSkin"></div></div>
         <div class="rowsplit">
           <div class="grp"><div class="lbl">Turban (Raja style)</div>

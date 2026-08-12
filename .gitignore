@@ -16,3 +16,7 @@ faceshot.mjs
 facezoom.mjs
 joytest.mjs
 vendor-entry.mjs
+vehtest.mjs
+districtshot.mjs
+dshot-*.png
+veh-*.png

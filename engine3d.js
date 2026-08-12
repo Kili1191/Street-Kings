@@ -19,6 +19,10 @@ const TURBANS = ['#ff5722','#ffc107','#e91e63','#3f51b5','#00897b','#ffffff','#4
 const KURTAS  = ['#ffffff','#ff9933','#138808','#c0392b','#2980b9','#f1c40f','#8e44ad','#16a085','#e67e22','#ecf0f1'];
 const DHOTIS  = ['#ffffff','#efe6d0','#d9c9a3','#c9b892','#34495e','#7f8c8d'];
 const BEARDS  = ['none','stubble','full','long'];
+const settings = { hand: (typeof localStorage !== 'undefined' && localStorage.getItem('sk_hand')) || 'right' };
+function applyHand() { document.body.classList.toggle('righty', settings.hand === 'right');
+  document.body.classList.toggle('lefty', settings.hand === 'left');
+  try { localStorage.setItem('sk_hand', settings.hand); } catch (e) {} }
 const opts = { name:'Raja Bahadur', skin:'#c68642', turban:true, turbanColor:'#ff9933',
   kurta:'#ff9933', dhoti:'#ffffff', beard:'full', moustache:true };
 
@@ -280,10 +284,12 @@ function makeHuman(o) {
     else if (/Beard/i.test(mn)) n.visible = o.beard !== 'none';                      // the avatar's real beard
     else if (/visor/i.test(n.name) || /visor/i.test(mn)) n.visible = false; });
   grp.updateMatrixWorld(true);
-  let head = null, neck = null, spine = null, rArm = null, lArm = null, rLeg = null;
+  let head = null, neck = null, spine = null, rArm = null, lArm = null, rLeg = null, lLeg = null, rCalf = null, lCalf = null;
   model.traverse(n => { if (!n.isBone) return; const nm = n.name;
     if (/Head$/.test(nm)) head = n; else if (/Neck$/.test(nm)) neck = n; else if (/Spine2$/.test(nm)) spine = n;
-    else if (/RightArm$/.test(nm)) rArm = n; else if (/LeftArm$/.test(nm)) lArm = n; else if (/RightUpLeg$/.test(nm)) rLeg = n; });
+    else if (/RightArm$/.test(nm)) rArm = n; else if (/LeftArm$/.test(nm)) lArm = n;
+    else if (/RightUpLeg$/.test(nm)) rLeg = n; else if (/LeftUpLeg$/.test(nm)) lLeg = n;
+    else if (/RightLeg$/.test(nm)) rCalf = n; else if (/LeftLeg$/.test(nm)) lCalf = n; });
   const V = new T.Vector3();
   if (head) { const ws = head.getWorldScale(V).x || 1;
     // the avatar has a real beard mesh, so only the pagdi is attached here
@@ -297,7 +303,7 @@ function makeHuman(o) {
   const mixer = new T.AnimationMixer(model);
   const actions = {};
   for (const nm of ['Idle', 'Walk', 'Run']) { const c = HERO.clips[nm]; if (c) { const a = mixer.clipAction(c); a.enabled = true; a.setEffectiveWeight(nm === 'Idle' ? 1 : 0); a.play(); actions[nm.toLowerCase()] = a; } }
-  grp.userData = { human: { mixer, actions, w: { idle: 1, walk: 0, run: 0 }, head, neck, spine, rArm, lArm, rLeg }, attack: null };
+  grp.userData = { human: { mixer, actions, w: { idle: 1, walk: 0, run: 0 }, head, neck, spine, rArm, lArm, rLeg, lLeg, rCalf, lCalf, seated: false }, attack: null };
   return grp;
 }
 function animateHuman(g, moving, dt, speed) {
@@ -307,6 +313,13 @@ function animateHuman(g, moving, dt, speed) {
   for (const k in h.w) { h.w[k] = lerp(h.w[k], tgt[k], Math.min(1, dt * 8)); if (h.actions[k]) h.actions[k].setEffectiveWeight(h.w[k]); }
   if (h.actions.walk) h.actions.walk.setEffectiveTimeScale(clamp(speed / 3.5, .7, 1.4));
   h.mixer.update(dt);
+  if (h.seated) { // driving pose: hips/knees bent, hands on the bar
+    const set = (b, x) => { if (b) b.rotation.x = x; };
+    set(h.rLeg, -1.3); set(h.lLeg, -1.3); set(h.rCalf, 1.35); set(h.lCalf, 1.35);
+    if (h.rArm) { h.rArm.rotation.x = -.95; h.rArm.rotation.z = -.3; }
+    if (h.lArm) { h.lArm.rotation.x = -.95; h.lArm.rotation.z = .3; }
+    return;
+  }
   // combat overlay on bones (after mixer wrote the pose)
   if (u.attack && u.attack.t > 0) {
     const p = 1 - u.attack.t, ext = Math.sin(clamp(p * 1.25, 0, 1) * Math.PI), k = u.attack.kind;
@@ -648,6 +661,7 @@ function buildCity() {
   buildLandmarks();
   scatterProps();
   genDelhiWires();
+  prerenderMap();
 }
 function buildLandmarks() {
   for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
@@ -801,6 +815,7 @@ function buildAuto(color) {
   // wheels: 1 front, 2 rear
   const fw = wheel(.42, .22); fw.position.set(0, .42, 1.55); g.add(fw);
   for (const sx of [-.85, .85]) { const w = wheel(.42, .22); w.position.set(sx, .42, -1.05); g.add(w); }
+  g.userData.seat = { x: 0, y: .55, z: .3 };
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -828,6 +843,7 @@ function buildCar(kind, color) {
   if (kind === 'taxi') { const sign = new T.Mesh(new T.BoxGeometry(.5, .18, .3), mat('#e8b820', .6)); sign.position.set(0, 1.9, -L * .04); g.add(sign);
     const yroof = new T.Mesh(new T.SphereGeometry(.9, 18, 12), mat('#e8b820', .5)); yroof.scale.set(.87, .31, 1.21); yroof.position.set(0, 1.63, -L * .04); g.add(yroof); }
   if (kind === 'cop') { const bar = new T.Mesh(new T.BoxGeometry(1.1, .14, .34), mat('#ff3b3b')); bar.position.set(0, 1.86, -L * .04); g.add(bar); g.userData.bar = bar; }
+  g.userData.seat = { x: .38, y: .5, z: L * .06 }; // right-hand drive, like India
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -855,6 +871,7 @@ addEventListener('keydown', e => { const k = e.key.toLowerCase();
   if (k === 'j') punch();
   if (k === 't') spit();
   if (k === 'h' && player.inVehicle) horn();
+  if (k === 'r' && player.inVehicle) { const st = Radio.switch(); toast('\ud83d\udcfb ' + st.name, '#8ef58e'); }
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 // mouse drag to orbit
@@ -872,6 +889,7 @@ const tHeld = {};
     el.addEventListener('touchstart', e => { e.preventDefault(); fn(); });
     if (up) el.addEventListener('touchend', e => { e.preventDefault(); up(); }); };
   bind('tAct', tryEnterExit); bind('tPunch', punch); bind('tSpit', spit);
+  bind('tRadio', () => { if (player.inVehicle) { const st = Radio.switch(); toast('\ud83d\udcfb ' + st.name, '#8ef58e'); } });
 })();
 // analog thumbstick (touch + mouse)
 window.joy = { x: 0, z: 0, active: false };
@@ -892,15 +910,43 @@ window.joy = { x: 0, z: 0, active: false };
 })();
 
 // ---------- Actions ----------
+function doorWorld(v) { const seat = v.g.userData.seat || { x: 0 };
+  return new T.Vector3(seat.x >= 0 ? 1.6 : -1.6, 0, .3).applyQuaternion(v.g.quaternion).add(v.g.position); }
 function tryEnterExit() {
-  if (!started) return; ensureAudio();
-  if (player.inVehicle) { const v = player.inVehicle; v.ai = false; v.speed = 0;
-    player.inVehicle = null; player.g.visible = true;
-    player.pos.set(v.g.position.x + Math.cos(v.yaw) * 2.4, 0, v.g.position.z - Math.sin(v.yaw) * 2.4);
-    player.g.position.copy(player.pos); toast('OUT'); return; }
-  let best = null, bd = 5 * 5;
+  if (!started || player.transition) return; ensureAudio();
+  if (player.inVehicle) { // step out at the door
+    const v = player.inVehicle;
+    Radio.setOn(false);
+    const u = player.g.userData; if (u.human) u.human.seated = false;
+    scene.add(player.g);
+    const door = doorWorld(v);
+    player.pos.set(door.x, 0, door.z); player.g.position.copy(player.pos);
+    player.g.rotation.set(0, v.yaw + Math.PI / 2, 0); player.yaw = v.yaw + Math.PI / 2;
+    player.inVehicle = null; v.ai = false;
+    return;
+  }
+  let best = null, bd = 6 * 6;
   for (const v of vehicles) { const d = v.g.position.distanceToSquared(player.pos); if (d < bd) { bd = d; best = v; } }
-  if (best) { player.inVehicle = best; best.ai = false; player.g.visible = false; player.yaw = best.yaw; toast('DRIVE!'); ensureAudio(); }
+  if (best) { player.transition = { veh: best, t: 0 }; best.ai = false; best.speed = 0; }
+}
+function updateTransition(dt) {
+  const tr = player.transition, v = tr.veh; tr.t += dt;
+  const door = doorWorld(v);
+  const d = Math.hypot(door.x - player.pos.x, door.z - player.pos.z);
+  if (d > .3 && tr.t < 1.4) { // walk to the door
+    const ang = Math.atan2(door.x - player.pos.x, door.z - player.pos.z);
+    player.yaw = ang; const spd = 3.4;
+    player.pos.x += Math.sin(ang) * spd * dt; player.pos.z += Math.cos(ang) * spd * dt;
+    player.g.position.copy(player.pos); player.g.rotation.y = ang;
+    animateChar(player.g, true, dt, spd);
+  } else { // slide in and sit at the wheel
+    const seat = v.g.userData.seat || { x: 0, y: .55, z: .3 };
+    player.inVehicle = v; player.transition = null;
+    v.g.add(player.g); player.g.position.set(seat.x, seat.y, seat.z); player.g.rotation.set(0, 0, 0);
+    const u = player.g.userData; if (u.human) u.human.seated = true;
+    player.yaw = v.yaw;
+    Radio.setOn(true); toast('📻 ' + Radio.stations[Radio.idx].name, '#8ef58e');
+  }
 }
 function punch() {
   if (!started || player.inVehicle) return;
@@ -965,6 +1011,56 @@ function blip(f, d, ty, v) { if (!actx) return; const t = actx.currentTime, o = 
 function cashSnd() { blip(880, .08, 'sine', .3); setTimeout(() => blip(1320, .12, 'sine', .3), 70); }
 function siren(on) { if (!actx) return; if (on && !sirenNode) { const o = actx.createOscillator(), g = actx.createGain(), lfo = actx.createOscillator(), lg = actx.createGain(); o.type = 'sine'; o.frequency.value = 700; lfo.frequency.value = 2; lg.gain.value = 250; lfo.connect(lg); lg.connect(o.frequency); g.gain.value = .04; o.connect(g); g.connect(amaster); o.start(); lfo.start(); sirenNode = { o, lfo }; } else if (!on && sirenNode) { try { sirenNode.o.stop(); sirenNode.lfo.stop(); } catch (e) {} sirenNode = null; } }
 
+// ---------- Desi FM: generative radio (offline, three stations) ----------
+const Radio = {
+  idx: 0, on: false, nextT: 0, step: 0, bus: null,
+  stations: [
+    { name: 'Bhangra Beats 98.3', root: 196, scale: [0, 2, 4, 5, 7, 9, 10], bpm: 122, style: 0 },
+    { name: 'Filmi Gold 91.1', root: 220, scale: [0, 2, 3, 7, 8], bpm: 82, style: 1 },
+    { name: 'Chennai Express 104.8', root: 233.08, scale: [0, 2, 4, 7, 11], bpm: 104, style: 2 },
+  ],
+  ensure() { if (this.bus || !actx) return;
+    const g = actx.createGain(); g.gain.value = 0;
+    const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = .5;
+    g.connect(bp); bp.connect(amaster); this.bus = g; },
+  setOn(v) { ensureAudio(); this.ensure(); if (!this.bus) return; this.on = v;
+    this.bus.gain.setTargetAtTime(v ? .5 : 0, actx.currentTime, .25);
+    if (v) { this.nextT = actx.currentTime + .1; this.step = 0; } },
+  switch() { this.idx = (this.idx + 1) % this.stations.length; this.static_(); this.step = 0; return this.stations[this.idx]; },
+  static_() { if (!this.bus) return; const t = actx.currentTime, b = actx.createBufferSource(), buf = actx.createBuffer(1, 6600, 44100), d = buf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * .45 * (1 - i / d.length);
+    b.buffer = buf; b.connect(this.bus); b.start(t); },
+  osc(t, f, dur, type, vol, slideTo) { const o = actx.createOscillator(), g = actx.createGain();
+    o.type = type; o.frequency.setValueAtTime(f, t); if (slideTo) o.frequency.setTargetAtTime(slideTo, t + dur * .3, dur * .2);
+    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .015); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+    o.connect(g); g.connect(this.bus); o.start(t); o.stop(t + dur + .05); },
+  drum(t, f, vol, snare) { const o = actx.createOscillator(), g = actx.createGain();
+    o.type = 'sine'; o.frequency.setValueAtTime(f * 2.2, t); o.frequency.exponentialRampToValueAtTime(f, t + .07);
+    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + (snare ? .09 : .16));
+    o.connect(g); g.connect(this.bus); o.start(t); o.stop(t + .25);
+    if (snare) { const b = actx.createBufferSource(), buf = actx.createBuffer(1, 3000, 44100), d = buf.getChannelData(0);
+      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
+      const g2 = actx.createGain(); g2.gain.value = vol * .5; b.buffer = buf; b.connect(g2); g2.connect(this.bus); b.start(t); } },
+  tick() { if (!this.on || !actx || !this.bus) return;
+    const st = this.stations[this.idx], s16 = 60 / st.bpm / 4;
+    while (this.nextT < actx.currentTime + .3) {
+      const t = this.nextT, i = this.step;
+      if (st.style === 0) { // dhol-driven bhangra
+        if (i % 8 === 0) this.drum(t, 62, .5); if (i % 8 === 4) this.drum(t, 190, .3, true);
+        if (i % 4 === 2) this.drum(t, 62, .2); if (i % 2 === 0) this.osc(t, 2400, .03, 'square', .035); }
+      else if (st.style === 1) { // slow filmi ballad
+        if (i % 16 === 0) this.drum(t, 56, .38); if (i % 16 === 8) this.drum(t, 170, .2, true); if (i % 16 === 12) this.drum(t, 62, .18); }
+      else { // carnatic-flavoured groove
+        if ([0, 3, 6, 10, 12].includes(i % 16)) this.drum(t, 88, .28); if (i % 16 === 8) this.drum(t, 200, .2, true); }
+      if (i % 32 === 0) { this.osc(t, st.root / 2, s16 * 30, 'sawtooth', .045); this.osc(t, st.root * .75, s16 * 30, 'sawtooth', .025); } // tanpura drone
+      if ([0, 3, 6, 8, 11, 14].includes(i % 16) && Math.random() < .85) { // melody, filmi slides
+        const deg = pick(st.scale), oct = Math.random() < .3 ? 2 : 1;
+        const f = st.root * Math.pow(2, deg / 12) * oct;
+        const slide = st.style === 1 && Math.random() < .5 ? f * Math.pow(2, pick([-2, -1, 1, 2]) / 12) : 0;
+        this.osc(t, f, s16 * (st.style === 1 ? 3.4 : 1.8), st.style === 2 ? 'triangle' : 'sawtooth', .06, slide); }
+      this.nextT += s16; this.step = (this.step + 1) % 64;
+    } }
+};
 // ---------- UI helpers ----------
 function toast(text, color) { const b = $('toastBig'); b.textContent = text; b.style.color = color || '#fff'; b.style.opacity = 1; b.style.transform = 'translateY(-10px) scale(1.05)'; clearTimeout(toast._t); toast._t = setTimeout(() => { b.style.opacity = 0; b.style.transform = 'translateY(0) scale(1)'; }, 1100); }
 function showBanner(title, fact) { const el = $('banner'); $('bTitle').textContent = title; $('bFact').textContent = fact; el.classList.add('show'); clearTimeout(showBanner._t); showBanner._t = setTimeout(() => el.classList.remove('show'), 4200); }
@@ -984,10 +1080,12 @@ function update(dt) {
   const turnKey = (keys['arrowright'] ? 1 : 0) - (keys['arrowleft'] ? 1 : 0);
   if (turnKey) cam.yaw -= turnKey * dt * 1.8;
 
-  if (player.inVehicle) updateDrive(dt, f, s);
+  if (player.transition) updateTransition(dt);
+  else if (player.inVehicle) updateDrive(dt, f, s);
   else updateFoot(dt, f, s);
 
   updateNPCs(dt); updateCows(dt); updateVehicles(dt); updateCops(dt);
+  Radio.tick();
   updateParticles(dt);
 
   // district banner
@@ -999,10 +1097,16 @@ function update(dt) {
   // camera follow
   const target = player.inVehicle ? player.inVehicle.g.position : player.pos;
   const cd = player.inVehicle ? 10 : cam.dist;
-  const cx = target.x - Math.sin(cam.yaw) * Math.cos(cam.pitch) * cd;
-  const cz = target.z - Math.cos(cam.yaw) * Math.cos(cam.pitch) * cd;
-  const cy = target.y + Math.sin(cam.pitch) * cd + 1.0;
-  camera.position.lerp(new T.Vector3(cx, cy, cz), .18);
+  let cdArr = cd; const cdMin = player.inVehicle ? 5.2 : 2.6;
+  for (; cdArr > cdMin; cdArr -= .8) { // camera collision: step in until clear of buildings
+    const tx = target.x - Math.sin(cam.yaw) * Math.cos(cam.pitch) * cdArr;
+    const tz = target.z - Math.cos(cam.yaw) * Math.cos(cam.pitch) * cdArr;
+    if (!blocked(tx, tz)) break;
+  }
+  const cx = target.x - Math.sin(cam.yaw) * Math.cos(cam.pitch) * cdArr;
+  const cz = target.z - Math.cos(cam.yaw) * Math.cos(cam.pitch) * cdArr;
+  const cy = target.y + Math.sin(cam.pitch) * cdArr + 1.0;
+  camera.position.lerp(new T.Vector3(cx, cy, cz), .25);
   camera.lookAt(target.x, target.y + 1.7, target.z);
 
   // regen
@@ -1012,7 +1116,7 @@ function update(dt) {
   if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('hint').style.opacity = 0; }
   if (!player.inVehicle) { for (const v of vehicles) if (v.g.position.distanceToSquared(player.pos) < 25) { hint('Press F to drive · J punch · T paan-spit'); break; } }
 
-  updateHUD();
+  updateHUD(); drawMinimap3d();
 }
 function updateFoot(dt, f, s) {
   player.g.visible = true;
@@ -1040,6 +1144,7 @@ function updateDrive(dt, f, s) {
   v.g.rotation.y = v.yaw; player.pos.copy(v.g.position);
   if (Math.abs(v.speed) > .1) player.fuel = clamp(player.fuel - Math.abs(v.speed) * dt * .05, 0, 100);
   player.speed = v.speed; cam.yaw = lerp(cam.yaw, v.yaw, .04);
+  animateChar(player.g, false, dt, 0); // seated driving pose
   // run over npcs/cows
   for (const n of npcs) { if (n.down > 0) continue; if (n.g.position.distanceToSquared(v.g.position) < 2.2 && Math.abs(v.speed) > 3) { n.down = 5; n.g.rotation.z = Math.PI / 2; n.g.position.y = .3; crime(1); spark(n.g.position); toast('HIT & RUN', '#ff6b6b'); } }
   for (const c of cows) { if (c.g.position.distanceToSquared(v.g.position) < 4 && Math.abs(v.speed) > 3) { crime(2); toast('HOLY COW! 🐄', '#ff6b6b'); const rp = roadSpot(); if (rp) c.g.position.set(rp.x, 0, rp.z); } }
@@ -1137,6 +1242,7 @@ function wireCreator() {
   chipRow('chTurban', [{ t: 'Pagdi On', v: true }, { t: 'No Turban', v: false }], () => opts.turban, v => opts.turban = v);
   chipRow('chBeard', [{ t: 'Clean', v: 'none' }, { t: 'Stubble', v: 'stubble' }, { t: 'Full', v: 'full' }, { t: 'Long', v: 'long' }], () => opts.beard, v => opts.beard = v);
   chipRow('chMoustache', [{ t: 'Yes', v: true }, { t: 'No', v: false }], () => opts.moustache, v => opts.moustache = v);
+  chipRow('chHand', [{ t: '\ud83d\udd90 Right-handed \u2014 stick right', v: 'right' }, { t: 'Left-handed \u2014 stick left', v: 'left' }], () => settings.hand, v => { settings.hand = v; applyHand(); });
   $('nameIn').addEventListener('input', e => opts.name = e.target.value || 'Raja');
   $('enterBtn').addEventListener('click', startGame);
 }
@@ -1146,8 +1252,9 @@ function startGame() {
   ensureAudio();
   previewOn = false;
   $('creator').style.display = 'none'; $('hud').style.display = 'block';
-  $('joystick').classList.add('on'); $('touch').classList.add('on');
-  $('controls').innerHTML = '<b>Thumbstick</b> / WASD move · <b>drag</b> look<br><b>F</b> drive · <b>J</b> fight combo · <b>T</b> paan-spit · <b>B</b> bribe';
+  $('joystick').classList.add('on'); $('touch').classList.add('on'); $('minimap3d').classList.add('on');
+  applyHand();
+  $('controls').innerHTML = '<b>Thumbstick</b> / WASD move · <b>drag</b> look<br><b>F</b> drive · <b>J</b> fight · <b>T</b> spit · <b>B</b> bribe · <b>R</b> radio';
   // build player from chosen opts
   player.pos.copy(findSpawn());
   player.g = makeCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
@@ -1156,10 +1263,50 @@ function startGame() {
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
 }
 
+// ---------- GTA-style minimap ----------
+let mapCanvas = null;
+function prerenderMap() {
+  const S = 1024; mapCanvas = document.createElement('canvas'); mapCanvas.width = mapCanvas.height = S;
+  const g = mapCanvas.getContext('2d');
+  for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
+    g.fillStyle = mute(DISTRICTS[i].ground, .15); g.fillRect(mx * S / 3, mz * S / 3, S / 3 + 1, S / 3 + 1); }
+  const u = w => w / WORLD * S, px = v => (v + HALF) / WORLD * S;
+  g.fillStyle = '#3f4046';
+  for (let v = -HALF; v <= HALF; v += STEP) { g.fillRect(px(v), 0, u(ROADW), S); g.fillRect(0, px(v), S, u(ROADW)); }
+  g.fillStyle = '#f2ede2';
+  for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
+    g.beginPath(); g.arc((mx + .5) * S / 3, (mz + .5) * S / 3, 7, 0, TAU); g.fill(); }
+}
+function drawMinimap3d() {
+  const cv = $('minimap3d'); if (!cv || !mapCanvas) return;
+  const g = cv.getContext('2d'), W = cv.width, H = cv.height;
+  g.clearRect(0, 0, W, H);
+  g.save();
+  g.beginPath(); if (g.roundRect) g.roundRect(0, 0, W, H, 22); else g.rect(0, 0, W, H); g.clip();
+  g.fillStyle = '#101014'; g.fillRect(0, 0, W, H);
+  const scale = 3.4, mx = (player.pos.x + HALF) / WORLD * 1024, mz = (player.pos.z + HALF) / WORLD * 1024;
+  g.translate(W / 2, H / 2 + 20); g.rotate(cam.yaw); g.scale(scale, scale); g.translate(-mx, -mz);
+  g.drawImage(mapCanvas, 0, 0);
+  g.fillStyle = '#4a86ff';
+  for (const c of cops) { const cx2 = (c.g.position.x + HALF) / WORLD * 1024, cz2 = (c.g.position.z + HALF) / WORLD * 1024;
+    g.beginPath(); g.arc(cx2, cz2, 2.4, 0, TAU); g.fill(); }
+  g.fillStyle = 'rgba(240,240,240,.75)';
+  for (const v of vehicles) { if (v.g.position.distanceToSquared(player.pos) > 90 * 90) continue;
+    const vx2 = (v.g.position.x + HALF) / WORLD * 1024, vz2 = (v.g.position.z + HALF) / WORLD * 1024;
+    g.beginPath(); g.arc(vx2, vz2, 1.6, 0, TAU); g.fill(); }
+  g.restore();
+  g.save(); g.translate(W / 2, H / 2 + 20);
+  g.fillStyle = '#ffffff'; g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2;
+  g.beginPath(); g.moveTo(0, -9); g.lineTo(6.5, 7); g.lineTo(0, 3.5); g.lineTo(-6.5, 7); g.closePath(); g.fill(); g.stroke();
+  g.restore();
+  g.fillStyle = 'rgba(16,16,20,.72)'; g.fillRect(0, 0, W, 30);
+  g.fillStyle = '#fff'; g.font = '700 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(DISTRICTS[curDistrict >= 0 ? curDistrict : 4].name, W / 2, 15);
+}
 // ---------- Boot ----------
 function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
-  initThree(); buildCity(); initPreview(); wireCreator();
+  initThree(); buildCity(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -1167,11 +1314,16 @@ function boot() {
   const failsafe = setTimeout(enable, 7000);
   loadHero(h => { clearTimeout(failsafe); if (h) HERO = h; enable(); rebuildPreview(); });
   window.__tp = (x, z) => { player.pos.set(x, 0, z); if (player.inVehicle) { player.inVehicle.g.position.set(x, 0, z); } };
+  window.__tpveh = () => { if (!vehicles.length) return false; const v = vehicles[0];
+    player.pos.set(v.g.position.x + 2.2, 0, v.g.position.z); if (player.g) player.g.position.copy(player.pos); return true; };
   window.__facefront = () => { previewSpin = false; if (pChar) pChar.rotation.y = 0; };
   window.__facezoom = (y) => { previewSpin = false; if (pChar) pChar.rotation.y = 0; pCam.position.set(0, y, 1.25); pCam.lookAt(0, y, 0); };
   window.__dbg = () => ({ cam: camera.position.toArray().map(v => +v.toFixed(2)),
     rotX: +camera.rotation.x.toFixed(3), player: player.pos.toArray().map(v => +v.toFixed(2)),
-    pitch: cam.pitch, yaw: cam.yaw, inV: !!player.inVehicle });
+    pitch: cam.pitch, yaw: cam.yaw, inV: !!player.inVehicle,
+    trans: !!player.transition, trT: player.transition ? +player.transition.t.toFixed(2) : -1,
+    trD: player.transition ? +Math.hypot(doorWorld(player.transition.veh).x - player.pos.x, doorWorld(player.transition.veh).z - player.pos.z).toFixed(2) : -1,
+    nvd: vehicles.length ? Math.sqrt(vehicles[0].g.position.distanceToSquared(player.pos)).toFixed(1) : -1 });
   frame();
 }
 if (window.THREE) boot(); else { $('loading').textContent = 'Failed to load 3D engine.'; }
