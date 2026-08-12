@@ -341,21 +341,21 @@ function animateChar(g, moving, dt, speed) {
 
 // ---------- Districts ----------
 const DISTRICTS = [
-  { name:'Purani Dilli', greet:'Welcome to Purani Dilli', ground:'#b8956a', pal:['#a9553f','#c47a4a','#9c6b3f','#b5493f'],
+  { name:'Purani Dilli', greet:'Welcome to Purani Dilli', ground:'#b8956a', pal:['#e8d9b8','#b8c9a8','#a9bfc9','#c9a15a','#b0523a'],
     fact:'Purani Dilli — 400-year-old lanes of Chandni Chowk, the call to prayer over India’s busiest bazaar.' },
-  { name:'Bambai', greet:'Welcome to Bambai', ground:'#8f9aa3', pal:['#d9d2c7','#8c99a6','#5f6b78','#37516b'],
+  { name:'Bambai', greet:'Welcome to Bambai', ground:'#8f9aa3', pal:['#e8e0c8','#dcd2b4','#bcd8cc','#e8c8b8'],
     fact:'Bambai — Bollywood dreams above, dabbawalas below: 200,000 tiffins delivered daily by hand.' },
   { name:'Marwar', greet:'Padharo — Marwar', ground:'#caa25e', pal:['#d15b7a','#c76a8f','#3f6fb0','#e08a3c'],
     fact:'Marwar — Jaipur the Pink City, Jodhpur the Blue City, a fort on every hill.' },
-  { name:'Kashi', greet:'Har Har Mahadev — Kashi', ground:'#c2a06a', pal:['#d98a2b','#c0563a','#b8813f','#9c6b8a'],
+  { name:'Kashi', greet:'Har Har Mahadev — Kashi', ground:'#c2a06a', pal:['#e07b2e','#9c3b2a','#ede3c8','#c4a876'],
     fact:'Kashi (Varanasi) — one of the oldest living cities on Earth; the Ganga Aarti lights the ghats each dusk.' },
-  { name:'Punjab', greet:'Sat Sri Akal — Punjab', ground:'#b7a94e', pal:['#e0b93c','#7fa25a','#3f7d5c','#d98a3c'],
+  { name:'Punjab', greet:'Sat Sri Akal — Punjab', ground:'#b7a94e', pal:['#a8503a','#b85c40','#e8dcc4','#c8b89a'],
     fact:'Punjab — the Golden Temple langar feeds 100,000 people free every day, all seated as equals.' },
-  { name:'Kerala', greet:'Namaskaram — Kerala', ground:'#5f8f5c', pal:['#2e8b73','#4f9e6b','#c0563a','#e0c04a'],
+  { name:'Kerala', greet:'Namaskaram — Kerala', ground:'#5f8f5c', pal:['#f2ead6','#e8dcc0','#b85838','#d8ccb0'],
     fact:'Kerala — “God’s Own Country”: backwaters, 90%+ literacy, and Onam’s flower carpets and feasts.' },
-  { name:'Kolkata', greet:'Eso — Kolkata', ground:'#a6996e', pal:['#e0b93c','#c9bfa8','#b56f4a','#8a9c6b'],
+  { name:'Kolkata', greet:'Eso — Kolkata', ground:'#a6996e', pal:['#8a3a30','#a04438','#c8a44a','#b89858'],
     fact:'Kolkata — yellow Ambassador taxis, hand-pulled rickshaws, and Durga Puja’s open-air art.' },
-  { name:'Chennai', greet:'Vanakkam — Chennai', ground:'#c2a15e', pal:['#c0392b','#e0b93c','#3f7d8a','#c76a8f'],
+  { name:'Chennai', greet:'Vanakkam — Chennai', ground:'#c2a15e', pal:['#d8b868','#e8dcc0','#a8c8a8','#b85838'],
     fact:'Chennai — towering temple gopurams, filter “kaapi” in steel tumblers, and the long Marina beach.' },
   { name:'Goa', greet:'Welcome to Goa', ground:'#d8c48f', pal:['#e8dcc0','#3fa0a0','#c0563a','#e0b93c'],
     fact:'Goa — Portuguese-white churches, palm beaches and “susegad”: the art of doing nothing, slowly.' },
@@ -457,6 +457,19 @@ function makeGroundTexture() {
   for (let v = -HALF; v <= HALF; v += STEP) { const p = px(v) + u(ROADW) / 2;
     g.beginPath(); g.moveTo(p, 0); g.lineTo(p, S); g.stroke(); g.beginPath(); g.moveTo(0, p); g.lineTo(S, p); g.stroke(); }
   g.setLineDash([]);
+  // kolam dot-motifs on Chennai sidewalks (district 7: cell mx=1, mz=2)
+  (function kolams() {
+    const x0 = S / 3, x1 = 2 * S / 3, z0 = 2 * S / 3, z1 = S;
+    g.fillStyle = 'rgba(245,242,232,.85)';
+    for (let k = 0; k < 60; k++) {
+      const kx = rand(x0, x1), kz = rand(z0, z1);
+      const wx = kx / S * WORLD - HALF, wz = kz / S * WORLD - HALF;
+      if (!onSidewalk(wx, wz)) continue;
+      for (let ring = 0; ring < 3; ring++) { const n = 4 + ring * 4, rr = 2.5 + ring * 3;
+        for (let p2 = 0; p2 < n; p2++) { const a = p2 / n * TAU;
+          g.beginPath(); g.arc(kx + Math.cos(a) * rr, kz + Math.sin(a) * rr, 1.1, 0, TAU); g.fill(); } }
+    }
+  })();
   // zebra crossings at every intersection
   g.fillStyle = 'rgba(230,228,220,.75)';
   for (let vx = -HALF; vx <= HALF; vx += STEP) for (let vz = -HALF; vz <= HALF; vz += STEP) {
@@ -529,6 +542,66 @@ function makeWindowTexture() {
   g.globalAlpha = .05; for (let i = 0; i < 2400; i++) { g.fillStyle = Math.random() < .5 ? '#000' : '#fff'; g.fillRect(Math.random() * S, Math.random() * S, 2, 2); } g.globalAlpha = 1;
   const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; tex.anisotropy = 4; return tex;
 }
+// district-specific architecture, from studying each city's real streetscape
+function addDistrictArchitecture(di, x, z, w, h, d, boxGeo) {
+  const front = z + d / 2;
+  switch (di) {
+    case 0: { // Old Delhi: projecting wooden jharokha bays on the upper floors
+      if (Math.random() < .6) { const bayM = mat('#6b4a2e', .85);
+        for (let k = 0; k < 2; k++) { const bay = new T.Mesh(boxGeo, bayM);
+          bay.scale.set(1.4, 1.1, .5); bay.position.set(x + rand(-w * .28, w * .28), rand(h * .45, h * .8), front + .2); bay.castShadow = true; scene.add(bay);
+          const shade = new T.Mesh(boxGeo, mat('#3f7d5c', .9)); shade.scale.set(1.5, .08, .7); shade.position.set(bay.position.x, bay.position.y + .62, front + .3); scene.add(shade); } }
+      break; }
+    case 1: { // Mumbai: monsoon-blue tarpaulin patches on roofs (iconic from above)
+      if (Math.random() < .45) { const tarp = new T.Mesh(boxGeo, mat('#2d6cdf', .95));
+        tarp.scale.set(w * rand(.3, .55), .1, d * rand(.3, .55)); tarp.position.set(x + rand(-w * .2, w * .2), h + .4, z + rand(-d * .2, d * .2)); scene.add(tarp); }
+      break; }
+    case 2: { // Jaipur: white trim + rooftop chhatri (domed pavilion)
+      const trim = new T.Mesh(boxGeo, mat('#f2ece0', .8)); trim.scale.set(w + .12, .35, d + .12); trim.position.set(x, h - .5, z); scene.add(trim);
+      if (Math.random() < .5) { const g = new T.Group(); const cM = mat('#f2ece0', .75);
+        for (const [sx, sz] of [[-.55, -.55], [.55, -.55], [-.55, .55], [.55, .55]]) { const p = new T.Mesh(new T.CylinderGeometry(.08, .08, 1.1, 8), cM); p.position.set(sx, .55, sz); g.add(p); }
+        const dome = new T.Mesh(new T.SphereGeometry(.85, 12, 8, 0, TAU, 0, Math.PI / 2), cM); dome.position.y = 1.1; dome.scale.y = .75; g.add(dome);
+        g.position.set(x + w * .25, h + .35, z + d * .25); g.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(g); }
+      break; }
+    case 3: { // Varanasi: temple shikhara spires + saffron pennant flags
+      if (Math.random() < .3) { const sM = mat(pick(['#d98a2b', '#c9b8a0']), .85); const g = new T.Group();
+        for (let k = 0; k < 4; k++) { const s = new T.Mesh(new T.CylinderGeometry(1 - k * .22, 1.15 - k * .22, 1.1, 8), sM); s.position.y = k * 1.05; g.add(s); }
+        const tip = new T.Mesh(new T.SphereGeometry(.3, 8, 8), mat('#ffd700', .3)); tip.position.y = 4.4; g.add(tip);
+        g.scale.setScalar(rand(.8, 1.2)); g.position.set(x + rand(-w * .2, w * .2), h, z + rand(-d * .2, d * .2));
+        g.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(g); }
+      if (Math.random() < .5) { const pole = new T.Mesh(new T.CylinderGeometry(.04, .04, 2.4, 6), mat('#8a6b3a')); pole.position.set(x + w * .3, h + 1.2, z - d * .3); scene.add(pole);
+        const flag = new T.Mesh(new T.ConeGeometry(.35, 1.0, 3), new T.MeshStandardMaterial({ color: '#ff7722', emissive: '#c84400', emissiveIntensity: .25, side: T.DoubleSide }));
+        flag.rotation.z = Math.PI / 2; flag.position.set(x + w * .3 + .5, h + 2.1, z - d * .3); scene.add(flag); }
+      break; }
+    case 4: { // Punjab: white Sikh dome + Nishan Sahib (saffron flag on wrapped pole)
+      if (Math.random() < .3) { const pole = new T.Mesh(new T.CylinderGeometry(.06, .06, 5.5, 8), mat('#ff9933', .8)); pole.position.set(x + w * .3, h + 2.75, z + d * .3); scene.add(pole);
+        const nishan = new T.Mesh(new T.ConeGeometry(.5, 1.5, 3), new T.MeshStandardMaterial({ color: '#ff8811', emissive: '#c85500', emissiveIntensity: .3, side: T.DoubleSide }));
+        nishan.rotation.z = Math.PI / 2; nishan.position.set(x + w * .3 + .7, h + 4.9, z + d * .3); scene.add(nishan); }
+      if (Math.random() < .35) { const dm = new T.Mesh(new T.SphereGeometry(.9, 14, 10, 0, TAU, 0, Math.PI / 2), mat('#f4f0e6', .6));
+        dm.scale.y = 1.15; dm.position.set(x - w * .25, h + .3, z - d * .25); dm.castShadow = true; scene.add(dm);
+        const fin = new T.Mesh(new T.ConeGeometry(.1, .5, 8), mat('#ffd700', .3)); fin.position.set(x - w * .25, h + 1.5, z - d * .25); scene.add(fin); }
+      break; }
+    case 6: { // Kolkata: colonial colonnade portico at street level
+      if (Math.random() < .55) { const cM = mat('#e8e2d2', .8);
+        const ent = new T.Mesh(boxGeo, cM); ent.scale.set(w * .95, .45, .9); ent.position.set(x, 3.1, front + .35); ent.castShadow = true; scene.add(ent);
+        const n = Math.max(3, Math.round(w / 2.4));
+        for (let k = 0; k < n; k++) { const col = new T.Mesh(new T.CylinderGeometry(.16, .18, 2.9, 10), cM);
+          col.position.set(x - w * .45 + k * (w * .9 / (n - 1)), 1.45, front + .6); col.castShadow = true; scene.add(col); } }
+      break; }
+    case 7: { // Chennai: red-and-white striped temple compound wall
+      if (Math.random() < .4) { const wallC = document.createElement('canvas'); wallC.width = 64; wallC.height = 32; const wg = wallC.getContext('2d');
+        for (let k = 0; k < 8; k++) { wg.fillStyle = k % 2 ? '#f2ece0' : '#c0392b'; wg.fillRect(k * 8, 0, 8, 32); }
+        const wt = new T.CanvasTexture(wallC); wt.wrapS = T.RepeatWrapping; wt.repeat.set(Math.round(w / 2), 1);
+        const wall = new T.Mesh(boxGeo, new T.MeshStandardMaterial({ map: wt, roughness: .9 }));
+        wall.scale.set(w + 1.2, 1.2, .25); wall.position.set(x, .6, front + .8); wall.castShadow = true; scene.add(wall); }
+      break; }
+    case 8: { // Goa: white-trimmed Portuguese balcão porch posts
+      if (Math.random() < .5) { const pM = mat('#f6f2e8', .8);
+        const porch = new T.Mesh(boxGeo, mat('#a24a30', .9)); porch.scale.set(w * .5, .12, 1.2); porch.position.set(x, 2.3, front + .5); porch.castShadow = true; scene.add(porch);
+        for (const sx of [-w * .2, w * .2]) { const post = new T.Mesh(new T.CylinderGeometry(.09, .09, 2.2, 8), pM); post.position.set(x + sx, 1.15, front + .95); post.castShadow = true; scene.add(post); } }
+      break; }
+  }
+}
 function buildCity() {
   const gt = makeGroundTexture(); if ('sRGBEncoding' in T) gt.encoding = T.sRGBEncoding;
   ground = new T.Mesh(new T.PlaneGeometry(WORLD, WORLD), new T.MeshStandardMaterial({ map: gt, roughness: 1 }));
@@ -546,12 +619,24 @@ function buildCity() {
     for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
       const px2 = x0 + i * cw + cw / 2, pz2 = z0 + j * cd + cd / 2;
       if (Math.abs(px2) > HALF - 2 || Math.abs(pz2) > HALF - 2) continue;
-      const D = DISTRICTS[districtAt(px2, pz2)];
-      const h = rand(5, 17), w = cw * rand(.72, .92), d = cd * rand(.72, .92);
-      const bm = new T.MeshStandardMaterial({ color: new T.Color(mute(pick(D.pal))), map: winTex, roughness: .92, metalness: .02 });
+      const di2 = districtAt(px2, pz2), D = DISTRICTS[di2];
+      // studied city profiles: Kerala/Goa are LOW with pitched roofs, Mumbai towers high,
+      // Jaipur is the Pink City, Varanasi/Delhi stay dense mid-rise
+      const lowRise = di2 === 5 || di2 === 8, isMumbai = di2 === 1;
+      const h = lowRise ? rand(3.5, 7) : isMumbai ? rand(7, 24) : rand(5, 15);
+      const w = cw * rand(.72, .92), d = cd * rand(.72, .92);
+      const baseCol = di2 === 2 ? pick(['#c67b62', '#d98e75', '#cc8069']) : mute(pick(D.pal)); // Jaipur's mandated pink
+      const bm = new T.MeshStandardMaterial({ color: new T.Color(baseCol), map: winTex, roughness: .92, metalness: .02 });
       const m = new T.Mesh(boxGeo, bm); m.scale.set(w, h, d); m.position.set(px2, h / 2, pz2); m.castShadow = true; m.receiveShadow = true; scene.add(m);
-      // parapet roof slab
-      const roof = new T.Mesh(boxGeo, mat('#2b2b32')); roof.scale.set(w + .25, .5, d + .25); roof.position.set(px2, h + .1, pz2); roof.castShadow = true; scene.add(roof);
+      if (lowRise) { // Kerala / Goa: steep clay-tile hipped roof
+        const roofM = mat(pick(['#a24a30', '#94402a', '#b0563a']), .9);
+        const pyr = new T.Mesh(new T.ConeGeometry(1, 1, 4), roofM);
+        pyr.rotation.y = Math.PI / 4; pyr.scale.set(w * .78, Math.max(1.6, h * .34), d * .78);
+        pyr.position.set(px2, h + Math.max(1.6, h * .34) / 2 - .1, pz2); pyr.castShadow = true; scene.add(pyr);
+      } else {
+        const roof = new T.Mesh(boxGeo, mat('#2b2b32')); roof.scale.set(w + .25, .5, d + .25); roof.position.set(px2, h + .1, pz2); roof.castShadow = true; scene.add(roof);
+      }
+      addDistrictArchitecture(di2, px2, pz2, w, h, d, boxGeo);
       // water tank + rooftop clutter
       if (Math.random() < .55) { const tk = new T.Mesh(new T.CylinderGeometry(.35, .35, .7, 10), mat('#3a3a3a')); tk.position.set(px2 + w * .2, h + .55, pz2 + d * .2); tk.castShadow = true; scene.add(tk); }
       if (Math.random() < .4) { const ac = new T.Mesh(boxGeo, mat('#c9c4b8')); ac.scale.set(.5, .35, .5); ac.position.set(px2 - w * .25, h + .35, pz2 - d * .2); ac.castShadow = true; scene.add(ac); }
@@ -562,6 +647,7 @@ function buildCity() {
   }
   buildLandmarks();
   scatterProps();
+  genDelhiWires();
 }
 function buildLandmarks() {
   for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
@@ -574,11 +660,17 @@ function buildLandmarks() {
       const finial = new T.Mesh(new T.ConeGeometry(.5, 2, 10), mat('#f6e27a')); finial.position.y = 9; g.add(finial);
     } else if (i === 7) { // Chennai gopuram: stacked tiers
       for (let k = 0; k < 6; k++) { const s = 7 - k, m = new T.Mesh(new T.BoxGeometry(s, 2, s), mat(pick(D.pal))); m.position.y = 1 + k * 2; g.add(m); }
-    } else if (i === 0) { // Delhi mosque dome + minarets
-      const b = new T.Mesh(new T.BoxGeometry(7, 4, 5), mat('#e6d5b8')); b.position.y = 2; g.add(b);
-      const dome = new T.Mesh(new T.SphereGeometry(2.4, 18, 12, 0, TAU, 0, Math.PI / 2), mat('#2e8b73')); dome.position.y = 4; g.add(dome);
-      for (const sx of [-3.5, 3.5]) { const min = new T.Mesh(new T.CylinderGeometry(.5, .5, 9, 10), mat('#e6d5b8')); min.position.set(sx, 4.5, 0); g.add(min);
-        const cap = new T.Mesh(new T.SphereGeometry(.6, 10, 8), mat('#2e8b73')); cap.position.set(sx, 9, 0); g.add(cap); }
+    } else if (i === 0) { // Jama Masjid: red sandstone base, striped white marble domes, tall minarets
+      const b = new T.Mesh(new T.BoxGeometry(8, 4.5, 5), mat('#a6402d', .9)); b.position.y = 2.25; g.add(b);
+      const plinth = new T.Mesh(new T.BoxGeometry(10, 1, 7), mat('#b0523a', .9)); plinth.position.y = .5; g.add(plinth);
+      for (const [sx, sc] of [[-2.6, .8], [0, 1.15], [2.6, .8]]) {
+        const dome = new T.Mesh(new T.SphereGeometry(1.6 * sc, 18, 14), mat('#f4f0e8', .5)); dome.scale.y = 1.2; dome.position.set(sx, 4.6 + sc, 0); g.add(dome);
+        for (let st = 0; st < 4; st++) { const stripe = new T.Mesh(new T.TorusGeometry(1.6 * sc * Math.sin((st + 1) / 5 * Math.PI / 2), .035, 6, 20), mat('#2a2a2e', .8));
+          stripe.rotation.x = Math.PI / 2; stripe.position.set(sx, 4.6 + sc + 1.6 * sc * 1.2 * Math.cos((st + 1) / 5 * Math.PI / 2) * .6, 0); g.add(stripe); }
+        const fin = new T.Mesh(new T.ConeGeometry(.12, .7, 8), mat('#ffd700', .3)); fin.position.set(sx, 4.6 + sc + 1.6 * sc * 1.35, 0); g.add(fin); }
+      for (const sx of [-4.6, 4.6]) { // striped minarets
+        for (let seg = 0; seg < 5; seg++) { const ring = new T.Mesh(new T.CylinderGeometry(.5, .52, 2, 10), mat(seg % 2 ? '#f4f0e8' : '#a6402d', .8)); ring.position.set(sx, 1 + seg * 2, 0); g.add(ring); }
+        const cap = new T.Mesh(new T.SphereGeometry(.65, 10, 8), mat('#f4f0e8', .5)); cap.position.set(sx, 10.6, 0); g.add(cap); }
     } else { // generic tall monument tower per district
       const tower = new T.Mesh(new T.BoxGeometry(5, 14, 5), mat(col)); tower.position.y = 7; g.add(tower);
       const top = new T.Mesh(new T.ConeGeometry(3.4, 4, 4), mat('#f4c20d')); top.position.y = 16; top.rotation.y = Math.PI / 4; g.add(top);
@@ -622,6 +714,26 @@ function scatterProps() {
     const arm = new T.Mesh(boxGeo, mat('#444')); arm.scale.set(.9, .1, .1); arm.position.set(p.x + .4, 4.8, p.z); scene.add(arm);
     const lamp = new T.Mesh(new T.SphereGeometry(.2, 10, 8), new T.MeshStandardMaterial({ color: '#ffe9a8', emissive: '#ffca6a', emissiveIntensity: 1.6, roughness: .4 })); lamp.position.set(p.x + .8, 4.7, p.z); scene.add(lamp);
     buildings.push({ x: p.x, z: p.z, hw: .35, hd: .35 }); }
+}
+function genDelhiWires() { // Chandni Chowk's black wire spaghetti (district 0 cell)
+  const wireM = new T.MeshBasicMaterial({ color: '#141414' });
+  let count = 0;
+  for (let i = 0; i < 240 && count < 55; i++) {
+    const x = rand(-HALF + 6, -HALF + CELL - 6), z = rand(-HALF + 6, -HALF + CELL - 6);
+    if (!onRoad(x, z)) continue;
+    const alongX = inX(x); // which axis the road runs on
+    function inX(v) { const fv = ((v % STEP) + STEP) % STEP; return fv < ROADW; }
+    const h1 = rand(5.5, 8), h2 = h1 + rand(-1, 1), sag = rand(.8, 1.6);
+    for (let wv = 0; wv < 2 + (Math.random() < .5 ? 1 : 0); wv++) {
+      const off = wv * .35, half = ROADW / 2 + SIDEW + .5;
+      const a = alongX ? new T.Vector3(x - half, h1 + off * .4, z + off) : new T.Vector3(x + off, h1 + off * .4, z - half);
+      const bp = alongX ? new T.Vector3(x + half, h2 + off * .4, z + off) : new T.Vector3(x + off, h2 + off * .4, z + half);
+      const mid = a.clone().lerp(bp, .5); mid.y -= sag;
+      const curve = new T.QuadraticBezierCurve3(a, mid, bp);
+      const tube = new T.Mesh(new T.TubeGeometry(curve, 8, .025, 4), wireM); scene.add(tube);
+    }
+    count++;
+  }
 }
 function roadSpot() { for (let i = 0; i < 24; i++) { const x = rand(-HALF, HALF), z = rand(-HALF, HALF); if (onRoad(x, z)) return { x, z }; } return null; }
 function sidewalkSpot() { for (let i = 0; i < 60; i++) { const x = rand(-HALF + 4, HALF - 4), z = rand(-HALF + 4, HALF - 4); if (onSidewalk(x, z) && !blocked(x, z)) return { x, z }; } return null; }
@@ -695,7 +807,7 @@ function buildAuto(color) {
 // rounded passenger car: hatch / sedan / taxi / cop
 function buildCar(kind, color) {
   const g = new T.Group();
-  const col = kind === 'taxi' ? '#e8b820' : kind === 'cop' ? '#22334e' : color || pick(['#b8bcc2', '#8a2f28', '#2d4a6b', '#d8d5cc', '#5c6156', '#7d3b52']);
+  const col = kind === 'taxi' ? '#1a1a1c' : kind === 'cop' ? '#22334e' : color || pick(['#b8bcc2', '#8a2f28', '#2d4a6b', '#d8d5cc', '#5c6156', '#7d3b52']);
   const bodyM = mat(col, .42);
   const sedan = kind === 'sedan' || kind === 'taxi' || kind === 'cop';
   const L = sedan ? 4.4 : 3.7;
@@ -713,8 +825,8 @@ function buildCar(kind, color) {
   // wheels
   for (const [sx, sz] of [[-.85, L * .3], [.85, L * .3], [-.85, -L * .3], [.85, -L * .3]]) {
     const w = wheel(.44, .24); w.position.set(sx, .44, sz); g.add(w); }
-  if (kind === 'taxi') { const sign = new T.Mesh(new T.BoxGeometry(.5, .18, .3), mat('#111', .6)); sign.position.set(0, 1.9, -L * .04); g.add(sign);
-    const stripe = new T.Mesh(new T.BoxGeometry(1.78, .12, L * .7), mat('#111', .8)); stripe.position.set(0, 1.02, 0); g.add(stripe); }
+  if (kind === 'taxi') { const sign = new T.Mesh(new T.BoxGeometry(.5, .18, .3), mat('#e8b820', .6)); sign.position.set(0, 1.9, -L * .04); g.add(sign);
+    const yroof = new T.Mesh(new T.SphereGeometry(.9, 18, 12), mat('#e8b820', .5)); yroof.scale.set(.87, .31, 1.21); yroof.position.set(0, 1.63, -L * .04); g.add(yroof); }
   if (kind === 'cop') { const bar = new T.Mesh(new T.BoxGeometry(1.1, .14, .34), mat('#ff3b3b')); bar.position.set(0, 1.86, -L * .04); g.add(bar); g.userData.bar = bar; }
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
@@ -1054,6 +1166,7 @@ function boot() {
   const enable = () => { btn.disabled = false; btn.textContent = '▶ Enter the City'; };
   const failsafe = setTimeout(enable, 7000);
   loadHero(h => { clearTimeout(failsafe); if (h) HERO = h; enable(); rebuildPreview(); });
+  window.__tp = (x, z) => { player.pos.set(x, 0, z); if (player.inVehicle) { player.inVehicle.g.position.set(x, 0, z); } };
   window.__facefront = () => { previewSpin = false; if (pChar) pChar.rotation.y = 0; };
   window.__facezoom = (y) => { previewSpin = false; if (pChar) pChar.rotation.y = 0; pCam.position.set(0, y, 1.25); pCam.lookAt(0, y, 0); };
   window.__dbg = () => ({ cam: camera.position.toArray().map(v => +v.toFixed(2)),
