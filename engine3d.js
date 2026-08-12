@@ -23,67 +23,65 @@ const opts = { name:'Raja Bahadur', skin:'#c68642', turban:true, turbanColor:'#f
   kurta:'#ff9933', dhoti:'#ffffff', beard:'full', moustache:true };
 
 // ---------- Character builder (low-poly humanoid) ----------
-function mat(color, flat) { return new T.MeshLambertMaterial({ color: new T.Color(color) }); }
-function limb(w, h, d, color) { // pivot at TOP of the limb
-  const g = new T.BoxGeometry(w, h, d); g.translate(0, -h / 2, 0);
+function mat(color, rough) { return new T.MeshStandardMaterial({ color: new T.Color(color), roughness: rough == null ? .88 : rough, metalness: .02 }); }
+function limb(w, h, color) { // rounded capsule, pivot at TOP
+  const r = w / 2; const g = new T.CapsuleGeometry(r, Math.max(0.02, h - 2 * r), 4, 10); g.translate(0, -h / 2, 0);
   return new T.Mesh(g, mat(color));
 }
 function buildCharacter(o) {
   const grp = new T.Group();
-  const skinM = mat(o.skin), kurtaM = mat(o.kurta), dhotiM = mat(o.dhoti);
-  // hips
+  const skinM = mat(o.skin, .7);
   const hip = 0.95;
-  // legs (pivot at hip)
-  const lL = limb(0.26, 0.9, 0.26, o.dhoti); lL.position.set(-0.16, hip, 0);
-  const rL = limb(0.26, 0.9, 0.26, o.dhoti); rL.position.set(0.16, hip, 0);
+  // legs (pivot at hip) — capsules
+  const lL = limb(0.27, 0.95, o.dhoti); lL.position.set(-0.15, hip, 0);
+  const rL = limb(0.27, 0.95, o.dhoti); rL.position.set(0.15, hip, 0);
   grp.add(lL, rL);
-  // torso (kurta) — long, covers hips
-  const torso = new T.Mesh(new T.BoxGeometry(0.66, 0.95, 0.4), kurtaM);
-  torso.position.set(0, hip + 0.42, 0); grp.add(torso);
-  // kurta collar band
-  const band = new T.Mesh(new T.BoxGeometry(0.68, 0.12, 0.42), mat('#00000022'));
-  band.position.set(0, hip + 0.84, 0); grp.add(band);
+  // torso (kurta) — rounded capsule, flattened front-to-back
+  const torso = new T.Mesh(new T.CapsuleGeometry(0.32, 0.5, 5, 14), mat(o.kurta));
+  torso.position.set(0, hip + 0.44, 0); torso.scale.set(1.05, 1, 0.72); grp.add(torso);
+  // shoulders rounded
+  const shoulder = new T.Mesh(new T.SphereGeometry(0.34, 14, 10), mat(o.kurta));
+  shoulder.position.set(0, hip + 0.84, 0); shoulder.scale.set(1.25, .6, .72); grp.add(shoulder);
   // arms (pivot at shoulder)
-  const lA = limb(0.2, 0.82, 0.2, o.kurta); lA.position.set(-0.42, hip + 0.86, 0);
-  const rA = limb(0.2, 0.82, 0.2, o.kurta); rA.position.set(0.42, hip + 0.86, 0);
-  // hands
-  const lH = new T.Mesh(new T.BoxGeometry(0.2, 0.18, 0.2), skinM); lH.position.set(0, -0.72, 0); lA.add(lH);
-  const rH = new T.Mesh(new T.BoxGeometry(0.2, 0.18, 0.2), skinM); rH.position.set(0, -0.72, 0); rA.add(rH);
+  const lA = limb(0.19, 0.82, o.kurta); lA.position.set(-0.42, hip + 0.86, 0);
+  const rA = limb(0.19, 0.82, o.kurta); rA.position.set(0.42, hip + 0.86, 0);
+  const lH = new T.Mesh(new T.SphereGeometry(0.11, 10, 8), skinM); lH.position.set(0, -0.74, 0); lA.add(lH);
+  const rH = new T.Mesh(new T.SphereGeometry(0.11, 10, 8), skinM); rH.position.set(0, -0.74, 0); rA.add(rH);
   grp.add(lA, rA);
   // neck + head
-  const neck = new T.Mesh(new T.BoxGeometry(0.2, 0.14, 0.2), skinM); neck.position.set(0, hip + 0.92, 0); grp.add(neck);
-  const head = new T.Group(); head.position.set(0, hip + 1.12, 0); grp.add(head);
-  const face = new T.Mesh(new T.BoxGeometry(0.42, 0.44, 0.42), skinM); head.add(face);
+  const neck = new T.Mesh(new T.CylinderGeometry(0.1, 0.11, 0.16, 10), skinM); neck.position.set(0, hip + 0.95, 0); grp.add(neck);
+  const head = new T.Group(); head.position.set(0, hip + 1.16, 0); grp.add(head);
+  const face = new T.Mesh(new T.SphereGeometry(0.23, 18, 16), skinM); face.scale.set(1, 1.08, 1); head.add(face);
+  // nose
+  const nose = new T.Mesh(new T.SphereGeometry(0.05, 8, 8), skinM); nose.position.set(0, -0.02, 0.22); head.add(nose);
   // eyes
-  const eyeM = mat('#1a1a1a');
-  for (const sx of [-0.1, 0.1]) { const e = new T.Mesh(new T.BoxGeometry(0.06, 0.06, 0.04), eyeM); e.position.set(sx, 0.05, 0.22); head.add(e); }
-  // hair (if no turban) or turban
+  const eyeM = mat('#15130f', .4);
+  for (const sx of [-0.09, 0.09]) { const e = new T.Mesh(new T.SphereGeometry(0.033, 8, 8), eyeM); e.position.set(sx, 0.05, 0.2); head.add(e); }
+  // turban or hair
   if (o.turban) {
-    const tM = mat(o.turbanColor);
-    const dome = new T.Mesh(new T.SphereGeometry(0.3, 14, 10, 0, TAU, 0, Math.PI / 2), tM);
-    dome.position.set(0, 0.2, 0); head.add(dome);
-    const wrap = new T.Mesh(new T.TorusGeometry(0.26, 0.09, 8, 18), tM);
-    wrap.rotation.x = Math.PI / 2; wrap.position.set(0, 0.16, 0); head.add(wrap);
-    const wrap2 = new T.Mesh(new T.TorusGeometry(0.3, 0.07, 8, 18), tM);
-    wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, 0.05, 0.02); head.add(wrap2);
-    // raja plume / kalgi
-    const jewel = new T.Mesh(new T.SphereGeometry(0.05, 8, 8), mat('#ffd700')); jewel.position.set(0, 0.2, 0.26); head.add(jewel);
-    const plume = new T.Mesh(new T.ConeGeometry(0.05, 0.28, 8), mat('#ffffff')); plume.position.set(0, 0.42, 0.2); plume.rotation.x = -0.3; head.add(plume);
+    const tM = mat(o.turbanColor, .6);
+    const dome = new T.Mesh(new T.SphereGeometry(0.29, 20, 14), tM); dome.scale.set(1.08, .95, 1.08); dome.position.set(0, 0.2, 0); head.add(dome);
+    const wrap = new T.Mesh(new T.TorusGeometry(0.27, 0.1, 12, 22), tM); wrap.rotation.x = Math.PI / 2; wrap.position.set(0, 0.12, 0); head.add(wrap);
+    const wrap2 = new T.Mesh(new T.TorusGeometry(0.3, 0.08, 12, 22), tM); wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, 0.03, 0.02); head.add(wrap2);
+    const jewel = new T.Mesh(new T.SphereGeometry(0.055, 12, 12), mat('#ffd700', .25)); jewel.position.set(0, 0.16, 0.28); head.add(jewel);
+    const plume = new T.Mesh(new T.ConeGeometry(0.05, 0.3, 10), mat('#f5f5f5', .7)); plume.position.set(0, 0.44, 0.18); plume.rotation.x = -0.3; head.add(plume);
   } else {
-    const hair = new T.Mesh(new T.BoxGeometry(0.44, 0.16, 0.44), mat('#101010')); hair.position.set(0, 0.24, 0); head.add(hair);
+    const hair = new T.Mesh(new T.SphereGeometry(0.24, 16, 12, 0, TAU, 0, Math.PI / 1.7), mat('#0d0b0a', .8)); hair.position.set(0, 0.06, 0); head.add(hair);
   }
-  // beard
+  // beard (rounded)
   if (o.beard !== 'none') {
-    const bM = mat('#141210');
-    if (o.beard === 'stubble') { const b = new T.Mesh(new T.BoxGeometry(0.4, 0.16, 0.14), bM); b.position.set(0, -0.16, 0.2); head.add(b); }
-    else if (o.beard === 'full') { const b = new T.Mesh(new T.BoxGeometry(0.44, 0.3, 0.16), bM); b.position.set(0, -0.18, 0.19); head.add(b); }
-    else { const b = new T.Mesh(new T.BoxGeometry(0.44, 0.5, 0.18), bM); b.position.set(0, -0.3, 0.18); head.add(b); }
+    const bM = mat('#161310', .85);
+    const b = new T.Mesh(new T.SphereGeometry(0.22, 16, 14), bM);
+    if (o.beard === 'stubble') { b.scale.set(1.02, .55, .7); b.position.set(0, -0.12, .03); }
+    else if (o.beard === 'full') { b.scale.set(1.04, .85, .8); b.position.set(0, -0.16, .02); }
+    else { b.scale.set(1.02, 1.25, .8); b.position.set(0, -0.3, .02); }
+    head.add(b);
   }
-  // moustache
-  if (o.moustache) { const m = new T.Mesh(new T.BoxGeometry(0.3, 0.06, 0.08), mat('#141210')); m.position.set(0, -0.06, 0.22); head.add(m); }
+  if (o.moustache) { const m = new T.Mesh(new T.TorusGeometry(0.08, 0.028, 8, 14, Math.PI), mat('#161310', .85)); m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, -0.03, 0.21); head.add(m); }
 
+  grp.traverse(o2 => { if (o2.isMesh) o2.castShadow = true; });
   grp.userData = { lL, rL, lA, rA, head, phase: 0, punch: 0 };
-  grp.scale.set(0.62, 0.62, 0.62); // ~1.8m tall
+  grp.scale.set(0.62, 0.62, 0.62);
   return grp;
 }
 function animateChar(g, moving, dt, speed) {
@@ -127,19 +125,34 @@ const onRoad = (x, z) => {
 };
 
 // ---------- Renderer / scene ----------
-let renderer, scene, camera, clock;
+let renderer, scene, camera, clock, sun;
 const buildings = []; // {x,z,hw,hd}
-let ground;
+let ground, winTex;
+function makeSky() {
+  const c = document.createElement('canvas'); c.width = 16; c.height = 256; const g = c.getContext('2d');
+  const grd = g.createLinearGradient(0, 0, 0, 256);
+  grd.addColorStop(0, '#3d6ea5'); grd.addColorStop(.5, '#8fb8dd'); grd.addColorStop(.82, '#dcd0bf'); grd.addColorStop(1, '#e8cf9e');
+  g.fillStyle = grd; g.fillRect(0, 0, 16, 256);
+  const tex = new T.CanvasTexture(c); if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
+}
 function initThree() {
   renderer = new T.WebGLRenderer({ canvas: $('game'), antialias: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
   renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+  if ('outputColorSpace' in renderer && T.SRGBColorSpace) renderer.outputColorSpace = T.SRGBColorSpace;
+  else if ('sRGBEncoding' in T) renderer.outputEncoding = T.sRGBEncoding;
+  renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
   scene = new T.Scene();
-  scene.background = new T.Color('#cfe0ef');
-  scene.fog = new T.Fog('#cfe0ef', 60, 150);
-  camera = new T.PerspectiveCamera(62, innerWidth / innerHeight, 0.1, 400);
-  const hemi = new T.HemisphereLight('#ffffff', '#6b5a3a', 0.95); scene.add(hemi);
-  const sun = new T.DirectionalLight('#fff3d6', 0.9); sun.position.set(40, 80, 20); scene.add(sun);
+  scene.background = makeSky();
+  scene.fog = new T.Fog('#d7cdbb', 70, 165);
+  camera = new T.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
+  const hemi = new T.HemisphereLight('#bcd6f2', '#6b5a3a', 0.5); scene.add(hemi);
+  const amb = new T.AmbientLight('#ffffff', 0.1); scene.add(amb);
+  sun = new T.DirectionalLight('#fff1cf', 1.55); sun.position.set(40, 80, 20); sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004;
+  const sc = sun.shadow.camera; sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 260;
+  scene.add(sun); scene.add(sun.target);
   clock = new T.Clock();
   addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 }
@@ -161,9 +174,23 @@ function makeGroundTexture() {
     g.beginPath(); g.moveTo(p, 0); g.lineTo(p, S); g.stroke(); g.beginPath(); g.moveTo(0, p); g.lineTo(S, p); g.stroke(); }
   const tex = new T.CanvasTexture(c); tex.anisotropy = 4; return tex;
 }
+function makeWindowTexture() {
+  const S = 128, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  g.fillStyle = '#d2ccbe'; g.fillRect(0, 0, S, S);
+  const cols = 4, rows = 4, pad = 9, ww = (S - pad * (cols + 1)) / cols, wh = (S - pad * (rows + 1)) / rows;
+  for (let r = 0; r < rows; r++) for (let cc = 0; cc < cols; cc++) {
+    const x = pad + cc * (ww + pad), y = pad + r * (wh + pad);
+    g.fillStyle = Math.random() < .22 ? '#ffd98a' : '#39454f'; g.fillRect(x, y, ww, wh);
+    g.strokeStyle = '#20242a'; g.lineWidth = 2; g.strokeRect(x, y, ww, wh);
+    g.beginPath(); g.moveTo(x + ww / 2, y); g.lineTo(x + ww / 2, y + wh); g.moveTo(x, y + wh / 2); g.lineTo(x + ww, y + wh / 2); g.stroke();
+  }
+  const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
+}
 function buildCity() {
-  ground = new T.Mesh(new T.PlaneGeometry(WORLD, WORLD), new T.MeshLambertMaterial({ map: makeGroundTexture() }));
-  ground.rotation.x = -Math.PI / 2; scene.add(ground);
+  const gt = makeGroundTexture(); if ('sRGBEncoding' in T) gt.encoding = T.sRGBEncoding;
+  ground = new T.Mesh(new T.PlaneGeometry(WORLD, WORLD), new T.MeshStandardMaterial({ map: gt, roughness: 1 }));
+  ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+  winTex = makeWindowTexture();
   // buildings on block cells (between roads)
   const boxGeo = new T.BoxGeometry(1, 1, 1);
   for (let bx = -HALF + STEP; bx < HALF; bx += STEP) for (let bz = -HALF + STEP; bz < HALF; bz += STEP) {
@@ -177,13 +204,17 @@ function buildCity() {
       const px2 = x0 + i * cw + cw / 2, pz2 = z0 + j * cd + cd / 2;
       if (Math.abs(px2) > HALF - 2 || Math.abs(pz2) > HALF - 2) continue;
       const D = DISTRICTS[districtAt(px2, pz2)];
-      const h = rand(4, 15), w = cw * rand(.7, .92), d = cd * rand(.7, .92);
-      const m = new T.Mesh(boxGeo, mat(pick(D.pal)));
-      m.scale.set(w, h, d); m.position.set(px2, h / 2, pz2); scene.add(m);
-      // roof slab
-      const roof = new T.Mesh(boxGeo, mat('#2b2b32')); roof.scale.set(w + .2, .4, d + .2); roof.position.set(px2, h + .1, pz2); scene.add(roof);
-      // water tank
-      if (Math.random() < .5) { const tk = new T.Mesh(boxGeo, mat('#222')); tk.scale.set(.8, .9, .8); tk.position.set(px2 + w * .2, h + .6, pz2 + d * .2); scene.add(tk); }
+      const h = rand(4, 16), w = cw * rand(.72, .92), d = cd * rand(.72, .92);
+      const wt = winTex.clone(); wt.needsUpdate = true; wt.repeat.set(clamp(Math.round(w / 2.2), 1, 4), clamp(Math.round(h / 3), 1, 6));
+      const bm = new T.MeshStandardMaterial({ color: new T.Color(pick(D.pal)), map: wt, roughness: .92, metalness: .02 });
+      const m = new T.Mesh(boxGeo, bm); m.scale.set(w, h, d); m.position.set(px2, h / 2, pz2); m.castShadow = true; m.receiveShadow = true; scene.add(m);
+      // parapet roof slab
+      const roof = new T.Mesh(boxGeo, mat('#2b2b32')); roof.scale.set(w + .25, .5, d + .25); roof.position.set(px2, h + .1, pz2); roof.castShadow = true; scene.add(roof);
+      // water tank + rooftop clutter
+      if (Math.random() < .55) { const tk = new T.Mesh(new T.CylinderGeometry(.35, .35, .7, 10), mat('#3a3a3a')); tk.position.set(px2 + w * .2, h + .55, pz2 + d * .2); tk.castShadow = true; scene.add(tk); }
+      if (Math.random() < .4) { const ac = new T.Mesh(boxGeo, mat('#c9c4b8')); ac.scale.set(.5, .35, .5); ac.position.set(px2 - w * .25, h + .35, pz2 - d * .2); ac.castShadow = true; scene.add(ac); }
+      // ground-floor awning (shop front)
+      if (Math.random() < .5) { const aw = new T.Mesh(boxGeo, mat(pick(['#c0392b', '#2980b9', '#e0b93c', '#16a085']))); aw.scale.set(w * .9, .18, .7); aw.position.set(px2, 2.1, pz2 + d / 2 + .3); aw.castShadow = true; scene.add(aw); }
       buildings.push({ x: px2, z: pz2, hw: w / 2 + .3, hd: d / 2 + .3 });
     }
   }
@@ -210,17 +241,39 @@ function buildLandmarks() {
       const tower = new T.Mesh(new T.BoxGeometry(5, 14, 5), mat(col)); tower.position.y = 7; g.add(tower);
       const top = new T.Mesh(new T.ConeGeometry(3.4, 4, 4), mat('#f4c20d')); top.position.y = 16; top.rotation.y = Math.PI / 4; g.add(top);
     }
+    g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   }
 }
-// street stalls, cows, garbage as simple meshes
+// tree: trunk + rounded canopy (or palm for coastal districts)
+function buildTree(palm) {
+  const g = new T.Group();
+  if (palm) {
+    const tr = new T.Mesh(new T.CylinderGeometry(.18, .28, 6, 8), mat('#8a6b3a')); tr.position.y = 3; tr.castShadow = true; g.add(tr);
+    for (let k = 0; k < 6; k++) { const fr = new T.Mesh(new T.ConeGeometry(.5, 3, 6), mat('#2e8b57', .85));
+      fr.position.set(Math.cos(k) * 1, 6, Math.sin(k) * 1); fr.rotation.z = Math.cos(k) * .9; fr.rotation.x = Math.sin(k) * .9; fr.castShadow = true; g.add(fr); }
+  } else {
+    const tr = new T.Mesh(new T.CylinderGeometry(.22, .32, 2.4, 8), mat('#6b4a2a')); tr.position.y = 1.2; tr.castShadow = true; g.add(tr);
+    for (const [dx, dy, dz, r] of [[0, 3, 0, 1.5], [-.9, 2.6, .4, 1.1], [.8, 2.7, -.4, 1.05], [.2, 3.6, .5, .95]]) {
+      const f = new T.Mesh(new T.SphereGeometry(r, 12, 10), mat(pick(['#3f7d3f', '#4f9e5b', '#357a45']), .9)); f.position.set(dx, dy, dz); f.castShadow = true; g.add(f); }
+  }
+  return g;
+}
+// street stalls, garbage, trees, lamps
 function scatterProps() {
   const boxGeo = new T.BoxGeometry(1, 1, 1);
   for (let i = 0; i < 60; i++) { const p = roadSpot(); if (!p) continue;
-    const cart = new T.Mesh(boxGeo, mat('#6b4a2a')); cart.scale.set(2, 1, 1.2); cart.position.set(p.x, .5, p.z); scene.add(cart);
-    const canopy = new T.Mesh(boxGeo, mat(pick(['#e0b93c','#c0563a','#4f9e6b','#2980b9']))); canopy.scale.set(2.4, .3, 1.5); canopy.position.set(p.x, 1.7, p.z); scene.add(canopy); }
-  // garbage piles
-  for (let i = 0; i < 120; i++) { const p = roadSpot(); if (!p) continue;
-    const gb = new T.Mesh(new T.SphereGeometry(rand(.3, .7), 6, 5), mat(pick(['#7a6f4a','#8a5a3a','#556b4a']))); gb.position.set(p.x, .3, p.z); gb.scale.y = .6; scene.add(gb); }
+    const cart = new T.Mesh(boxGeo, mat('#6b4a2a')); cart.scale.set(2, 1, 1.2); cart.position.set(p.x, .5, p.z); cart.castShadow = true; scene.add(cart);
+    const canopy = new T.Mesh(boxGeo, mat(pick(['#e0b93c', '#c0563a', '#4f9e6b', '#2980b9']))); canopy.scale.set(2.4, .3, 1.5); canopy.position.set(p.x, 1.7, p.z); canopy.castShadow = true; scene.add(canopy); }
+  for (let i = 0; i < 110; i++) { const p = roadSpot(); if (!p) continue;
+    const gb = new T.Mesh(new T.SphereGeometry(rand(.3, .7), 7, 6), mat(pick(['#7a6f4a', '#8a5a3a', '#556b4a']))); gb.position.set(p.x, .25, p.z); gb.scale.y = .5; gb.castShadow = true; scene.add(gb); }
+  // trees — palms near coastal/southern districts (Goa, Kerala, Chennai)
+  for (let i = 0; i < 130; i++) { const p = roadSpot(); if (!p) continue; if (blocked(p.x, p.z)) continue;
+    const di = districtAt(p.x, p.z); const palm = [5, 7, 8].includes(di) ? Math.random() < .7 : Math.random() < .2;
+    const tr = buildTree(palm); tr.position.set(p.x, 0, p.z); tr.scale.setScalar(rand(.8, 1.2)); scene.add(tr); }
+  // street lamps
+  for (let i = 0; i < 70; i++) { const p = roadSpot(); if (!p) continue;
+    const pole = new T.Mesh(new T.CylinderGeometry(.08, .1, 5, 6), mat('#444')); pole.position.set(p.x, 2.5, p.z); pole.castShadow = true; scene.add(pole);
+    const lamp = new T.Mesh(new T.SphereGeometry(.22, 10, 8), mat('#ffe9a8', .3)); lamp.position.set(p.x, 5, p.z); scene.add(lamp); }
 }
 function roadSpot() { for (let i = 0; i < 20; i++) { const x = rand(-HALF, HALF), z = rand(-HALF, HALF); if (onRoad(x, z)) return { x, z }; } return null; }
 const LANDMARK_CENTRES = [];
@@ -252,6 +305,7 @@ function spawnCows(n) {
     const body = new T.Mesh(boxGeo, mat('#e8e2d0')); body.scale.set(1, .9, 1.9); body.position.y = 1; g.add(body);
     const head = new T.Mesh(boxGeo, mat('#d8cfb8')); head.scale.set(.7, .7, .7); head.position.set(0, 1.1, 1.2); g.add(head);
     for (const [sx, sz] of [[-.4, .7], [.4, .7], [-.4, -.7], [.4, -.7]]) { const leg = new T.Mesh(boxGeo, mat('#cfc6ad')); leg.scale.set(.2, 1, .2); leg.position.set(sx, .5, sz); g.add(leg); }
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
     cows.push({ g, dir: rand(0, TAU), speed: rand(.4, .9), t: rand(0, 10) }); }
 }
@@ -267,6 +321,7 @@ function buildAuto(color) {
   const wg = new T.CylinderGeometry(.5, .5, .3, 12);
   const fw = new T.Mesh(wg, mat('#111')); fw.rotation.z = Math.PI / 2; fw.position.set(0, .5, 1.7); g.add(fw);
   for (const sx of [-.9, .9]) { const w = new T.Mesh(wg, mat('#111')); w.rotation.z = Math.PI / 2; w.position.set(sx, .5, -1); g.add(w); }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
 const vehicles = [];
@@ -404,6 +459,8 @@ function update(dt) {
   const di = districtAt(player.pos.x, player.pos.z);
   if (di !== curDistrict) { curDistrict = di; $('distName').textContent = DISTRICTS[di].name; showBanner(DISTRICTS[di].greet, DISTRICTS[di].fact); }
 
+  // sun follows player so shadows stay crisp
+  if (sun) { sun.position.set(player.pos.x + 40, 85, player.pos.z + 22); sun.target.position.copy(player.pos); sun.target.updateMatrixWorld(); }
   // camera follow
   const target = player.inVehicle ? player.inVehicle.g.position : player.pos;
   const cd = player.inVehicle ? 10 : cam.dist;
@@ -503,11 +560,16 @@ function initPreview() {
   pRenderer = new T.WebGLRenderer({ canvas: $('preview'), antialias: true, alpha: true });
   const w = $('preview').clientWidth || 400, h = $('preview').clientHeight || 480;
   pRenderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); pRenderer.setSize(w, h);
+  if ('outputColorSpace' in pRenderer && T.SRGBColorSpace) pRenderer.outputColorSpace = T.SRGBColorSpace;
+  else if ('sRGBEncoding' in T) pRenderer.outputEncoding = T.sRGBEncoding;
+  pRenderer.toneMapping = T.ACESFilmicToneMapping; pRenderer.toneMappingExposure = 1.0;
+  pRenderer.shadowMap.enabled = true; pRenderer.shadowMap.type = T.PCFSoftShadowMap;
   pScene = new T.Scene();
   pCam = new T.PerspectiveCamera(40, w / h, .1, 100); pCam.position.set(0, 1.6, 4.4); pCam.lookAt(0, 1.4, 0);
-  pScene.add(new T.HemisphereLight('#ffffff', '#404040', 1.1));
-  const dl = new T.DirectionalLight('#fff', .8); dl.position.set(3, 6, 4); pScene.add(dl);
-  const disc = new T.Mesh(new T.CircleGeometry(1.4, 32), new T.MeshLambertMaterial({ color: '#2a2340' })); disc.rotation.x = -Math.PI / 2; pScene.add(disc);
+  pScene.add(new T.HemisphereLight('#cfe0ff', '#33302a', .38));
+  const dl = new T.DirectionalLight('#fff4e0', 1.15); dl.position.set(3, 6, 4); dl.castShadow = true; dl.shadow.mapSize.set(1024, 1024); pScene.add(dl);
+  pScene.add(new T.DirectionalLight('#a0b0d0', .2).translateX(-4).translateZ(-2));
+  const disc = new T.Mesh(new T.CircleGeometry(1.4, 40), new T.MeshStandardMaterial({ color: '#241f36', roughness: .9 })); disc.rotation.x = -Math.PI / 2; disc.receiveShadow = true; pScene.add(disc);
   rebuildPreview();
   // drag to spin
   let dr = false, lx = 0; const cv = $('preview');
@@ -557,6 +619,7 @@ function startGame() {
 
 // ---------- Boot ----------
 function boot() {
+  if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); initPreview(); wireCreator();
   $('loading').classList.add('hide');
   window.__dbg = () => ({ cam: camera.position.toArray().map(v => +v.toFixed(2)),
