@@ -88,11 +88,19 @@
 
   /* touch */
   #touch { position:fixed; inset:0; z-index:11; pointer-events:none; display:none; }
+  #touch.on { display:block; }
   .thumb { position:absolute; pointer-events:auto; width:66px; height:66px; border-radius:50%;
     background:rgba(255,255,255,.12); border:2px solid rgba(255,255,255,.25);
     display:flex; align-items:center; justify-content:center; font-size:22px; font-weight:900;
     user-select:none; -webkit-user-select:none; }
-  @media (hover:none){ #touch.on { display:block; } }
+  /* thumbstick */
+  #joystick { position:fixed; left:26px; bottom:36px; width:132px; height:132px; z-index:12;
+    border-radius:50%; background:rgba(255,255,255,.08); border:2px solid rgba(255,255,255,.18);
+    display:none; touch-action:none; }
+  #joystick.on { display:block; }
+  #joyknob { position:absolute; left:50%; top:50%; width:58px; height:58px; margin:-29px 0 0 -29px;
+    border-radius:50%; background:rgba(255,153,51,.9); border:2px solid rgba(255,255,255,.6);
+    box-shadow:0 4px 14px rgba(0,0,0,.4); transition:transform .04s; }
 </style>
 </head>
 <body>
@@ -116,11 +124,9 @@
   <div id="toast"><div class="big" id="toastBig"></div></div>
   <div id="banner"><div class="bTitle" id="bTitle"></div><div class="bFact" id="bFact"></div></div>
 
+  <div id="joystick"><div id="joyknob"></div></div>
+
   <div id="touch">
-    <div class="thumb" id="tUp"    style="left:70px; bottom:150px;">▲</div>
-    <div class="thumb" id="tDown"  style="left:70px; bottom:60px;">▼</div>
-    <div class="thumb" id="tLeft"  style="left:14px; bottom:105px;">◀</div>
-    <div class="thumb" id="tRight" style="left:126px;bottom:105px;">▶</div>
     <div class="thumb" id="tAct"   style="right:20px;bottom:150px;font-size:16px;">F</div>
     <div class="thumb" id="tPunch" style="right:96px;bottom:110px;font-size:16px;">👊</div>
     <div class="thumb" id="tSpit"  style="right:20px;bottom:60px;font-size:16px;">💦</div>

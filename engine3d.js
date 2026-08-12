@@ -168,11 +168,21 @@ function buildCharacter(o) {
 }
 function animateChar(g, moving, dt, speed) {
   const u = g.userData;
+  // combat combo: jab (0), cross (1), kick (2) — with weight shift & guard
+  if (u.attack && u.attack.t > 0) {
+    const p = 1 - u.attack.t, ext = Math.sin(clamp(p * 1.25, 0, 1) * Math.PI), k = u.attack.kind;
+    u.lL.rotation.x = lerp(u.lL.rotation.x, 0, .3); u.rL.rotation.x = lerp(u.rL.rotation.x, 0, .3);
+    if (k === 0) { u.lA.rotation.x = -1.7 * ext; u.lA.rotation.y = -.25 * ext; u.rA.rotation.x = .35 * ext; u.rA.rotation.y = 0; if (u.head) u.head.rotation.y = .22 * ext; }
+    else if (k === 1) { u.rA.rotation.x = -1.85 * ext; u.rA.rotation.y = .55 * ext; u.lA.rotation.x = .4 * ext; u.lA.rotation.y = 0; if (u.head) u.head.rotation.y = -.28 * ext; }
+    else { u.rL.rotation.x = -1.5 * ext; u.lA.rotation.x = .6 * ext; u.rA.rotation.x = .6 * ext; u.lA.rotation.y = u.rA.rotation.y = 0; }
+    u.attack.t -= dt * 3.2; return;
+  }
+  u.lA.rotation.y = lerp(u.lA.rotation.y, 0, .3); u.rA.rotation.y = lerp(u.rA.rotation.y, 0, .3);
+  if (u.head) u.head.rotation.y = lerp(u.head.rotation.y, 0, .3);
   if (moving) { u.phase += dt * speed * 2.2; const s = Math.sin(u.phase) * 0.7;
     u.lL.rotation.x = s; u.rL.rotation.x = -s; u.lA.rotation.x = -s * 0.7; u.rA.rotation.x = s * 0.7; }
   else { u.lL.rotation.x = lerp(u.lL.rotation.x, 0, .2); u.rL.rotation.x = lerp(u.rL.rotation.x, 0, .2);
     u.lA.rotation.x = lerp(u.lA.rotation.x, 0, .2); u.rA.rotation.x = lerp(u.rA.rotation.x, 0, .2); }
-  if (u.punch > 0) { u.punch -= dt * 4; u.rA.rotation.x = -Math.PI / 2 * Math.min(1, u.punch * 1.5); }
 }
 
 // ---------- Districts ----------
@@ -196,7 +206,7 @@ const DISTRICTS = [
   { name:'Goa', greet:'Welcome to Goa', ground:'#d8c48f', pal:['#e8dcc0','#3fa0a0','#c0563a','#e0b93c'],
     fact:'Goa — Portuguese-white churches, palm beaches and “susegad”: the art of doing nothing, slowly.' },
 ];
-const WORLD = 180, HALF = WORLD / 2, CELL = WORLD / 3, STEP = 20, ROADW = 7;
+const WORLD = 260, HALF = WORLD / 2, CELL = WORLD / 3, STEP = 20, ROADW = 7, SIDEW = 2.4;
 function districtAt(x, z) {
   const mx = clamp(Math.floor((x + HALF) / CELL), 0, 2), mz = clamp(Math.floor((z + HALF) / CELL), 0, 2);
   return mz * 3 + mx;
@@ -204,6 +214,12 @@ function districtAt(x, z) {
 const onRoad = (x, z) => {
   const fx = ((x % STEP) + STEP) % STEP, fz = ((z % STEP) + STEP) % STEP;
   return fx < ROADW || fz < ROADW;
+};
+// sidewalk band = just outside the road, before the buildings
+const onSidewalk = (x, z) => {
+  const fx = ((x % STEP) + STEP) % STEP, fz = ((z % STEP) + STEP) % STEP;
+  const near = v => v >= ROADW && v < ROADW + SIDEW;
+  return !onRoad(x, z) && (near(fx) || near(fz) || fx >= STEP - SIDEW || fz >= STEP - SIDEW);
 };
 
 // ---------- Renderer / scene ----------
@@ -239,32 +255,43 @@ function initThree() {
   addEventListener('resize', () => { camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
 }
 
-// ground texture: district colours + road grid + lane dashes
+// ground texture: district colours + sidewalks + road grid + lane dashes
 function makeGroundTexture() {
-  const S = 1536, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
-  const px = v => (v + HALF) / WORLD * S;
+  const S = 2048, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  const u = w => w / WORLD * S, px = v => (v + HALF) / WORLD * S;
   for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
     g.fillStyle = DISTRICTS[i].ground; g.fillRect(mx * S / 3, mz * S / 3, S / 3 + 1, S / 3 + 1); }
-  // dirt speckle
-  g.fillStyle = 'rgba(60,50,35,.06)'; for (let i = 0; i < 4000; i++) g.fillRect(Math.random() * S, Math.random() * S, 2, 2);
-  // roads
+  g.fillStyle = 'rgba(60,50,35,.06)'; for (let i = 0; i < 6000; i++) g.fillRect(Math.random() * S, Math.random() * S, 2, 2);
+  // sidewalks (light paving) — a band straddling each road
+  g.fillStyle = '#9a978f';
+  for (let v = -HALF; v <= HALF; v += STEP) { g.fillRect(px(v - SIDEW), 0, u(ROADW + 2 * SIDEW), S); g.fillRect(0, px(v - SIDEW), S, u(ROADW + 2 * SIDEW)); }
+  // paving joints on sidewalks
+  g.strokeStyle = 'rgba(0,0,0,.10)'; g.lineWidth = 1; g.setLineDash([]);
+  for (let v = -HALF; v <= HALF; v += 3) { g.beginPath(); g.moveTo(px(v), 0); g.lineTo(px(v), S); g.stroke(); g.beginPath(); g.moveTo(0, px(v)); g.lineTo(S, px(v)); g.stroke(); }
+  // roads (dark asphalt) on top, leaving sidewalk visible
   g.fillStyle = '#3b3b41';
-  for (let v = -HALF; v <= HALF; v += STEP) { g.fillRect(px(v), 0, ROADW / WORLD * S, S); g.fillRect(0, px(v), S, ROADW / WORLD * S); }
+  for (let v = -HALF; v <= HALF; v += STEP) { g.fillRect(px(v), 0, u(ROADW), S); g.fillRect(0, px(v), S, u(ROADW)); }
+  // curb line
+  g.strokeStyle = 'rgba(20,20,24,.5)'; g.lineWidth = 2;
+  for (let v = -HALF; v <= HALF; v += STEP) { for (const e of [px(v), px(v) + u(ROADW)]) { g.beginPath(); g.moveTo(e, 0); g.lineTo(e, S); g.stroke(); g.beginPath(); g.moveTo(0, e); g.lineTo(S, e); g.stroke(); } }
   // lane dashes
-  g.strokeStyle = 'rgba(240,210,120,.5)'; g.lineWidth = 2; g.setLineDash([10, 12]);
-  for (let v = -HALF; v <= HALF; v += STEP) { const p = px(v) + ROADW / WORLD * S / 2;
+  g.strokeStyle = 'rgba(240,210,120,.5)'; g.lineWidth = 2; g.setLineDash([12, 14]);
+  for (let v = -HALF; v <= HALF; v += STEP) { const p = px(v) + u(ROADW) / 2;
     g.beginPath(); g.moveTo(p, 0); g.lineTo(p, S); g.stroke(); g.beginPath(); g.moveTo(0, p); g.lineTo(S, p); g.stroke(); }
-  const tex = new T.CanvasTexture(c); tex.anisotropy = 4; return tex;
+  g.setLineDash([]);
+  const tex = new T.CanvasTexture(c); tex.anisotropy = 8; return tex;
 }
 function makeWindowTexture() {
-  const S = 128, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
   g.fillStyle = '#d2ccbe'; g.fillRect(0, 0, S, S);
-  const cols = 4, rows = 4, pad = 9, ww = (S - pad * (cols + 1)) / cols, wh = (S - pad * (rows + 1)) / rows;
+  const cols = 4, rows = 7, padx = 12, pady = 10, ww = (S - padx * (cols + 1)) / cols, wh = (S - pady * (rows + 1)) / rows;
   for (let r = 0; r < rows; r++) for (let cc = 0; cc < cols; cc++) {
-    const x = pad + cc * (ww + pad), y = pad + r * (wh + pad);
+    const x = padx + cc * (ww + padx), y = pady + r * (wh + pady);
     g.fillStyle = Math.random() < .22 ? '#ffd98a' : '#39454f'; g.fillRect(x, y, ww, wh);
     g.strokeStyle = '#20242a'; g.lineWidth = 2; g.strokeRect(x, y, ww, wh);
     g.beginPath(); g.moveTo(x + ww / 2, y); g.lineTo(x + ww / 2, y + wh); g.moveTo(x, y + wh / 2); g.lineTo(x + ww, y + wh / 2); g.stroke();
+    // AC box under some windows
+    if (Math.random() < .25) { g.fillStyle = '#8a8680'; g.fillRect(x + ww * .3, y + wh, ww * .4, pady * .5); }
   }
   const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
 }
@@ -286,17 +313,16 @@ function buildCity() {
       const px2 = x0 + i * cw + cw / 2, pz2 = z0 + j * cd + cd / 2;
       if (Math.abs(px2) > HALF - 2 || Math.abs(pz2) > HALF - 2) continue;
       const D = DISTRICTS[districtAt(px2, pz2)];
-      const h = rand(4, 16), w = cw * rand(.72, .92), d = cd * rand(.72, .92);
-      const wt = winTex.clone(); wt.needsUpdate = true; wt.repeat.set(clamp(Math.round(w / 2.2), 1, 4), clamp(Math.round(h / 3), 1, 6));
-      const bm = new T.MeshStandardMaterial({ color: new T.Color(pick(D.pal)), map: wt, roughness: .92, metalness: .02 });
+      const h = rand(5, 17), w = cw * rand(.72, .92), d = cd * rand(.72, .92);
+      const bm = new T.MeshStandardMaterial({ color: new T.Color(pick(D.pal)), map: winTex, roughness: .92, metalness: .02 });
       const m = new T.Mesh(boxGeo, bm); m.scale.set(w, h, d); m.position.set(px2, h / 2, pz2); m.castShadow = true; m.receiveShadow = true; scene.add(m);
       // parapet roof slab
       const roof = new T.Mesh(boxGeo, mat('#2b2b32')); roof.scale.set(w + .25, .5, d + .25); roof.position.set(px2, h + .1, pz2); roof.castShadow = true; scene.add(roof);
       // water tank + rooftop clutter
       if (Math.random() < .55) { const tk = new T.Mesh(new T.CylinderGeometry(.35, .35, .7, 10), mat('#3a3a3a')); tk.position.set(px2 + w * .2, h + .55, pz2 + d * .2); tk.castShadow = true; scene.add(tk); }
       if (Math.random() < .4) { const ac = new T.Mesh(boxGeo, mat('#c9c4b8')); ac.scale.set(.5, .35, .5); ac.position.set(px2 - w * .25, h + .35, pz2 - d * .2); ac.castShadow = true; scene.add(ac); }
-      // ground-floor awning (shop front)
-      if (Math.random() < .5) { const aw = new T.Mesh(boxGeo, mat(pick(['#c0392b', '#2980b9', '#e0b93c', '#16a085']))); aw.scale.set(w * .9, .18, .7); aw.position.set(px2, 2.1, pz2 + d / 2 + .3); aw.castShadow = true; scene.add(aw); }
+      // ground-floor awning fixed to the wall base (no floating)
+      if (Math.random() < .5) { const aw = new T.Mesh(boxGeo, mat(pick(['#c0392b', '#2980b9', '#e0b93c', '#16a085']))); aw.scale.set(w * .9, .16, .6); aw.position.set(px2, 1.7, pz2 + d / 2 + .25); aw.castShadow = true; scene.add(aw); }
       buildings.push({ x: px2, z: pz2, hw: w / 2 + .3, hd: d / 2 + .3 });
     }
   }
@@ -340,24 +366,31 @@ function buildTree(palm) {
   }
   return g;
 }
-// street stalls, garbage, trees, lamps
+// props live on the SIDEWALK (not the road) and are solid so vehicles can't pass through
 function scatterProps() {
-  const boxGeo = new T.BoxGeometry(1, 1, 1);
-  for (let i = 0; i < 60; i++) { const p = roadSpot(); if (!p) continue;
-    const cart = new T.Mesh(boxGeo, mat('#6b4a2a')); cart.scale.set(2, 1, 1.2); cart.position.set(p.x, .5, p.z); cart.castShadow = true; scene.add(cart);
-    const canopy = new T.Mesh(boxGeo, mat(pick(['#e0b93c', '#c0563a', '#4f9e6b', '#2980b9']))); canopy.scale.set(2.4, .3, 1.5); canopy.position.set(p.x, 1.7, p.z); canopy.castShadow = true; scene.add(canopy); }
-  for (let i = 0; i < 110; i++) { const p = roadSpot(); if (!p) continue;
-    const gb = new T.Mesh(new T.SphereGeometry(rand(.3, .7), 7, 6), mat(pick(['#7a6f4a', '#8a5a3a', '#556b4a']))); gb.position.set(p.x, .25, p.z); gb.scale.y = .5; gb.castShadow = true; scene.add(gb); }
-  // trees — palms near coastal/southern districts (Goa, Kerala, Chennai)
-  for (let i = 0; i < 130; i++) { const p = roadSpot(); if (!p) continue; if (blocked(p.x, p.z)) continue;
+  const boxGeo = new T.BoxGeometry(1, 1, 1), area = (WORLD / 180) ** 2;
+  // food stalls
+  for (let i = 0; i < 55 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
+    const cart = new T.Mesh(boxGeo, mat('#6b4a2a')); cart.scale.set(1.8, 1, 1.1); cart.position.set(p.x, .5, p.z); cart.castShadow = true; scene.add(cart);
+    const canopy = new T.Mesh(boxGeo, mat(pick(['#e0b93c', '#c0563a', '#4f9e6b', '#2980b9']))); canopy.scale.set(2.2, .28, 1.4); canopy.position.set(p.x, 1.6, p.z); canopy.castShadow = true; scene.add(canopy);
+    buildings.push({ x: p.x, z: p.z, hw: 1.1, hd: .8 }); }
+  // garbage piles (decorative, no collision)
+  for (let i = 0; i < 90 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
+    const gb = new T.Mesh(new T.SphereGeometry(rand(.3, .6), 7, 6), mat(pick(['#7a6f4a', '#8a5a3a', '#556b4a']))); gb.position.set(p.x, .2, p.z); gb.scale.y = .5; gb.castShadow = true; scene.add(gb); }
+  // trees (solid trunks) — palms near coastal/southern districts
+  for (let i = 0; i < 120 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
     const di = districtAt(p.x, p.z); const palm = [5, 7, 8].includes(di) ? Math.random() < .7 : Math.random() < .2;
-    const tr = buildTree(palm); tr.position.set(p.x, 0, p.z); tr.scale.setScalar(rand(.8, 1.2)); scene.add(tr); }
-  // street lamps
-  for (let i = 0; i < 70; i++) { const p = roadSpot(); if (!p) continue;
+    const tr = buildTree(palm); tr.position.set(p.x, 0, p.z); tr.scale.setScalar(rand(.85, 1.15)); scene.add(tr);
+    buildings.push({ x: p.x, z: p.z, hw: .7, hd: .7 }); }
+  // street lamps (solid poles)
+  for (let i = 0; i < 60 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
     const pole = new T.Mesh(new T.CylinderGeometry(.08, .1, 5, 6), mat('#444')); pole.position.set(p.x, 2.5, p.z); pole.castShadow = true; scene.add(pole);
-    const lamp = new T.Mesh(new T.SphereGeometry(.22, 10, 8), mat('#ffe9a8', .3)); lamp.position.set(p.x, 5, p.z); scene.add(lamp); }
+    const arm = new T.Mesh(boxGeo, mat('#444')); arm.scale.set(.9, .1, .1); arm.position.set(p.x + .4, 4.8, p.z); scene.add(arm);
+    const lamp = new T.Mesh(new T.SphereGeometry(.2, 10, 8), mat('#ffe9a8', .3)); lamp.position.set(p.x + .8, 4.7, p.z); scene.add(lamp);
+    buildings.push({ x: p.x, z: p.z, hw: .35, hd: .35 }); }
 }
-function roadSpot() { for (let i = 0; i < 20; i++) { const x = rand(-HALF, HALF), z = rand(-HALF, HALF); if (onRoad(x, z)) return { x, z }; } return null; }
+function roadSpot() { for (let i = 0; i < 24; i++) { const x = rand(-HALF, HALF), z = rand(-HALF, HALF); if (onRoad(x, z)) return { x, z }; } return null; }
+function sidewalkSpot() { for (let i = 0; i < 60; i++) { const x = rand(-HALF + 4, HALF - 4), z = rand(-HALF + 4, HALF - 4); if (onSidewalk(x, z) && !blocked(x, z)) return { x, z }; } return null; }
 const LANDMARK_CENTRES = [];
 for (let i = 0; i < 9; i++) LANDMARK_CENTRES.push([((i % 3) - 1) * CELL, (((i / 3) | 0) - 1) * CELL]);
 function farFromLandmarks(x, z, r) { for (const [lx, lz] of LANDMARK_CENTRES) if ((x - lx) ** 2 + (z - lz) ** 2 < r * r) return false; return true; }
@@ -371,7 +404,7 @@ function findSpawn() {
 const npcs = [];
 function spawnNPCs(n) {
   for (let i = 0; i < n; i++) {
-    const p = roadSpot(); if (!p) continue;
+    const p = sidewalkSpot() || roadSpot(); if (!p) continue;
     const o = { skin: pick(SKINS), turban: Math.random() < .4, turbanColor: pick(TURBANS),
       kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: Math.random() < .6 };
     const g = buildCharacter(o); g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
@@ -440,13 +473,27 @@ addEventListener('click', e => { if (started && !dragging) { /* click punch on f
 // touch
 const tHeld = {};
 (function touch() {
-  if (matchMedia('(hover:none)').matches) $('touch').classList.add('on');
   const bind = (id, fn, up) => { const el = $(id); if (!el) return;
     el.addEventListener('touchstart', e => { e.preventDefault(); fn(); });
     if (up) el.addEventListener('touchend', e => { e.preventDefault(); up(); }); };
-  const set = (id, k) => bind(id, () => tHeld[k] = 1, () => tHeld[k] = 0);
-  set('tUp', 'up'); set('tDown', 'down'); set('tLeft', 'left'); set('tRight', 'right');
   bind('tAct', tryEnterExit); bind('tPunch', punch); bind('tSpit', spit);
+})();
+// analog thumbstick (touch + mouse)
+window.joy = { x: 0, z: 0, active: false };
+(function joystick() {
+  const base = $('joystick'), knob = $('joyknob'); if (!base) return;
+  const R = 46;
+  const apply = (px, py) => { const r = base.getBoundingClientRect(), cxp = r.left + r.width / 2, cyp = r.top + r.height / 2;
+    let dx = px - cxp, dy = py - cyp; const len = Math.hypot(dx, dy) || 1; if (len > R) { dx = dx / len * R; dy = dy / len * R; }
+    knob.style.transform = `translate(${dx}px,${dy}px)`; window.joy.x = dx / R; window.joy.z = dy / R; window.joy.active = true; };
+  const stop = () => { window.joy.active = false; window.joy.x = window.joy.z = 0; knob.style.transform = 'translate(0,0)'; };
+  base.addEventListener('touchstart', e => { e.preventDefault(); const t = e.touches[0]; base._id = t.identifier; apply(t.clientX, t.clientY); }, { passive: false });
+  base.addEventListener('touchmove', e => { e.preventDefault(); const t = [...e.touches].find(x => x.identifier === base._id) || e.touches[0]; if (t) apply(t.clientX, t.clientY); }, { passive: false });
+  base.addEventListener('touchend', e => { e.preventDefault(); stop(); });
+  base.addEventListener('touchcancel', e => { e.preventDefault(); stop(); });
+  base.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; apply(e.clientX, e.clientY);
+    const mv = ev => apply(ev.clientX, ev.clientY), up = () => { stop(); removeEventListener('pointermove', mv); removeEventListener('pointerup', up); };
+    addEventListener('pointermove', mv); addEventListener('pointerup', up); });
 })();
 
 // ---------- Actions ----------
@@ -461,11 +508,21 @@ function tryEnterExit() {
   if (best) { player.inVehicle = best; best.ai = false; player.g.visible = false; player.yaw = best.yaw; toast('DRIVE!'); ensureAudio(); }
 }
 function punch() {
-  if (!started || player.inVehicle) return; player.g.userData.punch = 1; blip(180, .08, 'square', .2);
-  const fx = player.pos.x + Math.sin(player.yaw) * 1.6, fz = player.pos.z + Math.cos(player.yaw) * 1.6;
+  if (!started || player.inVehicle) return;
+  if (!player.combo) player.combo = { ix: -1, t: 0 };
+  player.combo.ix = player.combo.t > 0 ? (player.combo.ix + 1) % 3 : 0; player.combo.t = 0.65;
+  const kind = player.combo.ix;
+  player.g.userData.attack = { kind, t: 1 };
+  blip(kind === 2 ? 150 : 190, .09, 'square', .22);
+  const reach = kind === 2 ? 2.2 : 1.8;
+  const fx = player.pos.x + Math.sin(player.yaw) * reach, fz = player.pos.z + Math.cos(player.yaw) * reach;
+  const label = kind === 0 ? 'JAB!' : kind === 1 ? 'CROSS! 👊' : 'KICK! 🦵';
   for (const n of npcs) { if (n.down > 0) continue;
-    if (n.g.position.distanceToSquared(new T.Vector3(fx, 0, fz)) < 2.0) {
-      n.down = 4; n.g.rotation.z = Math.PI / 2 - .1; n.g.position.y = 0.4; crime(1); toast('DHISHOOM! 👊', '#ff9f43'); spark(n.g.position); break; }
+    if (n.g.position.distanceToSquared(new T.Vector3(fx, 0, fz)) < reach * reach * .8) {
+      n.down = kind === 2 ? 5 : 4; n.g.rotation.z = Math.PI / 2 - .1; n.g.position.y = 0.4;
+      // knock-back
+      n.g.position.x += Math.sin(player.yaw) * (kind === 2 ? 1.6 : .8); n.g.position.z += Math.cos(player.yaw) * (kind === 2 ? 1.6 : .8);
+      crime(1); toast(label, '#ff9f43'); spark(n.g.position); break; }
   }
 }
 let spitCount = 0;
@@ -525,9 +582,10 @@ function blocked(x, z) { if (Math.abs(x) > HALF - 1 || Math.abs(z) > HALF - 1) r
 // ---------- update ----------
 let curDistrict = -1, started = false;
 function update(dt) {
-  // input direction (camera-relative)
-  const f = (keys['w'] || keys['arrowup'] || tHeld.up ? 1 : 0) - (keys['s'] || keys['arrowdown'] || tHeld.down ? 1 : 0);
-  const s = (keys['d'] || tHeld.right ? 1 : 0) - (keys['a'] || tHeld.left ? 1 : 0);
+  // input direction (camera-relative) — keyboard or analog thumbstick
+  let f = (keys['w'] ? 1 : 0) - (keys['s'] ? 1 : 0);
+  let s = (keys['d'] ? 1 : 0) - (keys['a'] ? 1 : 0);
+  if (window.joy && window.joy.active) { f = -window.joy.z; s = window.joy.x; }
   const turnKey = (keys['arrowright'] ? 1 : 0) - (keys['arrowleft'] ? 1 : 0);
   if (turnKey) cam.yaw -= turnKey * dt * 1.8;
 
@@ -553,6 +611,7 @@ function update(dt) {
   camera.lookAt(target.x, target.y + 1.7, target.z);
 
   // regen
+  if (player.combo) player.combo.t = Math.max(0, player.combo.t - dt);
   if (wanted === 0 && player.health < 100) player.health = clamp(player.health + dt * 2, 0, 100);
   if (!player.inVehicle) player.fuel = clamp(player.fuel + dt * 3, 0, 100);
   if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('hint').style.opacity = 0; }
@@ -562,16 +621,17 @@ function update(dt) {
 }
 function updateFoot(dt, f, s) {
   player.g.visible = true;
+  const mag = Math.min(1, Math.hypot(f, s));
   let dx = 0, dz = 0;
-  if (f || s) { const ang = cam.yaw; dx = Math.sin(ang) * f + Math.cos(ang) * s; dz = Math.cos(ang) * f - Math.sin(ang) * s;
+  if (mag > .12) { const ang = cam.yaw; dx = Math.sin(ang) * f + Math.cos(ang) * s; dz = Math.cos(ang) * f - Math.sin(ang) * s;
     const l = Math.hypot(dx, dz); dx /= l; dz /= l; }
-  const sprint = keys['shift'] ? 1.7 : 1, spd = 4.2 * sprint;
-  player.moving = !!(f || s); player.speed = player.moving ? spd : 0;
+  const sprint = keys['shift'] ? 1.6 : 1, spd = 4.2 * sprint * mag;
+  player.moving = mag > .12; player.speed = player.moving ? spd : 0;
   if (player.moving) { player.yaw = Math.atan2(dx, dz);
     const nx = player.pos.x + dx * spd * dt, nz = player.pos.z + dz * spd * dt;
     if (!blocked(nx, player.pos.z)) player.pos.x = nx; if (!blocked(player.pos.x, nz)) player.pos.z = nz; }
   player.g.position.copy(player.pos); player.g.rotation.y = player.yaw;
-  animateChar(player.g, player.moving, dt, spd);
+  animateChar(player.g, player.moving, dt, 4.2 * sprint);
 }
 function updateDrive(dt, f, s) {
   const v = player.inVehicle;
@@ -602,8 +662,9 @@ function updateVehicles(dt) {
   for (const v of vehicles) { if (v === player.inVehicle || !v.ai) continue;
     v.aiTimer -= dt; if (v.aiTimer <= 0) { v.aiDir = Math.round(v.aiDir / (Math.PI / 2)) * (Math.PI / 2) + (Math.random() < .3 ? (Math.random() < .5 ? Math.PI / 2 : -Math.PI / 2) : 0); v.aiTimer = rand(2, 5); }
     v.speed = lerp(v.speed, 5, .04); const nx = v.g.position.x + Math.sin(v.aiDir) * v.speed * dt, nz = v.g.position.z + Math.cos(v.aiDir) * v.speed * dt;
-    if (!blocked(nx, nz) && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { v.g.position.x = nx; v.g.position.z = nz; v.yaw = lerp(v.yaw, v.aiDir, .1); v.g.rotation.y = v.yaw; }
-    else { v.aiDir += Math.PI / 2; v.aiTimer = rand(1, 3); }
+    // traffic stays ON the road (not on sidewalks) and off obstacles
+    if (onRoad(nx, nz) && !blocked(nx, nz) && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { v.g.position.x = nx; v.g.position.z = nz; v.yaw = lerp(v.yaw, v.aiDir, .1); v.g.rotation.y = v.yaw; }
+    else { v.aiDir += (Math.random() < .5 ? 1 : -1) * Math.PI / 2; v.aiTimer = rand(1, 2.5); }
   }
 }
 function updateCops(dt) {
@@ -690,11 +751,12 @@ function startGame() {
   ensureAudio();
   previewOn = false;
   $('creator').style.display = 'none'; $('hud').style.display = 'block';
-  $('controls').innerHTML = '<b>WASD</b> move · <b>drag</b> look · <b>Shift</b> run<br><b>F</b> drive/exit · <b>J</b> punch · <b>T</b> paan-spit · <b>B</b> bribe · <b>H</b> horn';
+  $('joystick').classList.add('on'); $('touch').classList.add('on');
+  $('controls').innerHTML = '<b>Thumbstick</b> / WASD move · <b>drag</b> look<br><b>F</b> drive · <b>J</b> fight combo · <b>T</b> paan-spit · <b>B</b> bribe';
   // build player from chosen opts
   player.pos.copy(findSpawn());
   player.g = buildCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
-  spawnNPCs(18); spawnCows(6); spawnVehicles(10);
+  spawnNPCs(24); spawnCows(8); spawnVehicles(16);
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
 }
