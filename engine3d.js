@@ -30,58 +30,80 @@ function limb(w, h, color) { // rounded capsule, pivot at TOP
 }
 function buildCharacter(o) {
   const grp = new T.Group();
-  const skinM = mat(o.skin, .7);
-  const hip = 0.95;
-  // legs (pivot at hip) — capsules
-  const lL = limb(0.27, 0.95, o.dhoti); lL.position.set(-0.15, hip, 0);
-  const rL = limb(0.27, 0.95, o.dhoti); rL.position.set(0.15, hip, 0);
-  grp.add(lL, rL);
-  // torso (kurta) — rounded capsule, flattened front-to-back
-  const torso = new T.Mesh(new T.CapsuleGeometry(0.32, 0.5, 5, 14), mat(o.kurta));
-  torso.position.set(0, hip + 0.44, 0); torso.scale.set(1.05, 1, 0.72); grp.add(torso);
-  // shoulders rounded
-  const shoulder = new T.Mesh(new T.SphereGeometry(0.34, 14, 10), mat(o.kurta));
-  shoulder.position.set(0, hip + 0.84, 0); shoulder.scale.set(1.25, .6, .72); grp.add(shoulder);
-  // arms (pivot at shoulder)
-  const lA = limb(0.19, 0.82, o.kurta); lA.position.set(-0.42, hip + 0.86, 0);
-  const rA = limb(0.19, 0.82, o.kurta); rA.position.set(0.42, hip + 0.86, 0);
-  const lH = new T.Mesh(new T.SphereGeometry(0.11, 10, 8), skinM); lH.position.set(0, -0.74, 0); lA.add(lH);
-  const rH = new T.Mesh(new T.SphereGeometry(0.11, 10, 8), skinM); rH.position.set(0, -0.74, 0); rA.add(rH);
-  grp.add(lA, rA);
+  const skinM = mat(o.skin, .62), kurtaM = mat(o.kurta, .8), dhotiM = mat(o.dhoti, .82);
+  const darkM = mat('#20232a', .6), shoeM = mat('#3a2a1a', .5), beardM = mat('#161310', .85);
+  const hipY = 1.5, waistY = 1.55;
+
+  // pelvis
+  const pelvis = new T.Mesh(new T.CylinderGeometry(0.24, 0.26, 0.3, 12), dhotiM); pelvis.position.y = hipY; pelvis.scale.z = 0.72; grp.add(pelvis);
+
+  // legs (churidar + jutti) — pivot groups at hips
+  function makeLeg(side) {
+    const g = new T.Group(); g.position.set(0.13 * side, hipY - 0.02, 0);
+    const thigh = new T.Mesh(new T.CylinderGeometry(0.15, 0.11, 0.72, 10), dhotiM); thigh.position.y = -0.36; g.add(thigh);
+    const knee = new T.Mesh(new T.SphereGeometry(0.115, 10, 8), dhotiM); knee.position.y = -0.72; g.add(knee);
+    const calf = new T.Mesh(new T.CylinderGeometry(0.1, 0.075, 0.68, 10), dhotiM); calf.position.y = -1.08; g.add(calf);
+    const shoe = new T.Mesh(new T.SphereGeometry(0.12, 10, 8), shoeM); shoe.scale.set(1, 0.55, 1.7); shoe.position.set(0, -1.44, 0.08); g.add(shoe);
+    const toe = new T.Mesh(new T.ConeGeometry(0.07, 0.16, 8), shoeM); toe.rotation.x = Math.PI * 0.62; toe.position.set(0, -1.4, 0.3); g.add(toe);
+    grp.add(g); return g;
+  }
+  const rL = makeLeg(1), lL = makeLeg(-1);
+
+  // torso (kurta) — tapers to waist
+  const torso = new T.Mesh(new T.CylinderGeometry(0.34, 0.24, 0.85, 16), kurtaM); torso.position.y = waistY + 0.42; torso.scale.z = 0.62; grp.add(torso);
+  const chest = new T.Mesh(new T.SphereGeometry(0.34, 16, 12), kurtaM); chest.position.y = waistY + 0.82; chest.scale.set(1.18, 0.82, 0.66); grp.add(chest);
+  // kurta hem draping over the thighs
+  const hem = new T.Mesh(new T.CylinderGeometry(0.3, 0.48, 0.72, 18, 1, true), kurtaM); hem.material.side = T.DoubleSide; hem.position.y = waistY - 0.12; hem.scale.z = 0.82; grp.add(hem);
+  const placket = new T.Mesh(new T.BoxGeometry(0.035, 0.82, 0.03), darkM); placket.position.set(0, waistY + 0.45, 0.2); grp.add(placket);
+
+  // arms — upper + forearm + hand, pivot groups at shoulders
+  function makeArm(side) {
+    const g = new T.Group(); g.position.set(0.34 * side, waistY + 0.82, 0); g.rotation.z = -0.14 * side;
+    const up = new T.Mesh(new T.CylinderGeometry(0.1, 0.082, 0.55, 10), kurtaM); up.position.y = -0.28; g.add(up);
+    const elbow = new T.Mesh(new T.SphereGeometry(0.085, 10, 8), kurtaM); elbow.position.y = -0.55; g.add(elbow);
+    const fore = new T.Mesh(new T.CylinderGeometry(0.078, 0.066, 0.5, 10), skinM); fore.position.y = -0.82; g.add(fore);
+    const hand = new T.Mesh(new T.BoxGeometry(0.12, 0.17, 0.09), skinM); hand.position.y = -1.13; g.add(hand);
+    const thumb = new T.Mesh(new T.BoxGeometry(0.05, 0.09, 0.05), skinM); thumb.position.set(0.07 * side, -1.08, 0.02); g.add(thumb);
+    grp.add(g); return g;
+  }
+  const rA = makeArm(1), lA = makeArm(-1);
+
   // neck + head
-  const neck = new T.Mesh(new T.CylinderGeometry(0.1, 0.11, 0.16, 10), skinM); neck.position.set(0, hip + 0.95, 0); grp.add(neck);
-  const head = new T.Group(); head.position.set(0, hip + 1.16, 0); grp.add(head);
-  const face = new T.Mesh(new T.SphereGeometry(0.23, 18, 16), skinM); face.scale.set(1, 1.08, 1); head.add(face);
-  // nose
-  const nose = new T.Mesh(new T.SphereGeometry(0.05, 8, 8), skinM); nose.position.set(0, -0.02, 0.22); head.add(nose);
-  // eyes
-  const eyeM = mat('#15130f', .4);
-  for (const sx of [-0.09, 0.09]) { const e = new T.Mesh(new T.SphereGeometry(0.033, 8, 8), eyeM); e.position.set(sx, 0.05, 0.2); head.add(e); }
-  // turban or hair
+  const neck = new T.Mesh(new T.CylinderGeometry(0.09, 0.1, 0.18, 10), skinM); neck.position.y = waistY + 1.04; grp.add(neck);
+  const head = new T.Group(); head.position.y = waistY + 1.3; grp.add(head);
+  const skull = new T.Mesh(new T.SphereGeometry(0.25, 20, 18), skinM); skull.scale.set(0.92, 1.06, 1); head.add(skull);
+  const jaw = new T.Mesh(new T.SphereGeometry(0.2, 16, 14), skinM); jaw.scale.set(0.88, 0.68, 0.9); jaw.position.set(0, -0.16, 0.02); head.add(jaw);
+  for (const sx of [-1, 1]) { const ear = new T.Mesh(new T.SphereGeometry(0.06, 8, 8), skinM); ear.scale.set(0.5, 1, 0.7); ear.position.set(0.235 * sx, -0.02, 0); head.add(ear); }
+  const nose = new T.Mesh(new T.ConeGeometry(0.05, 0.13, 8), skinM); nose.rotation.x = Math.PI * 0.56; nose.position.set(0, -0.02, 0.25); head.add(nose);
+  for (const sx of [-1, 1]) {
+    const white = new T.Mesh(new T.SphereGeometry(0.045, 10, 8), mat('#f2efe9', .35)); white.scale.z = 0.5; white.position.set(0.09 * sx, 0.045, 0.21); head.add(white);
+    const pupil = new T.Mesh(new T.SphereGeometry(0.022, 8, 8), mat('#20140a', .3)); pupil.position.set(0.09 * sx, 0.045, 0.245); head.add(pupil);
+    const brow = new T.Mesh(new T.BoxGeometry(0.1, 0.022, 0.03), beardM); brow.position.set(0.09 * sx, 0.1, 0.235); brow.rotation.z = 0.1 * sx; head.add(brow);
+  }
+  // turban / hair
   if (o.turban) {
     const tM = mat(o.turbanColor, .6);
-    const dome = new T.Mesh(new T.SphereGeometry(0.29, 20, 14), tM); dome.scale.set(1.08, .95, 1.08); dome.position.set(0, 0.2, 0); head.add(dome);
-    const wrap = new T.Mesh(new T.TorusGeometry(0.27, 0.1, 12, 22), tM); wrap.rotation.x = Math.PI / 2; wrap.position.set(0, 0.12, 0); head.add(wrap);
-    const wrap2 = new T.Mesh(new T.TorusGeometry(0.3, 0.08, 12, 22), tM); wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, 0.03, 0.02); head.add(wrap2);
-    const jewel = new T.Mesh(new T.SphereGeometry(0.055, 12, 12), mat('#ffd700', .25)); jewel.position.set(0, 0.16, 0.28); head.add(jewel);
-    const plume = new T.Mesh(new T.ConeGeometry(0.05, 0.3, 10), mat('#f5f5f5', .7)); plume.position.set(0, 0.44, 0.18); plume.rotation.x = -0.3; head.add(plume);
+    const dome = new T.Mesh(new T.SphereGeometry(0.27, 20, 14), tM); dome.scale.set(1.08, .95, 1.08); dome.position.set(0, 0.22, 0); head.add(dome);
+    const wrap = new T.Mesh(new T.TorusGeometry(0.26, 0.095, 12, 22), tM); wrap.rotation.x = Math.PI / 2; wrap.position.set(0, 0.14, 0); head.add(wrap);
+    const wrap2 = new T.Mesh(new T.TorusGeometry(0.285, 0.08, 12, 22), tM); wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, 0.04, 0.02); head.add(wrap2);
+    const jewel = new T.Mesh(new T.SphereGeometry(0.055, 12, 12), mat('#ffd700', .25)); jewel.position.set(0, 0.18, 0.27); head.add(jewel);
+    const plume = new T.Mesh(new T.ConeGeometry(0.05, 0.3, 10), mat('#f5f5f5', .7)); plume.position.set(0, 0.48, 0.16); plume.rotation.x = -0.3; head.add(plume);
   } else {
-    const hair = new T.Mesh(new T.SphereGeometry(0.24, 16, 12, 0, TAU, 0, Math.PI / 1.7), mat('#0d0b0a', .8)); hair.position.set(0, 0.06, 0); head.add(hair);
+    const hair = new T.Mesh(new T.SphereGeometry(0.255, 16, 12, 0, TAU, 0, Math.PI / 1.8), mat('#0d0b0a', .85)); hair.position.set(0, 0.05, 0); head.add(hair);
   }
-  // beard (rounded)
+  // beard
   if (o.beard !== 'none') {
-    const bM = mat('#161310', .85);
-    const b = new T.Mesh(new T.SphereGeometry(0.22, 16, 14), bM);
-    if (o.beard === 'stubble') { b.scale.set(1.02, .55, .7); b.position.set(0, -0.12, .03); }
-    else if (o.beard === 'full') { b.scale.set(1.04, .85, .8); b.position.set(0, -0.16, .02); }
-    else { b.scale.set(1.02, 1.25, .8); b.position.set(0, -0.3, .02); }
+    const b = new T.Mesh(new T.SphereGeometry(0.21, 16, 14), beardM);
+    if (o.beard === 'stubble') { b.scale.set(1.0, .5, .68); b.position.set(0, -0.13, .04); }
+    else if (o.beard === 'full') { b.scale.set(1.02, .82, .78); b.position.set(0, -0.17, .03); }
+    else { b.scale.set(1.0, 1.3, .8); b.position.set(0, -0.34, .03); }
     head.add(b);
   }
-  if (o.moustache) { const m = new T.Mesh(new T.TorusGeometry(0.08, 0.028, 8, 14, Math.PI), mat('#161310', .85)); m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, -0.03, 0.21); head.add(m); }
+  if (o.moustache) { const m = new T.Mesh(new T.TorusGeometry(0.075, 0.026, 8, 14, Math.PI), beardM); m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, -0.04, 0.24); head.add(m); }
 
   grp.traverse(o2 => { if (o2.isMesh) o2.castShadow = true; });
   grp.userData = { lL, rL, lA, rA, head, phase: 0, punch: 0 };
-  grp.scale.set(0.62, 0.62, 0.62);
+  grp.scale.setScalar(0.53); // ~1.85 m tall
   return grp;
 }
 function animateChar(g, moving, dt, speed) {
@@ -565,7 +587,7 @@ function initPreview() {
   pRenderer.toneMapping = T.ACESFilmicToneMapping; pRenderer.toneMappingExposure = 1.0;
   pRenderer.shadowMap.enabled = true; pRenderer.shadowMap.type = T.PCFSoftShadowMap;
   pScene = new T.Scene();
-  pCam = new T.PerspectiveCamera(40, w / h, .1, 100); pCam.position.set(0, 1.6, 4.4); pCam.lookAt(0, 1.4, 0);
+  pCam = new T.PerspectiveCamera(40, w / h, .1, 100); pCam.position.set(0, 1.05, 3.9); pCam.lookAt(0, 1.0, 0);
   pScene.add(new T.HemisphereLight('#cfe0ff', '#33302a', .38));
   const dl = new T.DirectionalLight('#fff4e0', 1.15); dl.position.set(3, 6, 4); dl.castShadow = true; dl.shadow.mapSize.set(1024, 1024); pScene.add(dl);
   pScene.add(new T.DirectionalLight('#a0b0d0', .2).translateX(-4).translateZ(-2));
@@ -577,7 +599,7 @@ function initPreview() {
   addEventListener('pointermove', e => { if (dr && pChar) { pChar.rotation.y += (e.clientX - lx) * .01; lx = e.clientX; previewSpin = false; } });
 }
 let previewSpin = true, previewYaw = 0;
-function rebuildPreview() { if (pChar) pScene.remove(pChar); pChar = buildCharacter(opts); pChar.scale.set(1.15, 1.15, 1.15); pChar.rotation.y = previewYaw; pScene.add(pChar); }
+function rebuildPreview() { if (pChar) pScene.remove(pChar); pChar = buildCharacter(opts); pChar.scale.setScalar(0.6); pChar.rotation.y = previewYaw; pScene.add(pChar); }
 function updatePreview(dt) { if (previewSpin && pChar) { previewYaw += dt * .6; pChar.rotation.y = previewYaw; } }
 
 // ---------- Creator UI wiring ----------
@@ -612,7 +634,7 @@ function startGame() {
   // build player from chosen opts
   player.pos.copy(findSpawn());
   player.g = buildCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
-  spawnNPCs(26); spawnCows(6); spawnVehicles(10);
+  spawnNPCs(18); spawnCows(6); spawnVehicles(10);
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
 }
