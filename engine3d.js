@@ -28,6 +28,11 @@ function limb(w, h, color) { // rounded capsule, pivot at TOP
   const r = w / 2; const g = new T.CapsuleGeometry(r, Math.max(0.02, h - 2 * r), 4, 10); g.translate(0, -h / 2, 0);
   return new T.Mesh(g, mat(color));
 }
+function mute(hex, f) { // desaturate toward warm concrete so the city matches the realistic avatar
+  const n = parseInt(hex.slice(1), 16); const r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  const mr = 148, mg = 140, mb = 128; f = f == null ? .42 : f;
+  return `rgb(${(r + (mr - r) * f) | 0},${(g + (mg - g) * f) | 0},${(b + (mb - b) * f) | 0}`+`)`;
+}
 function shadeHex(hex, amt) { const n = parseInt(hex.slice(1), 16); let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
   r = clamp(r + amt, 0, 255); g = clamp(g + amt, 0, 255); b = clamp(b + amt, 0, 255); return `rgb(${r | 0},${g | 0},${b | 0})`; }
 // paint a full head/face onto an equirectangular texture (face centred at u=0.5)
@@ -186,17 +191,62 @@ function loadHero(cb) {
     }, () => cb(null));
   } catch (e) { cb(null); }
 }
+// fabric textures so the clothes read as Indian attire, not a western suit
+function makeBrocadeTexture(baseHex) {
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  g.fillStyle = baseHex; g.fillRect(0, 0, S, S);
+  // silk sheen
+  const sh = g.createLinearGradient(0, 0, S, S);
+  sh.addColorStop(0, 'rgba(255,255,255,.10)'); sh.addColorStop(.5, 'rgba(0,0,0,.06)'); sh.addColorStop(1, 'rgba(255,255,255,.08)');
+  g.fillStyle = sh; g.fillRect(0, 0, S, S);
+  // woven grain
+  g.globalAlpha = .05; g.strokeStyle = '#000';
+  for (let y = 0; y < S; y += 3) { g.beginPath(); g.moveTo(0, y); g.lineTo(S, y); g.stroke(); }
+  g.globalAlpha = 1;
+  // gold zari motifs — staggered paisley dots
+  const gold = 'rgba(212,175,55,.75)', goldDim = 'rgba(212,175,55,.35)';
+  for (let r = 0; r < 8; r++) for (let cc = 0; cc < 8; cc++) {
+    const x = cc * 32 + (r % 2 ? 16 : 0) + 8, y = r * 32 + 10;
+    g.fillStyle = gold; g.beginPath(); g.arc(x, y, 2.6, 0, TAU); g.fill();
+    g.strokeStyle = goldDim; g.lineWidth = 1.2;
+    g.beginPath(); g.arc(x, y, 6, 0.6, 0.6 + Math.PI * 1.4); g.stroke(); // paisley curl
+  }
+  const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(3, 3);
+  if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
+}
+function makeTurbanTexture(baseHex) {
+  const S = 128, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  g.fillStyle = baseHex; g.fillRect(0, 0, S, S);
+  // wrapped-cloth folds: soft diagonal bands
+  for (let i = -S; i < S * 2; i += 14) {
+    const grd = g.createLinearGradient(i, 0, i + 14, S);
+    grd.addColorStop(0, 'rgba(0,0,0,.16)'); grd.addColorStop(.5, 'rgba(255,255,255,.10)'); grd.addColorStop(1, 'rgba(0,0,0,.12)');
+    g.fillStyle = grd; g.save(); g.translate(i, 0); g.rotate(0.5); g.fillRect(0, -S, 12, S * 3); g.restore();
+  }
+  const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(4, 2);
+  if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
+}
 // accessories authored in metres around the head centre
 const ACC = { turbY: 0.10, turbZ: 0.0, beardY: -0.085, beardZ: 0.055, mouY: -0.045, mouZ: 0.095 };
 function buildHeadgear(o) {
   const g = new T.Group();
   if (o.turban) {
-    const tM = mat(o.turbanColor, .6);
-    const dome = new T.Mesh(new T.SphereGeometry(0.125, 20, 12, 0, TAU, 0, Math.PI / 2), tM); dome.position.y = ACC.turbY; g.add(dome);
-    const wrap = new T.Mesh(new T.TorusGeometry(0.115, 0.038, 10, 22), tM); wrap.rotation.x = Math.PI / 2; wrap.position.y = ACC.turbY + 0.01; g.add(wrap);
-    const wrap2 = new T.Mesh(new T.TorusGeometry(0.122, 0.03, 10, 22), tM); wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, ACC.turbY - 0.025, 0.006); g.add(wrap2);
-    const jewel = new T.Mesh(new T.SphereGeometry(0.022, 10, 10), mat('#ffd700', .25)); jewel.position.set(0, ACC.turbY + 0.015, 0.115); g.add(jewel);
-    const plume = new T.Mesh(new T.ConeGeometry(0.02, 0.12, 8), mat('#f5f5f5', .7)); plume.position.set(0, ACC.turbY + 0.14, 0.04); plume.rotation.x = -0.25; g.add(plume);
+    // smooth wrapped pagdi: lathe profile + cloth-fold texture, matching the avatar's realism
+    const tM = new T.MeshStandardMaterial({ color: '#ffffff', map: makeTurbanTexture(o.turbanColor), roughness: .78, metalness: 0 });
+    const prof = [];
+    prof.push(new T.Vector2(0.001, 0.155));
+    prof.push(new T.Vector2(0.055, 0.150));
+    prof.push(new T.Vector2(0.105, 0.118));
+    prof.push(new T.Vector2(0.128, 0.072));
+    prof.push(new T.Vector2(0.126, 0.028));
+    prof.push(new T.Vector2(0.112, -0.008));
+    prof.push(new T.Vector2(0.092, -0.028));
+    const pag = new T.Mesh(new T.LatheGeometry(prof, 28), tM); pag.position.y = ACC.turbY - 0.035; g.add(pag);
+    // front band across the brow
+    const band = new T.Mesh(new T.TorusGeometry(0.101, 0.018, 10, 26), tM); band.rotation.x = Math.PI / 2;
+    band.position.y = ACC.turbY - 0.055; band.scale.set(1, 1, 1.04); g.add(band);
+    const jewel = new T.Mesh(new T.SphereGeometry(0.018, 12, 12), mat('#ffd700', .2)); jewel.position.set(0, ACC.turbY + 0.02, 0.112); g.add(jewel);
+    const plume = new T.Mesh(new T.ConeGeometry(0.013, 0.085, 8), mat('#f2ead8', .65)); plume.position.set(0, ACC.turbY + 0.135, 0.075); plume.rotation.x = -0.35; g.add(plume);
   }
   if (o.beard && o.beard !== 'none') {
     const bM = mat('#171310', .85);
@@ -221,8 +271,10 @@ function makeHuman(o) {
     n.castShadow = true; n.frustumCulled = false;
     const mn = (n.material && n.material.name) || '';
     n.material = n.material.clone();
-    if (/Outfit_Top/i.test(mn)) n.material.color = new T.Color(o.kurta);            // kurta
-    else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // dhoti/pyjama
+    if (/Outfit_Top/i.test(mn)) { // sherwani: gold-zari brocade in the chosen colour
+      n.material.map = makeBrocadeTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .72; }
+    else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // churidar / pyjama
+    else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#7a4f28');        // leather juttis
     else if (/Skin|Body/i.test(mn)) n.material.color = skinTint;                     // face + body skin tone
     else if (/Headwear/i.test(mn)) n.visible = false;                                // replaced by our pagdi
     else if (/Beard/i.test(mn)) n.visible = o.beard !== 'none';                      // the avatar's real beard
@@ -362,7 +414,7 @@ function makeGroundTexture() {
   const S = 2048, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
   const u = w => w / WORLD * S, px = v => (v + HALF) / WORLD * S;
   for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
-    g.fillStyle = DISTRICTS[i].ground; g.fillRect(mx * S / 3, mz * S / 3, S / 3 + 1, S / 3 + 1); }
+    g.fillStyle = mute(DISTRICTS[i].ground, .3); g.fillRect(mx * S / 3, mz * S / 3, S / 3 + 1, S / 3 + 1); }
   g.fillStyle = 'rgba(60,50,35,.06)'; for (let i = 0; i < 6000; i++) g.fillRect(Math.random() * S, Math.random() * S, 2, 2);
   // sidewalks (light paving) — a band straddling each road
   g.fillStyle = '#9a978f';
@@ -373,6 +425,11 @@ function makeGroundTexture() {
   // roads (dark asphalt) on top, leaving sidewalk visible
   g.fillStyle = '#3b3b41';
   for (let v = -HALF; v <= HALF; v += STEP) { g.fillRect(px(v), 0, u(ROADW), S); g.fillRect(0, px(v), S, u(ROADW)); }
+  // asphalt grain
+  g.globalAlpha = .12;
+  for (let i = 0; i < 9000; i++) { const x = Math.random() * S, y = Math.random() * S;
+    g.fillStyle = Math.random() < .5 ? '#2e2e33' : '#4a4a52'; g.fillRect(x, y, 1.6, 1.6); }
+  g.globalAlpha = 1;
   // curb line
   g.strokeStyle = 'rgba(20,20,24,.5)'; g.lineWidth = 2;
   for (let v = -HALF; v <= HALF; v += STEP) { for (const e of [px(v), px(v) + u(ROADW)]) { g.beginPath(); g.moveTo(e, 0); g.lineTo(e, S); g.stroke(); g.beginPath(); g.moveTo(0, e); g.lineTo(S, e); g.stroke(); } }
@@ -394,7 +451,13 @@ function makeWindowTexture() {
     g.beginPath(); g.moveTo(x + ww / 2, y); g.lineTo(x + ww / 2, y + wh); g.moveTo(x, y + wh / 2); g.lineTo(x + ww, y + wh / 2); g.stroke();
     // AC box under some windows
     if (Math.random() < .25) { g.fillStyle = '#8a8680'; g.fillRect(x + ww * .3, y + wh, ww * .4, pady * .5); }
+    // grime streak under the sill
+    if (Math.random() < .5) { const gr = g.createLinearGradient(0, y + wh, 0, y + wh + pady * 1.6);
+      gr.addColorStop(0, 'rgba(40,35,25,.30)'); gr.addColorStop(1, 'rgba(40,35,25,0)');
+      g.fillStyle = gr; g.fillRect(x - 2, y + wh, ww + 4, pady * 1.6); }
   }
+  // overall weathering
+  g.globalAlpha = .06; for (let i = 0; i < 1400; i++) { g.fillStyle = Math.random() < .5 ? '#000' : '#fff'; g.fillRect(Math.random() * S, Math.random() * S, 2, 2); } g.globalAlpha = 1;
   const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
 }
 function buildCity() {
@@ -416,7 +479,7 @@ function buildCity() {
       if (Math.abs(px2) > HALF - 2 || Math.abs(pz2) > HALF - 2) continue;
       const D = DISTRICTS[districtAt(px2, pz2)];
       const h = rand(5, 17), w = cw * rand(.72, .92), d = cd * rand(.72, .92);
-      const bm = new T.MeshStandardMaterial({ color: new T.Color(pick(D.pal)), map: winTex, roughness: .92, metalness: .02 });
+      const bm = new T.MeshStandardMaterial({ color: new T.Color(mute(pick(D.pal))), map: winTex, roughness: .92, metalness: .02 });
       const m = new T.Mesh(boxGeo, bm); m.scale.set(w, h, d); m.position.set(px2, h / 2, pz2); m.castShadow = true; m.receiveShadow = true; scene.add(m);
       // parapet roof slab
       const roof = new T.Mesh(boxGeo, mat('#2b2b32')); roof.scale.set(w + .25, .5, d + .25); roof.position.set(px2, h + .1, pz2); roof.castShadow = true; scene.add(roof);
@@ -464,7 +527,7 @@ function buildTree(palm) {
   } else {
     const tr = new T.Mesh(new T.CylinderGeometry(.22, .32, 2.4, 8), mat('#6b4a2a')); tr.position.y = 1.2; tr.castShadow = true; g.add(tr);
     for (const [dx, dy, dz, r] of [[0, 3, 0, 1.5], [-.9, 2.6, .4, 1.1], [.8, 2.7, -.4, 1.05], [.2, 3.6, .5, .95]]) {
-      const f = new T.Mesh(new T.SphereGeometry(r, 12, 10), mat(pick(['#3f7d3f', '#4f9e5b', '#357a45']), .9)); f.position.set(dx, dy, dz); f.castShadow = true; g.add(f); }
+      const f = new T.Mesh(new T.SphereGeometry(r, 12, 10), mat(pick(['#3a6b39', '#456f42', '#31603a']), .95)); f.position.set(dx, dy, dz); f.castShadow = true; g.add(f); }
   }
   return g;
 }
@@ -725,7 +788,7 @@ function updateFoot(dt, f, s) {
   player.g.visible = true;
   const mag = Math.min(1, Math.hypot(f, s));
   let dx = 0, dz = 0;
-  if (mag > .12) { const ang = cam.yaw; dx = Math.sin(ang) * f + Math.cos(ang) * s; dz = Math.cos(ang) * f - Math.sin(ang) * s;
+  if (mag > .12) { const ang = cam.yaw; dx = Math.sin(ang) * f - Math.cos(ang) * s; dz = Math.cos(ang) * f + Math.sin(ang) * s;
     const l = Math.hypot(dx, dz); dx /= l; dz /= l; }
   const sprint = keys['shift'] ? 1.6 : 1, spd = 4.2 * sprint * mag;
   player.moving = mag > .12; player.speed = player.moving ? spd : 0;
