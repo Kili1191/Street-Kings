@@ -28,6 +28,77 @@ function limb(w, h, color) { // rounded capsule, pivot at TOP
   const r = w / 2; const g = new T.CapsuleGeometry(r, Math.max(0.02, h - 2 * r), 4, 10); g.translate(0, -h / 2, 0);
   return new T.Mesh(g, mat(color));
 }
+function shadeHex(hex, amt) { const n = parseInt(hex.slice(1), 16); let r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+  r = clamp(r + amt, 0, 255); g = clamp(g + amt, 0, 255); b = clamp(b + amt, 0, 255); return `rgb(${r | 0},${g | 0},${b | 0})`; }
+// paint a full head/face onto an equirectangular texture (face centred at u=0.5)
+function makeFaceTexture(o) {
+  const W = 640, H = 320, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
+  const cx = W * .5, browY = H * .33, eyeY = H * .40, noseY = H * .50, mouthY = H * .585, chinY = H * .66;
+  const eyeDX = W * .07, earDX = W * .25, skin = o.skin;
+  // base skin + vertical shading
+  g.fillStyle = skin; g.fillRect(0, 0, W, H);
+  const vg = g.createLinearGradient(0, 0, 0, H);
+  vg.addColorStop(0, shadeHex(skin, 18)); vg.addColorStop(.4, skin); vg.addColorStop(1, shadeHex(skin, -30));
+  g.globalAlpha = .5; g.fillStyle = vg; g.fillRect(0, 0, W, H); g.globalAlpha = 1;
+  // forehead + cheek highlights, cheek warmth
+  const soft = (x, y, r, col, a) => { const rg = g.createRadialGradient(x, y, 0, x, y, r); rg.addColorStop(0, col); rg.addColorStop(1, 'rgba(0,0,0,0)'); g.globalAlpha = a; g.fillStyle = rg; g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); g.globalAlpha = 1; };
+  soft(cx, browY - 22, 70, shadeHex(skin, 30), .5);
+  soft(cx - 78, eyeY + 34, 46, '#c9605a', .18); soft(cx + 78, eyeY + 34, 46, '#c9605a', .18);
+  soft(cx, noseY + 8, 14, shadeHex(skin, 24), .5);
+  // skin speckle
+  g.globalAlpha = .05; for (let i = 0; i < 900; i++) { g.fillStyle = Math.random() < .5 ? '#000' : '#fff'; g.fillRect(rand(cx - 130, cx + 130), rand(browY - 30, chinY + 20), 1.5, 1.5); } g.globalAlpha = 1;
+  // nose: bridge highlight + side shadow + nostrils + tip
+  g.globalAlpha = .28; g.strokeStyle = shadeHex(skin, -34); g.lineWidth = 7; g.beginPath(); g.moveTo(cx - 9, browY + 6); g.quadraticCurveTo(cx - 13, noseY - 8, cx - 15, noseY); g.stroke();
+  g.beginPath(); g.moveTo(cx + 9, browY + 6); g.quadraticCurveTo(cx + 13, noseY - 8, cx + 15, noseY); g.stroke(); g.globalAlpha = 1;
+  g.globalAlpha = .5; g.strokeStyle = shadeHex(skin, 26); g.lineWidth = 4; g.beginPath(); g.moveTo(cx, browY + 4); g.lineTo(cx, noseY - 6); g.stroke(); g.globalAlpha = 1;
+  soft(cx, noseY, 15, shadeHex(skin, 16), .6);
+  g.fillStyle = shadeHex(skin, -55); g.beginPath(); g.ellipse(cx - 9, noseY + 4, 4, 3, 0, 0, TAU); g.ellipse(cx + 9, noseY + 4, 4, 3, 0, 0, TAU); g.fill();
+  // eyes
+  const drawEye = sx => {
+    const ex = cx + sx * eyeDX;
+    g.fillStyle = shadeHex(skin, -20); g.globalAlpha = .3; g.beginPath(); g.ellipse(ex, eyeY, 26, 16, 0, 0, TAU); g.fill(); g.globalAlpha = 1; // socket
+    g.save(); g.beginPath(); g.ellipse(ex, eyeY, 19, 10, 0, 0, TAU); g.clip(); // eye opening (clips lids)
+    g.fillStyle = '#e9e3d6'; g.fillRect(ex - 20, eyeY - 12, 40, 24); // sclera
+    const ig = g.createRadialGradient(ex, eyeY - 1, 1, ex, eyeY, 10); ig.addColorStop(0, '#6b4a2a'); ig.addColorStop(.65, '#3d2a17'); ig.addColorStop(1, '#1c1109');
+    g.fillStyle = ig; g.beginPath(); g.arc(ex, eyeY, 9, 0, TAU); g.fill(); // iris
+    g.fillStyle = '#000'; g.beginPath(); g.arc(ex, eyeY, 4, 0, TAU); g.fill(); // pupil
+    g.fillStyle = 'rgba(255,255,255,.95)'; g.beginPath(); g.arc(ex - 3.5, eyeY - 3.5, 2.2, 0, TAU); g.fill(); // glint
+    g.restore();
+    g.strokeStyle = '#171210'; g.lineWidth = 3.5; g.beginPath(); g.moveTo(ex - 19, eyeY - 3); g.quadraticCurveTo(ex, eyeY - 12, ex + 19, eyeY - 4); g.stroke(); // upper lid line
+    g.strokeStyle = shadeHex(skin, -16); g.lineWidth = 1.6; g.globalAlpha = .55; g.beginPath(); g.moveTo(ex - 17, eyeY + 9); g.quadraticCurveTo(ex, eyeY + 12, ex + 17, eyeY + 9); g.stroke(); g.globalAlpha = 1; // lower lid
+  };
+  drawEye(-1); drawEye(1);
+  // eyebrows
+  g.fillStyle = '#1c1712';
+  const brow = sx => { const bx = cx + sx * eyeDX; g.beginPath(); g.moveTo(bx - 26, browY + 6); g.quadraticCurveTo(bx - 2, browY - 8, bx + 26, browY + 2); g.quadraticCurveTo(bx, browY + 4, bx - 26, browY + 12); g.closePath(); g.fill(); };
+  brow(-1); brow(1);
+  // lips
+  g.fillStyle = '#a85c52'; g.beginPath(); g.moveTo(cx - 30, mouthY); g.quadraticCurveTo(cx, mouthY - 8, cx + 30, mouthY); g.quadraticCurveTo(cx, mouthY - 2, cx - 30, mouthY); g.fill();
+  g.fillStyle = '#b96a5e'; g.beginPath(); g.moveTo(cx - 28, mouthY + 1); g.quadraticCurveTo(cx, mouthY + 14, cx + 28, mouthY + 1); g.quadraticCurveTo(cx, mouthY + 6, cx - 28, mouthY + 1); g.fill();
+  g.strokeStyle = '#5c2f27'; g.lineWidth = 2; g.beginPath(); g.moveTo(cx - 28, mouthY); g.quadraticCurveTo(cx, mouthY + 4, cx + 28, mouthY); g.stroke();
+  // ears
+  for (const sx of [-1, 1]) { const exx = cx + sx * earDX; g.fillStyle = skin; g.beginPath(); g.ellipse(exx, eyeY + 10, 16, 26, 0, 0, TAU); g.fill(); g.fillStyle = shadeHex(skin, -34); g.globalAlpha = .5; g.beginPath(); g.ellipse(exx, eyeY + 10, 7, 14, 0, 0, TAU); g.fill(); g.globalAlpha = 1; }
+  // beard / moustache painted for realism
+  if (o.beard !== 'none' || o.moustache) {
+    const bc = '#171310';
+    const region = (alpha, extendChin) => {
+      g.globalAlpha = alpha; g.fillStyle = bc; g.beginPath();
+      g.moveTo(cx - 62, eyeY + 30); g.quadraticCurveTo(cx - 74, mouthY, cx - 46, chinY + extendChin);
+      g.quadraticCurveTo(cx, chinY + 14 + extendChin, cx + 46, chinY + extendChin);
+      g.quadraticCurveTo(cx + 74, mouthY, cx + 62, eyeY + 30);
+      g.quadraticCurveTo(cx, eyeY + 46, cx - 62, eyeY + 30); g.closePath(); g.fill(); g.globalAlpha = 1;
+    };
+    if (o.beard === 'stubble') { g.globalAlpha = .04; for (let i = 0; i < 2600; i++) g.fillRect(rand(cx - 66, cx + 66), rand(eyeY + 34, chinY + 6), 1.6, 1.6); g.globalAlpha = 1; g.fillStyle = bc; }
+    else if (o.beard === 'full') region(.9, 6);
+    else if (o.beard === 'long') region(.92, 34);
+    // cut the mouth back out so lips show through a full beard
+    if (o.beard === 'full' || o.beard === 'long') { g.save(); g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.ellipse(cx, mouthY + 2, 26, 12, 0, 0, TAU); g.fill(); g.restore();
+      g.fillStyle = '#a85c52'; g.beginPath(); g.moveTo(cx - 26, mouthY); g.quadraticCurveTo(cx, mouthY + 12, cx + 26, mouthY); g.quadraticCurveTo(cx, mouthY + 4, cx - 26, mouthY); g.fill(); }
+    if (o.moustache) { g.fillStyle = bc; g.beginPath(); g.moveTo(cx - 30, mouthY - 8); g.quadraticCurveTo(cx, mouthY - 2, cx + 30, mouthY - 8); g.quadraticCurveTo(cx + 16, mouthY + 4, cx, mouthY - 4); g.quadraticCurveTo(cx - 16, mouthY + 4, cx - 30, mouthY - 8); g.fill(); }
+  }
+  const tex = new T.CanvasTexture(c); if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; tex.anisotropy = 4; return tex;
+}
+let FACE_YAW = -Math.PI / 2; // aligns the painted face (texture u=0.5 → +X) to the character's forward (+Z)
 function buildCharacter(o) {
   const grp = new T.Group();
   const skinM = mat(o.skin, .62), kurtaM = mat(o.kurta, .8), dhotiM = mat(o.dhoti, .82);
@@ -68,38 +139,27 @@ function buildCharacter(o) {
   }
   const rA = makeArm(1), lA = makeArm(-1);
 
-  // neck + head
+  // neck + head (painted face texture for a recognisable face)
   const neck = new T.Mesh(new T.CylinderGeometry(0.09, 0.1, 0.18, 10), skinM); neck.position.y = waistY + 1.04; grp.add(neck);
   const head = new T.Group(); head.position.y = waistY + 1.3; grp.add(head);
-  const skull = new T.Mesh(new T.SphereGeometry(0.25, 20, 18), skinM); skull.scale.set(0.92, 1.06, 1); head.add(skull);
-  const jaw = new T.Mesh(new T.SphereGeometry(0.2, 16, 14), skinM); jaw.scale.set(0.88, 0.68, 0.9); jaw.position.set(0, -0.16, 0.02); head.add(jaw);
-  for (const sx of [-1, 1]) { const ear = new T.Mesh(new T.SphereGeometry(0.06, 8, 8), skinM); ear.scale.set(0.5, 1, 0.7); ear.position.set(0.235 * sx, -0.02, 0); head.add(ear); }
-  const nose = new T.Mesh(new T.ConeGeometry(0.05, 0.13, 8), skinM); nose.rotation.x = Math.PI * 0.56; nose.position.set(0, -0.02, 0.25); head.add(nose);
-  for (const sx of [-1, 1]) {
-    const white = new T.Mesh(new T.SphereGeometry(0.045, 10, 8), mat('#f2efe9', .35)); white.scale.z = 0.5; white.position.set(0.09 * sx, 0.045, 0.21); head.add(white);
-    const pupil = new T.Mesh(new T.SphereGeometry(0.022, 8, 8), mat('#20140a', .3)); pupil.position.set(0.09 * sx, 0.045, 0.245); head.add(pupil);
-    const brow = new T.Mesh(new T.BoxGeometry(0.1, 0.022, 0.03), beardM); brow.position.set(0.09 * sx, 0.1, 0.235); brow.rotation.z = 0.1 * sx; head.add(brow);
-  }
+  const faceTex = makeFaceTexture(o);
+  const skull = new T.Mesh(new T.SphereGeometry(0.25, 32, 28), new T.MeshStandardMaterial({ map: faceTex, roughness: .62, metalness: 0 }));
+  skull.scale.set(0.94, 1.08, 0.98); skull.rotation.y = FACE_YAW; head.add(skull);
+  // a little chin/jaw volume under the textured skull
+  const nose = new T.Mesh(new T.ConeGeometry(0.045, 0.11, 10), skinM); nose.rotation.x = Math.PI * 0.54; nose.position.set(0, -0.02, 0.25); head.add(nose);
   // turban / hair
   if (o.turban) {
     const tM = mat(o.turbanColor, .6);
-    const dome = new T.Mesh(new T.SphereGeometry(0.27, 20, 14), tM); dome.scale.set(1.08, .95, 1.08); dome.position.set(0, 0.22, 0); head.add(dome);
-    const wrap = new T.Mesh(new T.TorusGeometry(0.26, 0.095, 12, 22), tM); wrap.rotation.x = Math.PI / 2; wrap.position.set(0, 0.14, 0); head.add(wrap);
-    const wrap2 = new T.Mesh(new T.TorusGeometry(0.285, 0.08, 12, 22), tM); wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, 0.04, 0.02); head.add(wrap2);
-    const jewel = new T.Mesh(new T.SphereGeometry(0.055, 12, 12), mat('#ffd700', .25)); jewel.position.set(0, 0.18, 0.27); head.add(jewel);
-    const plume = new T.Mesh(new T.ConeGeometry(0.05, 0.3, 10), mat('#f5f5f5', .7)); plume.position.set(0, 0.48, 0.16); plume.rotation.x = -0.3; head.add(plume);
+    // crown cap (upper hemisphere only) so the face stays visible
+    const dome = new T.Mesh(new T.SphereGeometry(0.29, 22, 12, 0, TAU, 0, Math.PI / 2), tM); dome.scale.set(1.0, .95, 1.0); dome.position.set(0, 0.13, 0); head.add(dome);
+    // stacked wrap rings, lowest sits at the hairline just above the brows
+    const wrap = new T.Mesh(new T.TorusGeometry(0.25, 0.088, 12, 24), tM); wrap.rotation.x = Math.PI / 2; wrap.position.set(0, 0.2, 0); head.add(wrap);
+    const wrap2 = new T.Mesh(new T.TorusGeometry(0.265, 0.078, 12, 24), tM); wrap2.rotation.x = Math.PI / 2; wrap2.position.set(0, 0.145, 0.012); head.add(wrap2);
+    const jewel = new T.Mesh(new T.SphereGeometry(0.05, 12, 12), mat('#ffd700', .25)); jewel.position.set(0, 0.23, 0.24); head.add(jewel);
+    const plume = new T.Mesh(new T.ConeGeometry(0.05, 0.3, 10), mat('#f5f5f5', .7)); plume.position.set(0, 0.52, 0.1); plume.rotation.x = -0.3; head.add(plume);
   } else {
-    const hair = new T.Mesh(new T.SphereGeometry(0.255, 16, 12, 0, TAU, 0, Math.PI / 1.8), mat('#0d0b0a', .85)); hair.position.set(0, 0.05, 0); head.add(hair);
+    const hair = new T.Mesh(new T.SphereGeometry(0.265, 18, 12, 0, TAU, 0, Math.PI / 2.1), mat('#0d0b0a', .85)); hair.scale.set(1, .8, 1); hair.position.set(0, 0.12, 0); head.add(hair);
   }
-  // beard
-  if (o.beard !== 'none') {
-    const b = new T.Mesh(new T.SphereGeometry(0.21, 16, 14), beardM);
-    if (o.beard === 'stubble') { b.scale.set(1.0, .5, .68); b.position.set(0, -0.13, .04); }
-    else if (o.beard === 'full') { b.scale.set(1.02, .82, .78); b.position.set(0, -0.17, .03); }
-    else { b.scale.set(1.0, 1.3, .8); b.position.set(0, -0.34, .03); }
-    head.add(b);
-  }
-  if (o.moustache) { const m = new T.Mesh(new T.TorusGeometry(0.075, 0.026, 8, 14, Math.PI), beardM); m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, -0.04, 0.24); head.add(m); }
 
   grp.traverse(o2 => { if (o2.isMesh) o2.castShadow = true; });
   grp.userData = { lL, rL, lA, rA, head, phase: 0, punch: 0 };
@@ -644,6 +704,8 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); initPreview(); wireCreator();
   $('loading').classList.add('hide');
+  window.__facefront = () => { previewSpin = false; if (pChar) pChar.rotation.y = 0; };
+  window.__facezoom = (y) => { previewSpin = false; if (pChar) pChar.rotation.y = 0; pCam.position.set(0, y, 1.25); pCam.lookAt(0, y, 0); };
   window.__dbg = () => ({ cam: camera.position.toArray().map(v => +v.toFixed(2)),
     rotX: +camera.rotation.x.toFixed(3), player: player.pos.toArray().map(v => +v.toFixed(2)),
     pitch: cam.pitch, yaw: cam.yaw, inV: !!player.inVehicle });

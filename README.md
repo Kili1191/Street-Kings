@@ -1,4 +1,5 @@
-<h1 align="center">🛺 Rickshaw Raja</h1>
+<h1 align="center">🛺 Sher-e-Sadak</h1>
+<p align="center"><em>“Lion of the Streets”</em></p>
 
 <p align="center">
   <strong>A 3D, third-person, open-world game across nine Indian districts.</strong><br>
@@ -30,7 +31,14 @@ Before you spawn, build your **Raja** — traditional looks only:
 - **Skin tone**, **kurta** colour, **dhoti / pyjama** colour
 - **Pagdi (turban)** on/off with a jewelled *kalgi* plume, in nine colours
 - **Beard** — clean / stubble / full / long — and **moustache** on/off
+- A **painted face** (eyes with irises, brows, nose, lips, skin shading) so the
+  character has a recognisable human face, not a blank head
 - Name your Raja; drag the live 3D preview to spin him
+
+> **On realism:** the character is a clean *stylised* human built procedurally in
+> the browser. True photoreal humans need an authored, rigged `.glb` model (e.g.
+> exported from Blender / Mixamo, or a CC0 asset). The engine can be extended with
+> `GLTFLoader` to drop one in — see “Ideas for v2”.
 
 ## 🎮 Controls (3D)
 
