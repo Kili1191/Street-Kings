@@ -24,7 +24,7 @@ const settings = { hand: (typeof localStorage !== 'undefined' && localStorage.ge
 function applyHand() { document.body.classList.toggle('righty', settings.hand === 'right');
   document.body.classList.toggle('lefty', settings.hand === 'left');
   try { localStorage.setItem('sk_hand', settings.hand); } catch (e) {} }
-const opts = { name:'Raja Bahadur', skin:'#c68642', turban:true, turbanColor:'#ff9933', shades:false, scarf:'#c0392b',
+const opts = { name:'Raja Bahadur', skin:'#c68642', turban:true, turbanColor:'#ff9933', shades:false, scarf:'#c0392b', outfit:'sherwani',
   kurta:'#ff9933', dhoti:'#ffffff', beard:'full', moustache:true };
 
 // ---------- Character builder (low-poly humanoid) ----------
@@ -278,8 +278,10 @@ function makeHuman(o) {
     n.castShadow = true; n.frustumCulled = false;
     const mn = (n.material && n.material.name) || '';
     n.material = n.material.clone();
-    if (/Outfit_Top/i.test(mn)) { // sherwani: gold-zari brocade in the chosen colour
-      n.material.map = makeBrocadeTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .72; }
+    if (/Outfit_Top/i.test(mn)) { // outfit choice: sherwani brocade / plain kurta / western suit
+      if (o.outfit === 'suit') { n.material.color = new T.Color(o.kurta); }
+      else if (o.outfit === 'kurta') { n.material.map = null; n.material.color = new T.Color(o.kurta); n.material.roughness = .85; }
+      else { n.material.map = makeBrocadeTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .72; } }
     else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // churidar / pyjama
     else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#4a3626');        // leather juttis
     else if (/Skin|Body/i.test(mn)) n.material.color = skinTint;                     // face + body skin tone
@@ -287,9 +289,10 @@ function makeHuman(o) {
     else if (/Beard/i.test(mn)) n.visible = o.beard !== 'none';                      // the avatar's real beard
     else if (/visor/i.test(n.name) || /visor/i.test(mn)) { n.visible = !!o.shades; if (o.shades) { n.material.color = new T.Color('#101014'); n.material.roughness = .15; } } });
   grp.updateMatrixWorld(true);
-  let head = null, neck = null, spine = null, rArm = null, lArm = null, rLeg = null, lLeg = null, rCalf = null, lCalf = null, rFore = null, lFore = null;
+  let head = null, neck = null, spine = null, rArm = null, lArm = null, rLeg = null, lLeg = null, rCalf = null, lCalf = null, rFore = null, lFore = null, hips = null;
   model.traverse(n => { if (!n.isBone) return; const nm = n.name;
     if (/Head$/.test(nm)) head = n; else if (/Neck$/.test(nm)) neck = n; else if (/Spine2$/.test(nm)) spine = n;
+    else if (/Hips$/.test(nm)) hips = n;
     else if (/RightArm$/.test(nm)) rArm = n; else if (/LeftArm$/.test(nm)) lArm = n;
     else if (/RightUpLeg$/.test(nm)) rLeg = n; else if (/LeftUpLeg$/.test(nm)) lLeg = n;
     else if (/RightLeg$/.test(nm)) rCalf = n; else if (/LeftLeg$/.test(nm)) lCalf = n;
@@ -298,6 +301,14 @@ function makeHuman(o) {
   if (head) { const ws = head.getWorldScale(V).x || 1;
     // the avatar has a real beard mesh, so only the pagdi is attached here
     const acc = buildHeadgear({ turban: o.turban, turbanColor: o.turbanColor }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
+  if (hips && o.outfit !== 'suit') { // kurta hem draping over the thighs
+    const ws2 = hips.getWorldScale(V).x || 1;
+    const hemM = o.outfit === 'sherwani'
+      ? new T.MeshStandardMaterial({ map: makeBrocadeTexture(o.kurta), color: '#ffffff', roughness: .72, side: T.DoubleSide })
+      : new T.MeshStandardMaterial({ color: new T.Color(o.kurta), roughness: .85, side: T.DoubleSide });
+    const hem = new T.Mesh(new T.CylinderGeometry(.3, .42, .52, 16, 1, true), hemM);
+    hem.castShadow = true; hem.scale.setScalar(1 / ws2); hem.position.set(0, -0.28 / ws2, 0); hips.add(hem);
+  }
   if (neck && (o.scarf || o.kurta)) { const ws = neck.getWorldScale(V).x || 1;
     const scarf = new T.Group(); const sM = mat(o.scarf || o.kurta, .8);
     const loop = new T.Mesh(new T.TorusGeometry(0.085, 0.028, 8, 18), sM); loop.rotation.x = Math.PI / 2; loop.position.y = -0.02; scarf.add(loop);
@@ -529,7 +540,9 @@ function makeGroundTexture() {
   for (let vx = -HALF; vx <= HALF; vx += STEP) for (let vz = -HALF; vz <= HALF; vz += STEP) {
     const kx = Math.round((vx + HALF) / STEP), kz = Math.round((vz + HALF) / STEP);
     if (isDirtV(kx) || isDirtH(kz)) continue;
-    if (((kx * 31 + kz * 17) % 10) > 4) continue;
+    const di3 = districtAt(vx + STEP / 2, vz + STEP / 2);
+    if (![1, 6, 7].includes(di3)) continue;
+    if (((kx * 31 + kz * 17) % 10) > 3) continue;
     const ix = px(vx), iz = px(vz), rw = u(ROADW);
     for (let s2 = 2; s2 < rw - 2; s2 += 7) {
       g.fillRect(ix + s2, iz - u(1.6), 4, u(1.1));           // north arm
@@ -767,13 +780,17 @@ function buildLandmarks() {
 function buildTree(palm) {
   const g = new T.Group();
   if (palm) {
-    const tr = new T.Mesh(new T.CylinderGeometry(.18, .28, 6, 8), mat('#8a6b3a')); tr.position.y = 3; tr.castShadow = true; g.add(tr);
-    for (let k = 0; k < 6; k++) { const fr = new T.Mesh(new T.ConeGeometry(.5, 3, 6), mat('#2e8b57', .85));
-      fr.position.set(Math.cos(k) * 1, 6, Math.sin(k) * 1); fr.rotation.z = Math.cos(k) * .9; fr.rotation.x = Math.sin(k) * .9; fr.castShadow = true; g.add(fr); }
+    const tr = new T.Mesh(new T.CylinderGeometry(.14, .24, 6, 8), mat('#8a6b3a')); tr.position.y = 3; tr.rotation.z = rand(-.08, .08); tr.castShadow = true; g.add(tr);
+    for (let k = 0; k < 8; k++) { const a = k / 8 * TAU; // flat drooping leaves, not cones
+      const fr = new T.Mesh(new T.ConeGeometry(.45, 2.8, 4), mat(pick(['#2e7b4a', '#3a8a55']), .9));
+      fr.scale.set(.4, 1, .07); fr.position.set(Math.cos(a) * 1.1, 5.9, Math.sin(a) * 1.1);
+      fr.rotation.y = -a; fr.rotation.z = Math.cos(a) * 1.25; fr.rotation.x = Math.sin(a) * 1.25;
+      fr.castShadow = true; g.add(fr); }
+    const crown = new T.Mesh(new T.SphereGeometry(.28, 8, 6), mat('#5a4a28')); crown.position.y = 5.9; g.add(crown);
   } else {
     const tr = new T.Mesh(new T.CylinderGeometry(.22, .32, 2.4, 8), mat('#6b4a2a')); tr.position.y = 1.2; tr.castShadow = true; g.add(tr);
-    for (const [dx, dy, dz, r] of [[0, 3, 0, 1.5], [-.9, 2.6, .4, 1.1], [.8, 2.7, -.4, 1.05], [.2, 3.6, .5, .95]]) {
-      const f = new T.Mesh(new T.SphereGeometry(r, 12, 10), mat(pick(['#3a6b39', '#456f42', '#31603a']), .95)); f.position.set(dx, dy, dz); f.castShadow = true; g.add(f); }
+    for (const [dx, dy, dz, r] of [[0, 3, 0, 1.35], [-.85, 2.7, .4, 1.0], [.75, 2.8, -.4, .95], [.2, 3.5, .5, .85], [-.3, 3.3, -.6, .8]]) {
+      const f = new T.Mesh(new T.SphereGeometry(r, 12, 10), mat(pick(['#3a6b39', '#456f42', '#31603a']), .95)); f.scale.y = .78; f.position.set(dx, dy, dz); f.castShadow = true; g.add(f); }
   }
   return g;
 }
@@ -782,9 +799,16 @@ function scatterProps() {
   const boxGeo = new T.BoxGeometry(1, 1, 1), area = (WORLD / 180) ** 2;
   // food stalls
   for (let i = 0; i < 55 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
-    const cart = new T.Mesh(boxGeo, mat('#6b4a2a')); cart.scale.set(1.8, 1, 1.1); cart.position.set(p.x, .5, p.z); cart.castShadow = true; scene.add(cart);
-    const canopy = new T.Mesh(boxGeo, mat(pick(['#e0b93c', '#c0563a', '#4f9e6b', '#2980b9']))); canopy.scale.set(2.2, .28, 1.4); canopy.position.set(p.x, 1.6, p.z); canopy.castShadow = true; scene.add(canopy);
-    buildings.push({ x: p.x, z: p.z, hw: 1.1, hd: .8 }); }
+    const cart = new T.Mesh(boxGeo, mat('#6b4a2a')); cart.scale.set(1.5, .85, 1); cart.position.set(p.x, .45, p.z); cart.castShadow = true; scene.add(cart);
+    // striped market parasol
+    const pole = new T.Mesh(new T.CylinderGeometry(.04, .04, 2.3, 6), mat('#8a6b3a')); pole.position.set(p.x, 1.15, p.z); scene.add(pole);
+    const pc = document.createElement('canvas'); pc.width = 64; pc.height = 16; const pg = pc.getContext('2d');
+    const c1 = pick(['#c0392b', '#1a5c8a', '#1e7a4a', '#c9760b']);
+    for (let s2 = 0; s2 < 8; s2++) { pg.fillStyle = s2 % 2 ? '#f2ead6' : c1; pg.fillRect(s2 * 8, 0, 8, 16); }
+    const ptex = new T.CanvasTexture(pc); ptex.wrapS = T.RepeatWrapping; ptex.repeat.set(2, 1);
+    const um = new T.Mesh(new T.ConeGeometry(1.35, .55, 10, 1, true), new T.MeshStandardMaterial({ map: ptex, roughness: .9, side: T.DoubleSide }));
+    um.position.set(p.x, 2.35, p.z); um.castShadow = true; scene.add(um);
+    buildings.push({ x: p.x, z: p.z, hw: .9, hd: .7 }); }
   // garbage piles (decorative, no collision)
   for (let i = 0; i < 90 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
     const gb = new T.Mesh(new T.SphereGeometry(rand(.3, .6), 7, 6), mat(pick(['#7a6f4a', '#8a5a3a', '#556b4a']))); gb.position.set(p.x, .2, p.z); gb.scale.y = .5; gb.castShadow = true; scene.add(gb); }
@@ -969,30 +993,31 @@ function wheel(r, w) { const g = new T.Group();
   hub.rotation.x = Math.PI / 2; g.add(hub); g.rotation.y = Math.PI / 2; return g; }
 function glassMat() { return new T.MeshStandardMaterial({ color: '#1c2b38', roughness: .12, metalness: .35 }); }
 function chromeLight(warm) { return new T.MeshStandardMaterial({ color: warm ? '#ffdf9a' : '#ffffff', emissive: warm ? '#ffb84d' : '#dfe8ff', emissiveIntensity: .8, roughness: .2, metalness: .4 }); }
-// classic Mumbai auto-rickshaw: rounded cowl, black+colour body, canvas hood
+// auto-rickshaw at true Bajaj proportions: 2.6 m long, 1.3 m wide, 1.72 m tall, open sides
 function buildAuto(color) {
   const g = new T.Group();
-  const bodyM = mat(color, .55), blackM = mat('#1c1c20', .7);
-  // tub
-  const tub = new T.Mesh(new T.CylinderGeometry(.95, 1.0, .9, 18, 1, false, 0, Math.PI), blackM);
-  tub.rotation.y = -Math.PI / 2; tub.scale.set(1, 1, 1.9); tub.position.set(0, .85, -.35); g.add(tub);
-  const floor = new T.Mesh(new T.BoxGeometry(1.8, .5, 2.9), blackM); floor.position.set(0, .62, 0); g.add(floor);
-  // rounded front cowl
-  const cowl = new T.Mesh(new T.SphereGeometry(.85, 18, 14), bodyM); cowl.scale.set(1.02, .9, 1.15); cowl.position.set(0, 1.05, 1.15); g.add(cowl);
-  // windshield
-  const wsh = new T.Mesh(new T.CylinderGeometry(.8, .8, .75, 14, 1, true, -Math.PI * .32, Math.PI * .64), glassMat());
-  wsh.rotation.y = Math.PI; wsh.position.set(0, 1.72, 1.05); g.add(wsh);
-  // canvas hood (rounded half-cylinder)
-  const hood = new T.Mesh(new T.CylinderGeometry(.92, .92, 2.0, 16, 1, false, 0, Math.PI), mat('#22221f', .95));
-  hood.rotation.z = Math.PI / 2; hood.rotation.y = Math.PI / 2; hood.scale.set(1, 1, 1.05); hood.position.set(0, 1.78, -.45); g.add(hood);
-  // colour skirt panels
-  const skirt = new T.Mesh(new T.BoxGeometry(1.85, .5, 2.2), bodyM); skirt.position.set(0, 1.02, -.5); g.add(skirt);
-  // headlight + meter
-  const hl = new T.Mesh(new T.SphereGeometry(.13, 12, 10), chromeLight(true)); hl.position.set(0, 1.28, 1.98); g.add(hl);
-  // wheels: 1 front, 2 rear
-  const fw = wheel(.42, .22); fw.position.set(0, .42, 1.55); g.add(fw);
-  for (const sx of [-.85, .85]) { const w = wheel(.42, .22); w.position.set(sx, .42, -1.05); g.add(w); }
-  g.userData.seat = { x: 0, y: .32, z: .3 };
+  const bodyM = mat(color, .5), blackM = mat('#1c1c20', .75), greenM = mat('#1e6b3c', .6);
+  // floor pan + lower skirt
+  const floor = new T.Mesh(new T.BoxGeometry(1.15, .1, 2.25), blackM); floor.position.set(0, .32, 0); g.add(floor);
+  const skirt = new T.Mesh(new T.BoxGeometry(1.18, .34, 2.1), greenM); skirt.position.set(0, .5, -.02); g.add(skirt);
+  // rounded front cowl (vertical half-cylinder) + windshield
+  const cowl = new T.Mesh(new T.CylinderGeometry(.58, .6, .75, 14, 1, false, -Math.PI / 2, Math.PI), bodyM);
+  cowl.position.set(0, .84, .78); g.add(cowl);
+  const wsh = new T.Mesh(new T.BoxGeometry(1.02, .5, .04), glassMat()); wsh.rotation.x = -.14; wsh.position.set(0, 1.36, .82); g.add(wsh);
+  // roof (slight dome) + rear panel + corner pillars — sides stay open so you see the driver
+  const roof = new T.Mesh(new T.SphereGeometry(1, 16, 10, 0, TAU, 0, Math.PI * .32), bodyM);
+  roof.scale.set(.62, .28, 1.1); roof.position.set(0, 1.52, -.15); g.add(roof);
+  const back = new T.Mesh(new T.BoxGeometry(1.12, .88, .06), bodyM); back.position.set(0, .98, -1.05); g.add(back);
+  for (const [sx, sz] of [[-.54, .72], [.54, .72], [-.54, -1.0], [.54, -1.0]]) {
+    const pil = new T.Mesh(new T.CylinderGeometry(.03, .03, .95, 6), blackM); pil.position.set(sx, 1.05, sz); g.add(pil); }
+  // bench + handlebar + headlight + meter
+  const bench = new T.Mesh(new T.BoxGeometry(1.02, .12, .5), blackM); bench.position.set(0, .62, -.62); g.add(bench);
+  const bar = new T.Mesh(new T.CylinderGeometry(.025, .025, .55, 8), blackM); bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.06, .55); g.add(bar);
+  const hl = new T.Mesh(new T.SphereGeometry(.085, 10, 8), chromeLight(true)); hl.position.set(0, 1.02, 1.1); g.add(hl);
+  // three small wheels (real autos ride on 8-inch wheels)
+  const fw = wheel(.24, .14); fw.position.set(0, .24, .95); g.add(fw);
+  for (const sx of [-.52, .52]) { const w = wheel(.24, .14); w.position.set(sx, .24, -.7); g.add(w); }
+  g.userData.seat = { x: 0, y: .3, z: .1 };
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -1109,26 +1134,27 @@ function buildBicycle() {
 // stunt ramps (tremplins) on paved roads — drive up, fly off
 const ramps = [];
 function buildRamps() {
-  const rM = mat('#b0561e', .85), sM = mat('#e8dcc4', .8);
+  const rM = mat('#7a5a34', .95), sM = mat('#5c4326', .95); // weathered wood planks
   let placed = 0;
-  for (let tries = 0; tries < 400 && placed < 6; tries++) {
+  for (let tries = 0; tries < 500 && placed < 4; tries++) {
     const p = roadSpot(); if (!p) continue;
     const kx = Math.round((p.x + HALF) / STEP), kz = Math.round((p.z + HALF) / STEP);
     // sit on a paved road, aligned with it
-    const fx = ((p.x % STEP) + STEP) % STEP, alongZ = fx < ROADW && !dirtV.has(kx);
-    const alongX = !alongZ && !dirtH.has(kz);
-    if (!alongZ && !alongX) continue;
+    const fx = ((p.x % STEP) + STEP) % STEP, alongZ = fx < ROADW && dirtV.has(kx);
+    const alongX = !alongZ && dirtH.has(kz);
+    if (!alongZ && !alongX) continue; // stunt ramps hide on the dirt lanes, Vice-City style
     const yaw = alongZ ? 0 : Math.PI / 2;
-    const len = 11, w = 5.4, h = 3.4;
+    const len = 8.5, w = 4.6, h = 2.6;
     const angle = Math.atan2(h, len);
     const slabLen = Math.sqrt(len * len + h * h);
     const slab = new T.Mesh(new T.BoxGeometry(w, .35, slabLen), rM);
     slab.rotation.y = yaw; slab.rotateX(-angle);
     slab.position.set(p.x, h / 2 - .05, p.z); slab.castShadow = true; slab.receiveShadow = true; scene.add(slab);
+    // low side boards flush with the deck (no floating legs look)
     for (const sx of [-1, 1]) {
-      const rail = new T.Mesh(new T.BoxGeometry(.18, .5, slabLen), sM);
+      const rail = new T.Mesh(new T.BoxGeometry(.12, .22, slabLen), sM);
       rail.rotation.y = yaw; rail.rotateX(-angle);
-      const off = new T.Vector3(sx * (w / 2 - .09), h / 2 + .12, 0).applyAxisAngle(new T.Vector3(0, 1, 0), yaw);
+      const off = new T.Vector3(sx * (w / 2 - .06), h / 2 + .06, 0).applyAxisAngle(new T.Vector3(0, 1, 0), yaw);
       rail.position.set(p.x + off.x, off.y, p.z + off.z); rail.castShadow = true; scene.add(rail); }
     ramps.push({ x: p.x, z: p.z, yaw, len, w, h });
     placed++;
@@ -1151,19 +1177,28 @@ function spawnVehicles(n) {
     const r = Math.random();
     let g = null;
     if (VEHM.sedan) { // real models: Kenney kit + bus
-      g = r < .3 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
-          r < .42 ? buildVehModel('sedan') : r < .52 ? buildVehModel('hatch') :
-          r < .62 ? buildVehModel('taxi') : r < .7 ? buildVehModel('suv') :
-          r < .78 ? buildVehModel('van') : r < .85 ? buildVehModel('truck') :
-          r < .91 ? buildVehModel('moto') : r < .96 ? buildVehModel('bus') : buildEnfield();
+      g = r < .34 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
+          r < .46 ? buildVehModel('moto') : r < .58 ? buildVehModel('taxi') :
+          r < .66 ? buildVehModel('sedan') : r < .73 ? buildVehModel('hatch') :
+          r < .79 ? buildVehModel('suv') : r < .85 ? buildVehModel('van') :
+          r < .9 ? buildVehModel('truck') : r < .95 ? buildVehModel('bus') : buildEnfield();
     }
     if (!g) g = r < .34 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
               r < .52 ? buildCar('hatch') : r < .74 ? buildCar('sedan') : r < .88 ? buildCar('taxi') : buildEnfield();
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU);
     scene.add(g);
     const v = { g, yaw: g.rotation.y, speed: 0, ai: true, aiDir: rand(0, TAU), aiTimer: 0 };
-    // some autos come with a visible driver you can hire (and haggle with)
-    if (HERO && r < .6 && Math.random() < .55) {
+    // riders are always visible on two-wheelers; autos often carry a hireable driver
+    const isBike = g.userData.seat && Math.abs(g.userData.seat.x) < .01 && (r >= .34 && r < .46 || r >= .95);
+    if (HERO && isBike) {
+      const o = { skin: pick(SKINS), turban: Math.random() < .3, turbanColor: pick(TURBANS),
+        kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: true };
+      const d = makeHuman(o); const seat = g.userData.seat;
+      g.add(d); d.position.set(seat.x, seat.y, seat.z);
+      if (d.userData.human) { d.userData.human.seated = true; animateChar(d, false, .03, 0); }
+      v.driver = { g: d, fare: randi(40, 90) };
+    }
+    else if (HERO && r < .6 && Math.random() < .55) {
       const o = { skin: pick(SKINS), turban: Math.random() < .5, turbanColor: pick(TURBANS),
         kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: true };
       const d = makeHuman(o); const seat = g.userData.seat || { x: 0, y: .55, z: .3 };
@@ -1177,7 +1212,7 @@ function spawnVehicles(n) {
 // ---------- Player ----------
 const player = { g: null, pos: new T.Vector3(0, 0, 4), yaw: 0, vel: new T.Vector3(),
   health: 100, fuel: 100, cash: 500, inVehicle: null, moving: false, speed: 0 }; // pocket money for tickets & autos
-const cam = { yaw: 0, pitch: 0.26, dist: 7.5 };
+const cam = { yaw: 0, pitch: 0.2, dist: 5.4 };
 
 // ---------- Input ----------
 const keys = {};
@@ -1344,7 +1379,7 @@ function spit() {
 const spitParts = [], sparks = [];
 function spark(pos) { for (let i = 0; i < 8; i++) { const m = new T.Mesh(new T.SphereGeometry(.08, 5, 5), new T.MeshBasicMaterial({ color: '#ffd24d' }));
   m.position.copy(pos); m.position.y = 1; scene.add(m); sparks.push({ m, vx: rand(-3, 3), vy: rand(2, 5), vz: rand(-3, 3), life: .5 }); } }
-function horn() { blip(340, .3, 'sawtooth', .25); }
+function horn() { hornSound(.55, .16); }
 
 // ---------- wanted / crime / bribe (light) ----------
 let wanted = 0, heat = 0, wantedTimer = 0;
@@ -1370,6 +1405,14 @@ function tryBribe() {
 // ---------- Audio ----------
 let actx, amaster, sirenNode = null;
 function ensureAudio() { if (actx) return; try { actx = new (window.AudioContext || window.webkitAudioContext)(); amaster = actx.createGain(); amaster.gain.value = .5; amaster.connect(actx.destination); } catch (e) {} }
+function hornSound(dur, vol) { // real Indian horn: two detuned tones through a resonant band
+  if (!actx) return; const t = actx.currentTime;
+  const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 2.2;
+  const g = actx.createGain(); g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(vol, t + .02); g.gain.setValueAtTime(vol, t + dur - .05); g.gain.linearRampToValueAtTime(0, t + dur);
+  bp.connect(g); g.connect(amaster);
+  for (const f of [420, 528]) { const o = actx.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(bp); o.start(t); o.stop(t + dur + .02); }
+}
 function AudioSysCrash() { if (!actx) return; const t = actx.currentTime, b = actx.createBufferSource(), buf = actx.createBuffer(1, 4410, 44100), d = buf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
   const g = actx.createGain(); g.gain.value = .25; b.buffer = buf; b.connect(g); g.connect(amaster); b.start(t); }
@@ -1476,17 +1519,17 @@ const Radio = {
       const t = this.nextT, i = this.step;
       if (st.style === 0) { // dhol-driven bhangra
         if (i % 8 === 0) this.drum(t, 62, .5); if (i % 8 === 4) this.drum(t, 190, .3, true);
-        if (i % 4 === 2) this.drum(t, 62, .2); if (i % 2 === 0) this.osc(t, 2400, .03, 'square', .035); }
+        if (i % 4 === 2) this.drum(t, 62, .2); if (i % 4 === 0) this.osc(t, 2400, .025, 'triangle', .02); }
       else if (st.style === 1) { // slow filmi ballad
         if (i % 16 === 0) this.drum(t, 56, .38); if (i % 16 === 8) this.drum(t, 170, .2, true); if (i % 16 === 12) this.drum(t, 62, .18); }
       else { // carnatic-flavoured groove
         if ([0, 3, 6, 10, 12].includes(i % 16)) this.drum(t, 88, .28); if (i % 16 === 8) this.drum(t, 200, .2, true); }
-      if (i % 32 === 0) { this.osc(t, st.root / 2, s16 * 30, 'sawtooth', .045); this.osc(t, st.root * .75, s16 * 30, 'sawtooth', .025); } // tanpura drone
+      if (i % 32 === 0) { this.osc(t, st.root / 2, s16 * 30, 'triangle', .05); this.osc(t, st.root * .75, s16 * 30, 'triangle', .03); } // tanpura drone
       if ([0, 3, 6, 8, 11, 14].includes(i % 16) && Math.random() < .85) { // melody, filmi slides
         const deg = pick(st.scale), oct = Math.random() < .3 ? 2 : 1;
         const f = st.root * Math.pow(2, deg / 12) * oct;
         const slide = st.style === 1 && Math.random() < .5 ? f * Math.pow(2, pick([-2, -1, 1, 2]) / 12) : 0;
-        this.osc(t, f, s16 * (st.style === 1 ? 3.4 : 1.8), st.style === 2 ? 'triangle' : 'sawtooth', .06, slide); }
+        this.osc(t, f, s16 * (st.style === 1 ? 3.4 : 1.8), 'triangle', .05, slide); }
       this.nextT += s16; this.step = (this.step + 1) % 64;
     } }
 };
@@ -1527,7 +1570,7 @@ function update(dt) {
   }
   updateTour(dt, performance.now());
 
-  updateNPCs(dt); updateCows(dt); updateVehicles(dt); updateCops(dt); updateMonkeys(dt); updateDogs(dt);
+  updateNPCs(dt); updateCows(dt); updateVehicles(dt); updateCops(dt); updateMonkeys(dt); updateDogs(dt); recycleLife(dt);
   Radio.tick();
   updateParticles(dt);
 
@@ -1538,8 +1581,14 @@ function update(dt) {
   // sun follows player so shadows stay crisp
   if (sun) { sun.position.set(player.pos.x + 36, 48, player.pos.z + 20); sun.target.position.copy(player.pos); sun.target.updateMatrixWorld(); }
   // camera follow
-  const target = player.inVehicle ? player.inVehicle.g.position : player.pos;
-  const cd = player.inVehicle ? 10 : cam.dist;
+  // GTA-style soft follow: camera settles behind the character while moving
+  if (!player.inVehicle && player.moving && !(cam.freeUntil > performance.now()))
+    cam.yaw = angLerp(cam.yaw, player.yaw, Math.min(1, dt * 1.6));
+  const shoulder = player.inVehicle ? 0 : .55; // over-the-right-shoulder offset
+  const sx = Math.cos(cam.yaw) * shoulder, sz = -Math.sin(cam.yaw) * shoulder;
+  const tgt0 = player.inVehicle ? player.inVehicle.g.position : player.pos;
+  const target = new T.Vector3(tgt0.x + sx, tgt0.y, tgt0.z + sz);
+  const cd = player.inVehicle ? 9 : cam.dist;
   let cdArr = cd; const cdMin = player.inVehicle ? 5.2 : 2.6;
   for (; cdArr > cdMin; cdArr -= .8) { // camera collision: step in until clear of buildings
     const tx = target.x - Math.sin(cam.yaw) * Math.cos(cam.pitch) * cdArr;
@@ -1621,22 +1670,55 @@ function wanderMesh(o, dt, speedScale) {
   if (!blocked(nx, nz) && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { o.g.position.x = nx; o.g.position.z = nz; o.g.rotation.y = o.dir; }
   else o.dir += 2;
 }
+function nearPlayerSpot(rmin, rmax, wantSidewalk) {
+  for (let i = 0; i < 30; i++) {
+    const a = rand(0, TAU), r = rand(rmin, rmax);
+    const x = clamp(player.pos.x + Math.sin(a) * r, -HALF + 4, HALF - 4);
+    const z = clamp(player.pos.z + Math.cos(a) * r, -HALF + 4, HALF - 4);
+    if (wantSidewalk ? (onSidewalk(x, z) && !blocked(x, z)) : onRoad(x, z)) return { x, z };
+  }
+  return null;
+}
+let recycleT = 0;
+function recycleLife(dt) {
+  recycleT -= dt; if (recycleT > 0) return; recycleT = .4;
+  for (const n of npcs) { if (n.down > 0) continue;
+    if (n.g.position.distanceToSquared(player.pos) > 130 * 130) { const p = nearPlayerSpot(35, 75, true);
+      if (p) { n.g.position.set(p.x, 0, p.z); n.pause = 0; } } }
+  for (const v of vehicles) { if (v === player.inVehicle || v === player.riding || v.hired || !v.ai) continue;
+    if (v.g.position.distanceToSquared(player.pos) > 170 * 170) { const p = nearPlayerSpot(55, 110, false);
+      if (p) { v.g.position.set(p.x, 0, p.z); } } }
+  for (const d of dogs) { if (d.g.position.distanceToSquared(player.pos) > 140 * 140) { const p = nearPlayerSpot(30, 70, true); if (p) d.g.position.set(p.x, 0, p.z); } }
+}
 function updateNPCs(dt) { for (const n of npcs) { if (n.down > 0) { n.down -= dt; if (n.down <= 0) { n.g.rotation.z = 0; n.g.position.y = 0; } continue; }
   if (n.pause > 0) { n.pause -= dt; animateChar(n.g, false, dt, 0); continue; }
   if (Math.random() < .003) { n.pause = rand(1.5, 5); animateChar(n.g, false, dt, 0); continue; }
-  wanderMesh(n, dt); animateChar(n.g, true, dt, n.speed * 2.4); } }
+  wanderMesh(n, dt); if (n.g.position.distanceToSquared(player.pos) < 70 * 70) animateChar(n.g, true, dt, n.speed * 2.4); } }
 function updateCows(dt) { for (const c of cows) wanderMesh(c, dt); }
 let honkNext = 0;
 function updateVehicles(dt) {
   // India runs on the horn: nearby traffic honks at random
-  if (actx && performance.now() > honkNext) { honkNext = performance.now() + rand(1800, 5200);
-    const near = vehicles.filter(v => v.ai && v.g.position.distanceToSquared(player.pos) < 55 * 55);
-    if (near.length && Math.random() < .75) { const f = rand(300, 520);
-      blip(f, .18, 'sawtooth', .05); setTimeout(() => blip(f * .92, .22, 'sawtooth', .05), rand(90, 200)); } }
+  if (actx && performance.now() > honkNext) { honkNext = performance.now() + rand(4200, 10500);
+    const near = vehicles.filter(v => v.ai && v.g.position.distanceToSquared(player.pos) < 35 * 35);
+    if (near.length && Math.random() < .6) hornSound(rand(.35, .6), .035); }
   for (const v of vehicles) { if (v.driver && v.g.position.distanceToSquared(player.pos) < 70 * 70) animateChar(v.driver.g, false, dt, 0); }
   for (const v of vehicles) { if (v === player.inVehicle || !v.ai) continue;
     v.aiTimer -= dt; if (v.aiTimer <= 0) { v.aiDir = Math.round(v.aiDir / (Math.PI / 2)) * (Math.PI / 2) + (Math.random() < .3 ? (Math.random() < .5 ? Math.PI / 2 : -Math.PI / 2) : 0); v.aiTimer = rand(2, 5); }
-    v.speed = lerp(v.speed, 5, .04); const nx = v.g.position.x + Math.sin(v.aiDir) * v.speed * dt, nz = v.g.position.z + Math.cos(v.aiDir) * v.speed * dt;
+    // brake for whoever is in the road ahead (player, cows, pedestrians) — with an angry horn
+    let blockAhead = false;
+    const ax = v.g.position.x + Math.sin(v.aiDir) * 4, az = v.g.position.z + Math.cos(v.aiDir) * 4;
+    if (!player.inVehicle && !player.riding) {
+      const dp2 = (player.pos.x - ax) ** 2 + (player.pos.z - az) ** 2;
+      if (dp2 < 3.4 * 3.4) { blockAhead = true;
+        if (actx && Math.random() < .02) hornSound(.4, .06);
+        const dHit = v.g.position.distanceToSquared(player.pos);
+        if (dHit < 2 * 2 && v.speed > 2.5) { damage(18); // clipped by traffic
+          player.pos.x += Math.sin(v.aiDir) * 1.6; player.pos.z += Math.cos(v.aiDir) * 1.6;
+          if (player.g) player.g.position.copy(player.pos); toast('OUCH!', '#ff6b6b'); v.speed *= .3; } } }
+    if (!blockAhead) for (const c of cows) { if ((c.g.position.x - ax) ** 2 + (c.g.position.z - az) ** 2 < 3.4 * 3.4) { blockAhead = true; break; } }
+    if (!blockAhead) for (const n of npcs) { if (n.down > 0) continue; if ((n.g.position.x - ax) ** 2 + (n.g.position.z - az) ** 2 < 2.4 * 2.4) { blockAhead = true; break; } }
+    if (blockAhead) { v.speed = lerp(v.speed, 0, .25); }
+    else v.speed = lerp(v.speed, v.cruise || (v.cruise = rand(4, 7.5)), .04); const nx = v.g.position.x + Math.sin(v.aiDir) * v.speed * dt, nz = v.g.position.z + Math.cos(v.aiDir) * v.speed * dt;
     // traffic stays ON the road (not on sidewalks) and off obstacles
     if (onRoad(nx, nz) && !blocked(nx, nz) && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { v.g.position.x = nx; v.g.position.z = nz; v.yaw = lerp(v.yaw, v.aiDir, .1); v.g.rotation.y = v.yaw; }
     else { v.aiDir += (Math.random() < .5 ? 1 : -1) * Math.PI / 2; v.aiTimer = rand(1, 2.5); }
@@ -1719,6 +1801,7 @@ function wireCreator() {
   chipRow('chMoustache', [{ t: 'Yes', v: true }, { t: 'No', v: false }], () => opts.moustache, v => opts.moustache = v);
   swatchRow('swScarf', KURTAS, () => opts.scarf, v => opts.scarf = v);
   chipRow('chShades', [{ t: '\ud83d\udd76 Shades on', v: true }, { t: 'No shades', v: false }], () => opts.shades, v => opts.shades = v);
+  chipRow('chOutfit', [{ t: 'Sherwani (brocade)', v: 'sherwani' }, { t: 'Kurta', v: 'kurta' }, { t: 'Suit', v: 'suit' }], () => opts.outfit, v => opts.outfit = v);
   chipRow('chHand', [{ t: '\ud83d\udd90 Right-handed \u2014 stick right', v: 'right' }, { t: 'Left-handed \u2014 stick left', v: 'left' }], () => settings.hand, v => { settings.hand = v; applyHand(); });
   $('nameIn').addEventListener('input', e => opts.name = e.target.value || 'Raja');
   $('enterBtn').addEventListener('click', startGame);
@@ -1737,7 +1820,7 @@ function startGame() {
   // build player from chosen opts
   player.pos.copy(findSpawn());
   player.g = makeCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
-  spawnNPCs(26); spawnCows(8); spawnVehicles(18); spawnMonkeys(10); spawnDogs(9);
+  spawnNPCs(40); spawnCows(9); spawnVehicles(32); spawnMonkeys(12); spawnDogs(13);
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
 }
@@ -1761,10 +1844,11 @@ function drawMinimap3d() {
   const g = cv.getContext('2d'), W = cv.width, H = cv.height;
   g.clearRect(0, 0, W, H);
   g.save();
-  g.beginPath(); if (g.roundRect) g.roundRect(0, 0, W, H, 22); else g.rect(0, 0, W, H); g.clip();
+  const R2 = Math.min(W, H) / 2;
+  g.beginPath(); g.arc(W / 2, H / 2, R2 - 2, 0, TAU); g.clip();
   g.fillStyle = '#101014'; g.fillRect(0, 0, W, H);
   const scale = 2.1, mx = (player.pos.x + HALF) / WORLD * 1024, mz = (player.pos.z + HALF) / WORLD * 1024;
-  g.translate(W / 2, H / 2 + 20); g.rotate(cam.yaw); g.scale(scale, scale); g.translate(-mx, -mz);
+  g.translate(W / 2, H / 2 + 20); g.rotate(cam.yaw + Math.PI); g.scale(scale, scale); g.translate(-mx, -mz);
   g.drawImage(mapCanvas, 0, 0);
   g.fillStyle = '#4a86ff';
   for (const c of cops) { const cx2 = (c.g.position.x + HALF) / WORLD * 1024, cz2 = (c.g.position.z + HALF) / WORLD * 1024;
@@ -1776,9 +1860,9 @@ function drawMinimap3d() {
   g.restore();
   g.save(); g.translate(W / 2, H / 2 + 20);
   g.fillStyle = '#ffffff'; g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2;
-  g.beginPath(); g.moveTo(0, -9); g.lineTo(6.5, 7); g.lineTo(0, 3.5); g.lineTo(-6.5, 7); g.closePath(); g.fill(); g.stroke();
+  g.beginPath(); g.moveTo(0, -14); g.lineTo(10, 11); g.lineTo(0, 5.5); g.lineTo(-10, 11); g.closePath(); g.fill(); g.stroke();
   g.restore();
-  g.fillStyle = 'rgba(16,16,20,.72)'; g.fillRect(0, 0, W, 30);
+  g.fillStyle = 'rgba(16,16,20,.72)'; g.beginPath(); g.arc(W / 2, H / 2, Math.min(W, H) / 2 - 2, Math.PI * 1.18, Math.PI * 1.82); g.arc(W / 2, H / 2, Math.min(W, H) / 2 - 30, Math.PI * 1.82, Math.PI * 1.18, true); g.fill();
   g.fillStyle = '#fff'; g.font = '700 15px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.fillText(DISTRICTS[curDistrict >= 0 ? curDistrict : 4].name, W / 2, 15);
 }
@@ -1806,6 +1890,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
+  const BUILD = 'build 16'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
   const enable = () => { btn.disabled = false; btn.textContent = '▶ Enter the City'; };
@@ -1814,6 +1899,12 @@ function boot() {
   window.__tp = (x, z) => { player.pos.set(x, 0, z); if (player.inVehicle) { player.inVehicle.g.position.set(x, 0, z); } };
   window.__tpveh = () => { if (!vehicles.length) return false; const v = vehicles[0];
     player.pos.set(v.g.position.x + 2.2, 0, v.g.position.z); if (player.g) player.g.position.copy(player.pos); return true; };
+  window.__lookveh = () => { // stand facing the first Kenney-model vehicle
+    const v = vehicles.find(v2 => v2.g.userData.seat && v2.g.children[0] && v2.g.children[0].type === 'Group');
+    if (!v) return false; v.ai = false; v.speed = 0;
+    player.pos.set(v.g.position.x, 0, v.g.position.z - 6.5);
+    if (player.g) player.g.position.copy(player.pos);
+    cam.yaw = 0; cam.freeUntil = performance.now() + 9999; return true; };
   window.__tpvehN = (i) => { const v = vehicles[i % vehicles.length]; if (!v) return false;
     player.pos.set(v.g.position.x + 3, 0, v.g.position.z - 2); if (player.g) player.g.position.copy(player.pos); return true; };
   window.__tpdriver = () => { const v = vehicles.find(v2 => v2.driver); if (!v) return false;

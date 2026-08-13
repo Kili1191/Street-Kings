@@ -101,10 +101,16 @@
     display:none; touch-action:none; }
   body.lefty #joystick { left:26px; }
   body.righty #joystick { right:26px; }
-  body.righty #tAct   { left:20px;  right:auto; }
-  body.righty #tPunch { left:96px;  right:auto; }
-  body.righty #tSpit  { left:20px;  right:auto; }
-  body.righty #tRadio { left:96px;  right:auto; }
+  .thumb { z-index:13; }
+  /* action buttons cluster around the stick — never over the map */
+  body.righty #tAct   { right:168px !important; left:auto !important; bottom:170px; }
+  body.righty #tPunch { right:232px !important; left:auto !important; bottom:108px; }
+  body.righty #tSpit  { right:168px !important; left:auto !important; bottom:46px;  }
+  body.righty #tRadio { right:104px !important; left:auto !important; bottom:210px; }
+  body.lefty #tAct    { left:168px !important;  right:auto !important; bottom:170px; }
+  body.lefty #tPunch  { left:232px !important;  right:auto !important; bottom:108px; }
+  body.lefty #tSpit   { left:168px !important;  right:auto !important; bottom:46px;  }
+  body.lefty #tRadio  { left:104px !important;  right:auto !important; bottom:210px; }
   /* GTA-style minimap, opposite the stick */
   #minimap3d { position:fixed; bottom:24px; width:250px; height:180px; z-index:11;
     border-radius:14px; border:2px solid rgba(255,255,255,.22);
@@ -162,7 +168,7 @@
   <div id="creator">
     <div class="top">
       <h1>STREET KINGS</h1>
-      <div class="sub">Nine Worlds · One City</div>
+      <div class="sub">Nine Worlds · One City · <span id="buildTag"></span></div>
     </div>
     <div class="body">
       <canvas id="preview"></canvas>
@@ -184,6 +190,7 @@
           <div class="grp"><div class="lbl">Kurta</div><div class="swatches" id="swKurta"></div></div>
           <div class="grp"><div class="lbl">Dhoti / Pyjama</div><div class="swatches" id="swDhoti"></div></div>
         </div>
+        <div class="grp"><div class="lbl">Outfit</div><div class="chips" id="chOutfit"></div></div>
         <div class="rowsplit">
           <div class="grp"><div class="lbl">Scarf / Angavastram</div><div class="swatches" id="swScarf"></div></div>
           <div class="grp"><div class="lbl">Sunglasses</div><div class="chips" id="chShades"></div></div>
