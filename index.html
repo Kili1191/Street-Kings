@@ -16,10 +16,12 @@
   #creator { position:fixed; inset:0; z-index:20; display:flex; flex-direction:column;
     background:radial-gradient(circle at 50% 20%, #2a2140, #0c0b10 72%); overflow:auto; }
   #creator .top { text-align:center; padding:26px 16px 6px; }
-  #creator h1 { font-size:clamp(40px,9vw,92px); font-weight:900; letter-spacing:2px; line-height:.92;
-    background:linear-gradient(90deg,var(--saffron),#fff 48%,var(--green));
+  #creator h1 { font-size:clamp(40px,9vw,92px); font-weight:900; letter-spacing:-1px; line-height:.92;
+    font-style:italic; transform:skew(-5deg);
+    background:linear-gradient(180deg,#ffe9c4 8%,var(--saffron) 45%,#c9541e 90%);
     -webkit-background-clip:text; background-clip:text; color:transparent;
-    text-shadow:0 4px 30px rgba(255,153,51,.25); }
+    -webkit-text-stroke:2.5px #14100c;
+    filter:drop-shadow(3px 4px 0 #14100c) drop-shadow(0 8px 26px rgba(255,153,51,.3)); }
   #creator .sub { opacity:.7; letter-spacing:6px; text-transform:uppercase; font-size:clamp(11px,2.2vw,15px); margin-top:6px; }
   #creator .body { flex:1; display:flex; gap:24px; padding:14px clamp(14px,4vw,50px) 24px;
     align-items:stretch; justify-content:center; flex-wrap:wrap; }

@@ -255,13 +255,20 @@ function buildHeadgear(o) {
     band.position.y = ACC.turbY - 0.055; band.scale.set(1, 1, 1.04); g.add(band);
     const jewel = new T.Mesh(new T.SphereGeometry(0.018, 12, 12), mat('#ffd700', .2)); jewel.position.set(0, ACC.turbY + 0.015, 0.125); g.add(jewel);
   }
+  if (o.shades) { // this avatar has no glasses mesh — build proper sunglasses
+    const dark = new T.MeshStandardMaterial({ color: '#0c0c10', roughness: .15, metalness: .3 });
+    for (const sx of [-1, 1]) { const lens = new T.Mesh(new T.SphereGeometry(.052, 10, 8), dark);
+      lens.scale.set(1, .8, .45); lens.position.set(.055 * sx, .012, .105); g.add(lens); }
+    const bridge = new T.Mesh(new T.BoxGeometry(.03, .012, .012), dark); bridge.position.set(0, .015, .112); g.add(bridge);
+    for (const sx of [-1, 1]) { const arm = new T.Mesh(new T.BoxGeometry(.012, .012, .1), dark); arm.position.set(.1 * sx, .015, .05); g.add(arm); }
+  }
   if (o.beard && o.beard !== 'none') {
     const bM = mat('#171310', .85);
-    const b = new T.Mesh(new T.SphereGeometry(0.085, 14, 12), bM);
-    if (o.beard === 'stubble') b.scale.set(1.0, .55, .62);
-    else if (o.beard === 'full') b.scale.set(1.02, .85, .7);
-    else b.scale.set(1.0, 1.5, .7);
-    b.position.set(0, ACC.beardY - (o.beard === 'long' ? 0.05 : 0), ACC.beardZ); g.add(b);
+    const b = new T.Mesh(new T.SphereGeometry(0.082, 16, 14), bM);
+    if (o.beard === 'stubble') b.scale.set(.98, .5, .6);
+    else if (o.beard === 'full') b.scale.set(1.0, .8, .66);
+    else b.scale.set(.98, 1.45, .66);
+    b.position.set(0, ACC.beardY - (o.beard === 'long' ? 0.05 : 0), ACC.beardZ - .01); g.add(b);
   }
   if (o.moustache) { const m = new T.Mesh(new T.TorusGeometry(0.035, 0.012, 8, 14, Math.PI), mat('#171310', .85));
     m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, ACC.mouY, ACC.mouZ); g.add(m); }
@@ -273,7 +280,8 @@ function makeHuman(o) {
   const model = window.skeletonClone(HERO.scene);
   const s = 1.8 / HERO.height; model.scale.setScalar(s);
   grp.add(model);
-  const skinTint = new T.Color('#ffffff').lerp(new T.Color(o.skin), 0.85);
+  const skinTint = new T.Color(o.skin); { const hsl = { h: 0, s: 0, l: 0 }; skinTint.getHSL(hsl);
+    skinTint.setHSL(hsl.h, Math.min(1, hsl.s * 1.7), Math.min(.92, hsl.l * 1.28)); } // counteract texture-multiply greying
   model.traverse(n => { if (!(n.isMesh || n.isSkinnedMesh)) return;
     n.castShadow = true; n.frustumCulled = false;
     const mn = (n.material && n.material.name) || '';
@@ -281,12 +289,14 @@ function makeHuman(o) {
     if (/Outfit_Top/i.test(mn)) { // outfit choice: sherwani brocade / plain kurta / western suit
       if (o.outfit === 'suit') { n.material.color = new T.Color(o.kurta); }
       else if (o.outfit === 'kurta') { n.material.map = null; n.material.color = new T.Color(o.kurta); n.material.roughness = .85; }
+      else if (o.outfit === 'silk') { n.material.map = null; n.material.color = new T.Color(o.kurta); n.material.roughness = .3; n.material.metalness = .15; }
+      else if (o.outfit === 'khadi') { n.material.map = makeTurbanTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = 1; }
       else { n.material.map = makeBrocadeTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .72; } }
     else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // churidar / pyjama
     else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#4a3626');        // leather juttis
     else if (/Skin|Body/i.test(mn)) n.material.color = skinTint;                     // face + body skin tone
     else if (/Headwear/i.test(mn)) n.visible = false;                                // replaced by our pagdi
-    else if (/Beard/i.test(mn)) n.visible = o.beard !== 'none';                      // the avatar's real beard
+    else if (/Beard/i.test(mn)) n.visible = o.moustache !== false;                  // this mesh is actually the moustache
     else if (/visor/i.test(n.name) || /visor/i.test(mn)) { n.visible = !!o.shades; if (o.shades) { n.material.color = new T.Color('#101014'); n.material.roughness = .15; } } });
   grp.updateMatrixWorld(true);
   let head = null, neck = null, spine = null, rArm = null, lArm = null, rLeg = null, lLeg = null, rCalf = null, lCalf = null, rFore = null, lFore = null, hips = null;
@@ -300,15 +310,7 @@ function makeHuman(o) {
   const V = new T.Vector3();
   if (head) { const ws = head.getWorldScale(V).x || 1;
     // the avatar has a real beard mesh, so only the pagdi is attached here
-    const acc = buildHeadgear({ turban: o.turban, turbanColor: o.turbanColor }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
-  if (hips && o.outfit !== 'suit') { // kurta hem draping over the thighs
-    const ws2 = hips.getWorldScale(V).x || 1;
-    const hemM = o.outfit === 'sherwani'
-      ? new T.MeshStandardMaterial({ map: makeBrocadeTexture(o.kurta), color: '#ffffff', roughness: .72, side: T.DoubleSide })
-      : new T.MeshStandardMaterial({ color: new T.Color(o.kurta), roughness: .85, side: T.DoubleSide });
-    const hem = new T.Mesh(new T.CylinderGeometry(.3, .42, .52, 16, 1, true), hemM);
-    hem.castShadow = true; hem.scale.setScalar(1 / ws2); hem.position.set(0, -0.28 / ws2, 0); hips.add(hem);
-  }
+    const acc = buildHeadgear({ turban: o.turban, turbanColor: o.turbanColor, beard: o.beard, shades: o.shades }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
   if (neck && (o.scarf || o.kurta)) { const ws = neck.getWorldScale(V).x || 1;
     const scarf = new T.Group(); const sM = mat(o.scarf || o.kurta, .8);
     const loop = new T.Mesh(new T.TorusGeometry(0.085, 0.028, 8, 18), sM); loop.rotation.x = Math.PI / 2; loop.position.y = -0.02; scarf.add(loop);
@@ -1801,7 +1803,7 @@ function wireCreator() {
   chipRow('chMoustache', [{ t: 'Yes', v: true }, { t: 'No', v: false }], () => opts.moustache, v => opts.moustache = v);
   swatchRow('swScarf', KURTAS, () => opts.scarf, v => opts.scarf = v);
   chipRow('chShades', [{ t: '\ud83d\udd76 Shades on', v: true }, { t: 'No shades', v: false }], () => opts.shades, v => opts.shades = v);
-  chipRow('chOutfit', [{ t: 'Sherwani (brocade)', v: 'sherwani' }, { t: 'Kurta', v: 'kurta' }, { t: 'Suit', v: 'suit' }], () => opts.outfit, v => opts.outfit = v);
+  chipRow('chOutfit', [{ t: 'Sherwani (brocade)', v: 'sherwani' }, { t: 'Kurta', v: 'kurta' }, { t: 'Silk kurta', v: 'silk' }, { t: 'Khadi', v: 'khadi' }, { t: 'Suit', v: 'suit' }], () => opts.outfit, v => opts.outfit = v);
   chipRow('chHand', [{ t: '\ud83d\udd90 Right-handed \u2014 stick right', v: 'right' }, { t: 'Left-handed \u2014 stick left', v: 'left' }], () => settings.hand, v => { settings.hand = v; applyHand(); });
   $('nameIn').addEventListener('input', e => opts.name = e.target.value || 'Raja');
   $('enterBtn').addEventListener('click', startGame);
@@ -1890,7 +1892,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 16'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 17'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
   const enable = () => { btn.disabled = false; btn.textContent = '▶ Enter the City'; };
