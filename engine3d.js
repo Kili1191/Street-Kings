@@ -242,19 +242,18 @@ function buildHeadgear(o) {
     // smooth wrapped pagdi: lathe profile + cloth-fold texture, matching the avatar's realism
     const tM = new T.MeshStandardMaterial({ color: '#ffffff', map: makeTurbanTexture(o.turbanColor), roughness: .78, metalness: 0 });
     const prof = [];
-    prof.push(new T.Vector2(0.001, 0.155));
-    prof.push(new T.Vector2(0.055, 0.150));
-    prof.push(new T.Vector2(0.105, 0.118));
-    prof.push(new T.Vector2(0.128, 0.072));
-    prof.push(new T.Vector2(0.126, 0.028));
-    prof.push(new T.Vector2(0.112, -0.008));
-    prof.push(new T.Vector2(0.092, -0.028));
+    prof.push(new T.Vector2(0.001, 0.150));
+    prof.push(new T.Vector2(0.065, 0.145));
+    prof.push(new T.Vector2(0.118, 0.112));
+    prof.push(new T.Vector2(0.140, 0.066));
+    prof.push(new T.Vector2(0.138, 0.020));
+    prof.push(new T.Vector2(0.124, -0.020));
+    prof.push(new T.Vector2(0.100, -0.048));
     const pag = new T.Mesh(new T.LatheGeometry(prof, 28), tM); pag.position.y = ACC.turbY - 0.035; g.add(pag);
     // front band across the brow
     const band = new T.Mesh(new T.TorusGeometry(0.101, 0.018, 10, 26), tM); band.rotation.x = Math.PI / 2;
     band.position.y = ACC.turbY - 0.055; band.scale.set(1, 1, 1.04); g.add(band);
-    const jewel = new T.Mesh(new T.SphereGeometry(0.018, 12, 12), mat('#ffd700', .2)); jewel.position.set(0, ACC.turbY + 0.02, 0.112); g.add(jewel);
-    const plume = new T.Mesh(new T.ConeGeometry(0.013, 0.085, 8), mat('#f2ead8', .65)); plume.position.set(0, ACC.turbY + 0.135, 0.075); plume.rotation.x = -0.35; g.add(plume);
+    const jewel = new T.Mesh(new T.SphereGeometry(0.018, 12, 12), mat('#ffd700', .2)); jewel.position.set(0, ACC.turbY + 0.015, 0.125); g.add(jewel);
   }
   if (o.beard && o.beard !== 'none') {
     const bM = mat('#171310', .85);
@@ -274,7 +273,7 @@ function makeHuman(o) {
   const model = window.skeletonClone(HERO.scene);
   const s = 1.8 / HERO.height; model.scale.setScalar(s);
   grp.add(model);
-  const skinTint = new T.Color('#ffffff').lerp(new T.Color(o.skin), 0.55);
+  const skinTint = new T.Color('#ffffff').lerp(new T.Color(o.skin), 0.85);
   model.traverse(n => { if (!(n.isMesh || n.isSkinnedMesh)) return;
     n.castShadow = true; n.frustumCulled = false;
     const mn = (n.material && n.material.name) || '';
@@ -282,7 +281,7 @@ function makeHuman(o) {
     if (/Outfit_Top/i.test(mn)) { // sherwani: gold-zari brocade in the chosen colour
       n.material.map = makeBrocadeTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .72; }
     else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // churidar / pyjama
-    else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#7a4f28');        // leather juttis
+    else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#4a3626');        // leather juttis
     else if (/Skin|Body/i.test(mn)) n.material.color = skinTint;                     // face + body skin tone
     else if (/Headwear/i.test(mn)) n.visible = false;                                // replaced by our pagdi
     else if (/Beard/i.test(mn)) n.visible = o.beard !== 'none';                      // the avatar's real beard
@@ -298,7 +297,7 @@ function makeHuman(o) {
   const V = new T.Vector3();
   if (head) { const ws = head.getWorldScale(V).x || 1;
     // the avatar has a real beard mesh, so only the pagdi is attached here
-    const acc = buildHeadgear({ turban: o.turban, turbanColor: o.turbanColor }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.085 / ws, 0.005 / ws); head.add(acc); }
+    const acc = buildHeadgear({ turban: o.turban, turbanColor: o.turbanColor }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
   if (neck && (o.scarf || o.kurta)) { const ws = neck.getWorldScale(V).x || 1;
     const scarf = new T.Group(); const sM = mat(o.scarf || o.kurta, .8);
     const loop = new T.Mesh(new T.TorusGeometry(0.085, 0.028, 8, 18), sM); loop.rotation.x = Math.PI / 2; loop.position.y = -0.02; scarf.add(loop);
@@ -712,9 +711,11 @@ function buildCity() {
       const m = new T.Mesh(boxGeo, bm); m.scale.set(w, h, d); m.position.set(px2, h / 2, pz2); m.castShadow = true; m.receiveShadow = true; scene.add(m);
       if (lowRise) { // Kerala / Goa: steep clay-tile hipped roof
         const roofM = mat(pick(['#a24a30', '#94402a', '#b0563a']), .9);
+        const rh = Math.max(1.4, h * .3);
         const pyr = new T.Mesh(new T.ConeGeometry(1, 1, 4), roofM);
-        pyr.rotation.y = Math.PI / 4; pyr.scale.set(w * .78, Math.max(1.6, h * .34), d * .78);
-        pyr.position.set(px2, h + Math.max(1.6, h * .34) / 2 - .1, pz2); pyr.castShadow = true; scene.add(pyr);
+        pyr.rotation.y = Math.PI / 4; pyr.scale.set(w * .58, rh, d * .58);
+        pyr.position.set(px2, h + rh / 2 - .05, pz2); pyr.castShadow = true; scene.add(pyr);
+        const eave = new T.Mesh(boxGeo, roofM); eave.scale.set(w + .5, .22, d + .5); eave.position.set(px2, h + .05, pz2); eave.castShadow = true; scene.add(eave);
       } else {
         const roof = new T.Mesh(boxGeo, mat('#2b2b32')); roof.scale.set(w + .25, .5, d + .25); roof.position.set(px2, h + .1, pz2); roof.castShadow = true; scene.add(roof);
       }
@@ -991,7 +992,7 @@ function buildAuto(color) {
   // wheels: 1 front, 2 rear
   const fw = wheel(.42, .22); fw.position.set(0, .42, 1.55); g.add(fw);
   for (const sx of [-.85, .85]) { const w = wheel(.42, .22); w.position.set(sx, .42, -1.05); g.add(w); }
-  g.userData.seat = { x: 0, y: .55, z: .3 };
+  g.userData.seat = { x: 0, y: .32, z: .3 };
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -1019,7 +1020,7 @@ function buildCar(kind, color) {
   if (kind === 'taxi') { const sign = new T.Mesh(new T.BoxGeometry(.5, .18, .3), mat('#e8b820', .6)); sign.position.set(0, 1.9, -L * .04); g.add(sign);
     const yroof = new T.Mesh(new T.SphereGeometry(.9, 18, 12), mat('#e8b820', .5)); yroof.scale.set(.87, .31, 1.21); yroof.position.set(0, 1.63, -L * .04); g.add(yroof); }
   if (kind === 'cop') { const bar = new T.Mesh(new T.BoxGeometry(1.1, .14, .34), mat('#ff3b3b')); bar.position.set(0, 1.86, -L * .04); g.add(bar); g.userData.bar = bar; }
-  g.userData.seat = { x: .38, y: .5, z: L * .06 }; // right-hand drive, like India
+  g.userData.seat = { x: .38, y: .14, z: L * .06 }; // right-hand drive, like India
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -1038,7 +1039,7 @@ function buildEnfield() {
   const bar = new T.Mesh(new T.CylinderGeometry(.03, .03, .72, 8), chrome); bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.28, .82); g.add(bar);
   const lamp = new T.Mesh(new T.SphereGeometry(.13, 12, 10), chromeLight(true)); lamp.position.set(0, 1.18, 1.05); g.add(lamp);
   const fenderF = new T.Mesh(new T.CylinderGeometry(.56, .56, .14, 12, 1, false, Math.PI * .1, Math.PI * .55), chrome); fenderF.rotation.z = Math.PI / 2; fenderF.position.set(0, .5, .95); g.add(fenderF);
-  g.userData.seat = { x: 0, y: .78, z: -.28 };
+  g.userData.seat = { x: 0, y: .5, z: -.28 };
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -1068,19 +1069,16 @@ function buildRamps() {
     if (!alongZ && !alongX) continue;
     const yaw = alongZ ? 0 : Math.PI / 2;
     const len = 11, w = 5.4, h = 3.4;
-    const geo = new T.BufferGeometry();
-    // wedge: rises from 0 at -len/2 to h at +len/2 (local +Z)
-    const hw = w / 2, hl = len / 2;
-    const verts = new Float32Array([
-      -hw,0,-hl,  hw,0,-hl,  hw,h,hl,   -hw,0,-hl,  hw,h,hl,  -hw,h,hl,   // top slope
-      -hw,0,hl,   hw,0,hl,   hw,h,hl,   -hw,0,hl,   hw,h,hl,  -hw,h,hl,   // back face
-      -hw,0,-hl, -hw,0,hl,  -hw,h,hl,   hw,0,-hl,   hw,h,hl,   hw,0,hl,   // sides
-    ]);
-    geo.setAttribute('position', new T.BufferAttribute(verts, 3));
-    geo.computeVertexNormals();
-    const m = new T.Mesh(geo, rM); m.position.set(p.x, 0, p.z); m.rotation.y = yaw; m.castShadow = true; m.receiveShadow = true; scene.add(m);
-    // warning stripes post
-    const sign = new T.Mesh(new T.BoxGeometry(.6, 1.2, .1), sM); sign.position.set(p.x + (alongZ ? 3.2 : 0), .6, p.z + (alongZ ? 0 : 3.2)); scene.add(sign);
+    const angle = Math.atan2(h, len);
+    const slabLen = Math.sqrt(len * len + h * h);
+    const slab = new T.Mesh(new T.BoxGeometry(w, .35, slabLen), rM);
+    slab.rotation.y = yaw; slab.rotateX(-angle);
+    slab.position.set(p.x, h / 2 - .05, p.z); slab.castShadow = true; slab.receiveShadow = true; scene.add(slab);
+    for (const sx of [-1, 1]) {
+      const rail = new T.Mesh(new T.BoxGeometry(.18, .5, slabLen), sM);
+      rail.rotation.y = yaw; rail.rotateX(-angle);
+      const off = new T.Vector3(sx * (w / 2 - .09), h / 2 + .12, 0).applyAxisAngle(new T.Vector3(0, 1, 0), yaw);
+      rail.position.set(p.x + off.x, off.y, p.z + off.z); rail.castShadow = true; scene.add(rail); }
     ramps.push({ x: p.x, z: p.z, yaw, len, w, h });
     placed++;
   }
@@ -1111,7 +1109,7 @@ function spawnVehicles(n) {
         kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: true };
       const d = makeHuman(o); const seat = g.userData.seat || { x: 0, y: .55, z: .3 };
       g.add(d); d.position.set(seat.x, seat.y, seat.z);
-      if (d.userData.human) d.userData.human.seated = true;
+      if (d.userData.human) { d.userData.human.seated = true; animateChar(d, false, .03, 0); }
       v.driver = { g: d, fare: randi(60, 150) };
     }
     vehicles.push(v); }
@@ -1205,7 +1203,7 @@ function acceptRide() {
   const v = n.veh; player.nego = null;
   v.hired = true; v.fareDue = n.fare; v.ai = true;
   // hop in the back seat
-  v.g.add(player.g); player.g.position.set(0, .6, -.85); player.g.rotation.set(0, 0, 0);
+  v.g.add(player.g); player.g.position.set(0, .28, -.85); player.g.rotation.set(0, 0, 0);
   const u = player.g.userData; if (u.human) u.human.seated = true;
   player.riding = v; player.rideT = 0; player.rideDur = rand(16, 26);
   Radio.setOn(true);
