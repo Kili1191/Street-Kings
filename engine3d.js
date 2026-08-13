@@ -792,6 +792,31 @@ function scatterProps() {
     const di = districtAt(p.x, p.z); const palm = [5, 7, 8].includes(di) ? Math.random() < .7 : Math.random() < .2;
     const tr = buildTree(palm); tr.position.set(p.x, 0, p.z); tr.scale.setScalar(rand(.85, 1.15)); scene.add(tr);
     buildings.push({ x: p.x, z: p.z, hw: .7, hd: .7 }); }
+  // scattered litter: papers, plastic bags, bottle bits — everywhere
+  const litterGeo = new T.PlaneGeometry(.22, .3);
+  for (let i = 0; i < 420 * area; i++) { const p = sidewalkSpot() || roadSpot(); if (!p) continue;
+    const lt = new T.Mesh(litterGeo, new T.MeshStandardMaterial({ color: pick(['#e8e2d0', '#c9d4e0', '#d4c9b0', '#9fb8c9', '#e0c9c9']), roughness: 1, side: T.DoubleSide }));
+    lt.rotation.x = -Math.PI / 2 + rand(-.15, .15); lt.rotation.z = rand(0, TAU);
+    lt.position.set(p.x + rand(-2, 2), .02 + rand(0, .03), p.z + rand(-2, 2)); scene.add(lt); }
+  // big corner trash heaps with stain
+  for (let i = 0; i < 40 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
+    const stain = new T.Mesh(new T.CircleGeometry(rand(1.2, 2), 10), new T.MeshStandardMaterial({ color: '#4a4234', roughness: 1 }));
+    stain.rotation.x = -Math.PI / 2; stain.position.set(p.x, .015, p.z); scene.add(stain);
+    for (let k = 0; k < 5; k++) { const bag = new T.Mesh(new T.SphereGeometry(rand(.2, .45), 7, 6), mat(pick(['#3a3f46', '#556b4a', '#7a6f4a', '#2a2e34']), 1));
+      bag.scale.y = .7; bag.position.set(p.x + rand(-.8, .8), .2, p.z + rand(-.8, .8)); bag.castShadow = true; scene.add(bag); } }
+  // vendor thela carts with produce pyramids
+  for (let i = 0; i < 34 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
+    const cart = new T.Group();
+    const bed = new T.Mesh(new T.BoxGeometry(1.6, .14, 1), mat('#8a6b3a', .9)); bed.position.y = .8; cart.add(bed);
+    for (const sx of [-.6, .6]) { const wl = new T.Mesh(new T.TorusGeometry(.32, .05, 8, 16), mat('#3a2f24', .8)); wl.rotation.y = Math.PI / 2; wl.position.set(sx, .34, 0); cart.add(wl); }
+    for (const lx of [-.7, .7]) { const leg = new T.Mesh(new T.CylinderGeometry(.03, .03, .8, 6), mat('#6b4a2a')); leg.position.set(lx, .4, .42); cart.add(leg); }
+    const fruit = pick(['#e67e22', '#c0392b', '#e0b93c', '#4f9e2b', '#d4691e']);
+    for (let ring = 0; ring < 3; ring++) { const n = 5 - ring;
+      for (let q = 0; q < n * n; q++) { const fx = (q % n - (n - 1) / 2) * .18, fz = ((q / n | 0) - (n - 1) / 2) * .18;
+        const fr = new T.Mesh(new T.SphereGeometry(.085, 8, 7), mat(fruit, .55)); fr.position.set(fx, .95 + ring * .14, fz); cart.add(fr); } }
+    cart.position.set(p.x, 0, p.z); cart.rotation.y = rand(0, TAU);
+    cart.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(cart);
+    buildings.push({ x: p.x, z: p.z, hw: 1, hd: .8 }); }
   // parked old bicycles
   for (let i = 0; i < 26 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
     const b = buildBicycle(); b.position.set(p.x, 0, p.z); b.rotation.y = rand(0, TAU); b.rotation.z = rand(-.08, .08); scene.add(b); }
@@ -878,6 +903,64 @@ function spawnCows(n) {
     cows.push({ g, dir: rand(0, TAU), speed: rand(.25, .6), t: rand(0, 10) }); }
 }
 
+// ---------- street animals: monkeys (monkey cities) + stray dogs ----------
+const monkeys = [], dogs = [];
+function spawnMonkeys(n) {
+  for (let i = 0; i < n; i++) {
+    // monkeys live where they really do: Old Delhi, Marwar, Kashi
+    const cell = pick([0, 2, 3]); const mx = cell % 3, mz = (cell / 3) | 0;
+    let p = null;
+    for (let t = 0; t < 40; t++) { const x = rand((mx - 1) * CELL - CELL * .42, (mx - 1) * CELL + CELL * .42), z = rand((mz - 1) * CELL - CELL * .42, (mz - 1) * CELL + CELL * .42);
+      if (onSidewalk(x, z) && !blocked(x, z)) { p = { x, z }; break; } }
+    if (!p) continue;
+    const g = new T.Group(); const fur = mat('#7a5f46', .9), face = mat('#c9a074', .7);
+    const body = new T.Mesh(new T.SphereGeometry(.16, 10, 8), fur); body.scale.set(.85, 1, 1.1); body.position.y = .3; g.add(body);
+    const head = new T.Mesh(new T.SphereGeometry(.1, 10, 8), fur); head.position.set(0, .5, .08); g.add(head);
+    const muzzle = new T.Mesh(new T.SphereGeometry(.055, 8, 6), face); muzzle.position.set(0, .48, .16); g.add(muzzle);
+    for (const sx of [-1, 1]) { const ear = new T.Mesh(new T.SphereGeometry(.03, 6, 5), face); ear.position.set(.09 * sx, .55, .05); g.add(ear); }
+    const tail = new T.Mesh(new T.CylinderGeometry(.018, .012, .5, 6), fur); tail.rotation.x = 1; tail.position.set(0, .42, -.28); g.add(tail);
+    for (const [sx, sz] of [[-.08, .1], [.08, .1], [-.08, -.1], [.08, -.1]]) { const leg = new T.Mesh(new T.CylinderGeometry(.025, .02, .3, 6), fur); leg.position.set(sx, .15, sz); g.add(leg); }
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    g.position.set(p.x, 0, p.z); scene.add(g);
+    monkeys.push({ g, dir: rand(0, TAU), hop: 0, wait: rand(0, 2) });
+  }
+}
+function updateMonkeys(dt) {
+  for (const m of monkeys) {
+    if (m.wait > 0) { m.wait -= dt; m.g.position.y = 0; continue; }
+    if (m.hop <= 0) { // start a hop burst
+      if (Math.random() < .3) { m.wait = rand(.5, 2.5); continue; }
+      m.dir += rand(-1.2, 1.2); m.hop = rand(.25, .4);
+    }
+    m.hop -= dt;
+    const spd = 3.2;
+    const nx = m.g.position.x + Math.sin(m.dir) * spd * dt, nz = m.g.position.z + Math.cos(m.dir) * spd * dt;
+    if (!blocked(nx, nz) && Math.abs(nx) < HALF - 2 && Math.abs(nz) < HALF - 2) { m.g.position.x = nx; m.g.position.z = nz; m.g.rotation.y = m.dir; }
+    else m.dir += 2;
+    m.g.position.y = Math.abs(Math.sin(m.hop * 12)) * .25; // bouncy hop
+  }
+}
+function spawnDogs(n) {
+  for (let i = 0; i < n; i++) { const p = sidewalkSpot(); if (!p) continue;
+    const g = new T.Group(); const coat = mat(pick(['#a9713f', '#7a6a54', '#3a3428', '#c9b89a']), .95);
+    const body = new T.Mesh(new T.SphereGeometry(.2, 10, 8), coat); body.scale.set(.7, .75, 1.7); body.position.y = .42; g.add(body);
+    const head = new T.Mesh(new T.SphereGeometry(.13, 10, 8), coat); head.scale.set(.85, .9, 1.2); head.position.set(0, .58, .4); g.add(head);
+    for (const sx of [-1, 1]) { const ear = new T.Mesh(new T.ConeGeometry(.04, .1, 6), coat); ear.position.set(.07 * sx, .7, .36); g.add(ear); }
+    const tail = new T.Mesh(new T.CylinderGeometry(.02, .012, .35, 6), coat); tail.rotation.x = -.9; tail.position.set(0, .55, -.42); g.add(tail);
+    for (const [sx, sz] of [[-.1, .22], [.1, .22], [-.1, -.24], [.1, -.24]]) { const leg = new T.Mesh(new T.CylinderGeometry(.03, .025, .4, 6), coat); leg.position.set(sx, .2, sz); g.add(leg); }
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
+    dogs.push({ g, dir: rand(0, TAU), speed: rand(.6, 1.3), t: rand(0, 10), nap: 0 });
+  }
+}
+function updateDogs(dt) {
+  for (const d of dogs) {
+    if (d.nap > 0) { d.nap -= dt; d.g.rotation.z = Math.PI / 2 * .85; continue; }
+    d.g.rotation.z = 0;
+    if (Math.random() < .0015) { d.nap = rand(4, 10); continue; } // street dogs nap anywhere
+    wanderMesh(d, dt);
+  }
+}
 // ---------- Vehicle: auto-rickshaw ----------
 function wheel(r, w) { const g = new T.Group();
   const tyre = new T.Mesh(new T.TorusGeometry(r * .72, r * .3, 10, 18), mat('#16161a', .95)); g.add(tyre);
@@ -1387,7 +1470,7 @@ function update(dt) {
   }
   updateTour(dt, performance.now());
 
-  updateNPCs(dt); updateCows(dt); updateVehicles(dt); updateCops(dt);
+  updateNPCs(dt); updateCows(dt); updateVehicles(dt); updateCops(dt); updateMonkeys(dt); updateDogs(dt);
   Radio.tick();
   updateParticles(dt);
 
@@ -1597,7 +1680,7 @@ function startGame() {
   // build player from chosen opts
   player.pos.copy(findSpawn());
   player.g = makeCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
-  spawnNPCs(24); spawnCows(8); spawnVehicles(16);
+  spawnNPCs(26); spawnCows(8); spawnVehicles(18); spawnMonkeys(10); spawnDogs(9);
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
 }
