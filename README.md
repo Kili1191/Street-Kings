@@ -35,6 +35,8 @@ at runtime, with fight moves layered onto the skeleton's bones. Credits:
 - Animations: [Ready Player Me animation library](https://github.com/readyplayerme/animation-library)
   (free for personal & commercial use per its license)
 - Engine: [three.js](https://threejs.org) (MIT), bundled in `vendor/`
+- Vehicles: [Kenney Car Kit & Starter Kit Racing](https://kenney.nl) (CC0) via public
+  GitHub mirrors; city bus "Montreal Bus" by Nick Ladd (CC-BY 3.0)
 
 ## 🧔🏽 Character creator
 

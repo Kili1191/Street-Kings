@@ -1024,6 +1024,57 @@ function buildCar(kind, color) {
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
+// ---------- real vehicle models (Kenney CC0 + Montreal Bus CC-BY) ----------
+const VEHM = {}; // name -> { scene, scale, yawFix, seat }
+const VEH_SPECS = {
+  sedan:  { len: 4.4, seat: { x: .35, y: .35, z: .2 } },
+  hatch:  { len: 3.8, seat: { x: .35, y: .35, z: .1 } },
+  taxi:   { len: 4.4, seat: { x: .35, y: .35, z: .2 } },
+  van:    { len: 4.8, seat: { x: .35, y: .45, z: .9 } },
+  truck:  { len: 5.6, seat: { x: .35, y: .55, z: 1.2 } },
+  suv:    { len: 4.6, seat: { x: .35, y: .45, z: .2 } },
+  police: { len: 4.5, seat: { x: .35, y: .35, z: .2 } },
+  moto:   { len: 2.2, seat: { x: 0, y: .55, z: -.1 } },
+  bus:    { len: 9.5, seat: { x: .4, y: .5, z: 3.4 } },
+};
+function loadVehModels(cb) {
+  const B = window.VEH_ASSETS;
+  if (!B || !window.GLTFLoader) { cb(); return; }
+  const dec = b64 => { const raw = atob(b64), u = new Uint8Array(raw.length); for (let i = 0; i < raw.length; i++) u[i] = raw.charCodeAt(i); return u.buffer; };
+  const keys = Object.keys(B); let left = keys.length;
+  for (const k of keys) {
+    try {
+      // the kits reference an external Textures/colormap.png — feed the right one per kit
+      const tex = (window.VEH_TEX || {})[k === 'moto' ? 'racing' : 'carkit'];
+      const mgr = new T.LoadingManager();
+      if (tex) mgr.setURLModifier(u => /colormap\.png/i.test(u) ? tex : u);
+      const L = new window.GLTFLoader(mgr);
+      L.parse(dec(B[k]), '', g => {
+        const box = new T.Box3().setFromObject(g.scene);
+        const size = new T.Vector3(); box.getSize(size);
+        const spec = VEH_SPECS[k] || { len: 4.4, seat: { x: .35, y: .35, z: .2 } };
+        const long = Math.max(size.x, size.z);
+        VEHM[k] = { scene: g.scene, scale: spec.len / Math.max(.001, long),
+          yawFix: size.x > size.z ? Math.PI / 2 : 0, // some kits model along X
+          minY: box.min.y, seat: spec.seat };
+        if (--left === 0) cb();
+      }, () => { if (--left === 0) cb(); });
+    } catch (e) { if (--left === 0) cb(); }
+  }
+}
+function buildVehModel(k) {
+  const M = VEHM[k]; if (!M) return null;
+  const g = new T.Group();
+  const m = M.scene.clone(true);
+  m.scale.setScalar(M.scale);
+  m.rotation.y = M.yawFix;
+  m.position.y = -M.minY * M.scale; // sit on the road
+  m.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
+  g.add(m);
+  g.userData.seat = M.seat;
+  if (k === 'police') { const bar = new T.Mesh(new T.BoxGeometry(.9, .12, .3), mat('#ff3b3b')); bar.position.set(0, 1.75, 0); g.add(bar); g.userData.bar = bar; }
+  return g;
+}
 // Royal Enfield Bullet: wire wheels, teardrop tank with gold pinstripe, round lamp, long exhaust
 function buildEnfield() {
   const g = new T.Group();
@@ -1098,7 +1149,15 @@ const vehicles = [];
 function spawnVehicles(n) {
   for (let i = 0; i < n; i++) { const p = roadSpot(); if (!p) continue;
     const r = Math.random();
-    const g = r < .34 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
+    let g = null;
+    if (VEHM.sedan) { // real models: Kenney kit + bus
+      g = r < .3 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
+          r < .42 ? buildVehModel('sedan') : r < .52 ? buildVehModel('hatch') :
+          r < .62 ? buildVehModel('taxi') : r < .7 ? buildVehModel('suv') :
+          r < .78 ? buildVehModel('van') : r < .85 ? buildVehModel('truck') :
+          r < .91 ? buildVehModel('moto') : r < .96 ? buildVehModel('bus') : buildEnfield();
+    }
+    if (!g) g = r < .34 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
               r < .52 ? buildCar('hatch') : r < .74 ? buildCar('sedan') : r < .88 ? buildCar('taxi') : buildEnfield();
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU);
     scene.add(g);
@@ -1292,7 +1351,7 @@ let wanted = 0, heat = 0, wantedTimer = 0;
 const cops = [];
 function crime(a) { heat += a; if (heat >= 3) { heat = 0; wanted = clamp(wanted + 1, 0, 5); wantedTimer = 12; updateStars(); if (cops.length < wanted) spawnCop(); } }
 function spawnCop() { const p = roadSpot(); if (!p) return;
-  const g = buildCar('cop');
+  const g = (VEHM.police && buildVehModel('police')) || buildCar('cop');
   g.position.set(p.x, 0, p.z); scene.add(g);
   cops.push({ g, yaw: 0, speed: 0, corrupt: Math.random() < .55 }); }
 function updateStars() { let s = ''; for (let i = 0; i < wanted; i++) s += '★'; $('stars').textContent = s; siren(wanted > 0); }
@@ -1751,10 +1810,12 @@ function boot() {
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
   const enable = () => { btn.disabled = false; btn.textContent = '▶ Enter the City'; };
   const failsafe = setTimeout(enable, 7000);
-  loadHero(h => { clearTimeout(failsafe); if (h) HERO = h; enable(); rebuildPreview(); });
+  loadHero(h => { if (h) HERO = h; loadVehModels(() => { clearTimeout(failsafe); enable(); rebuildPreview(); }); });
   window.__tp = (x, z) => { player.pos.set(x, 0, z); if (player.inVehicle) { player.inVehicle.g.position.set(x, 0, z); } };
   window.__tpveh = () => { if (!vehicles.length) return false; const v = vehicles[0];
     player.pos.set(v.g.position.x + 2.2, 0, v.g.position.z); if (player.g) player.g.position.copy(player.pos); return true; };
+  window.__tpvehN = (i) => { const v = vehicles[i % vehicles.length]; if (!v) return false;
+    player.pos.set(v.g.position.x + 3, 0, v.g.position.z - 2); if (player.g) player.g.position.copy(player.pos); return true; };
   window.__tpdriver = () => { const v = vehicles.find(v2 => v2.driver); if (!v) return false;
     player.pos.set(v.g.position.x + 2.2, 0, v.g.position.z); if (player.g) player.g.position.copy(player.pos); return true; };
   window.__state = () => ({ nego: !!player.nego, fare: player.nego ? player.nego.fare : -1, riding: !!player.riding, cash: player.cash });
