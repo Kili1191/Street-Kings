@@ -659,19 +659,34 @@ function makeFacadeTexture(style, floors) {
     const yTop = f * fh;
     g.fillStyle = 'rgba(60,55,45,.35)'; g.fillRect(0, yTop, S, 3);
     g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(0, yTop + 3, S, 2);
-    if (f === floors - 1) { // ground floor
+    if (f === floors - 1) { // ground floor — a bazaar row: open glowing shops between pulled-down shutters
       for (let cc = 0; cc < cols; cc++) {
         const x = padx + cc * (ww + padx), y = yTop + fh * .18, h2 = fh * .74;
-        g.fillStyle = pick(['#7f8a92', '#9a8a6a', '#7d9484', '#a08878']); g.fillRect(x - 6, y, ww + 12, h2);
-        g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 1.5;
-        for (let s2 = 0; s2 < h2; s2 += 5) { g.beginPath(); g.moveTo(x - 6, y + s2); g.lineTo(x + ww + 6, y + s2); g.stroke(); }
-        if (style === 2) { // painted signboard with script-like strokes
-          const sb = pick(['#c0392b', '#1a5c8a', '#c9a02b', '#1e7a4a', '#8a2b6b']);
-          g.fillStyle = sb; g.fillRect(x - 8, y - 16, ww + 16, 15);
-          g.strokeStyle = pick(['#ffe9a8', '#ffffff']); g.lineWidth = 2;
-          g.beginPath(); g.moveTo(x - 2, y - 5); g.lineTo(x + ww + 2, y - 5); g.stroke(); // headline bar (devanagari-like)
-          for (let sx2 = x; sx2 < x + ww; sx2 += rand(6, 12)) { g.beginPath(); g.moveTo(sx2, y - 5); g.lineTo(sx2 + rand(-2, 2), y - 12 + rand(0, 4)); g.stroke(); }
-        } else { g.fillStyle = 'rgba(30,28,24,.5)'; g.fillRect(x - 8, y - 8, ww + 16, 8); }
+        const open = Math.random() < .5;
+        if (open) { // shop doing business: warm interior, stacked colourful goods, hanging strings
+          const gl2 = g.createLinearGradient(0, y, 0, y + h2);
+          gl2.addColorStop(0, '#3a2c1a'); gl2.addColorStop(.25, '#8a5f2a'); gl2.addColorStop(.8, '#c98f3f');
+          g.fillStyle = gl2; g.fillRect(x - 6, y, ww + 12, h2);
+          for (let sh = 0; sh < 3; sh++) { const sy = y + h2 * (.3 + sh * .22); // shelves of wares
+            g.fillStyle = 'rgba(60,40,20,.8)'; g.fillRect(x - 4, sy + 6, ww + 8, 2.5);
+            for (let gx = x - 2; gx < x + ww + 2; gx += 7) { g.fillStyle = pick(['#c0392b', '#e0b93c', '#2980b9', '#1e7a4a', '#e67e22', '#efe9da', '#8e44ad']);
+              g.fillRect(gx, sy, 5, 6); } }
+          for (let hx = x; hx < x + ww; hx += rand(8, 14)) { // sachet strips hanging from the lintel
+            g.strokeStyle = pick(['#c9c9c9', '#e0b93c']); g.lineWidth = 1.6;
+            g.beginPath(); g.moveTo(hx, y); g.lineTo(hx, y + rand(10, 22)); g.stroke(); }
+          g.fillStyle = 'rgba(20,14,8,.55)'; g.fillRect(x - 6, y, 4, h2); g.fillRect(x + ww + 2, y, 4, h2);
+        } else { // rolled shutter, painted and rusting
+          g.fillStyle = pick(['#7f8a92', '#9a8a6a', '#7d9484', '#a08878', '#8a6a7d', '#6a8a92']); g.fillRect(x - 6, y, ww + 12, h2);
+          g.strokeStyle = 'rgba(0,0,0,.25)'; g.lineWidth = 1.5;
+          for (let s2 = 0; s2 < h2; s2 += 5) { g.beginPath(); g.moveTo(x - 6, y + s2); g.lineTo(x + ww + 6, y + s2); g.stroke(); }
+          g.globalAlpha = .25; g.fillStyle = '#7c4029'; g.fillRect(x - 6, y + h2 - rand(6, 16), ww + 12, 8); g.globalAlpha = 1; // rust at the sill
+        }
+        // every shop gets its own loud signboard, stacked bazaar-style
+        const sb = pick(['#c0392b', '#1a5c8a', '#c9a02b', '#1e7a4a', '#8a2b6b', '#b3541e', '#0f6a6a']);
+        g.fillStyle = sb; g.fillRect(x - 8, y - 16, ww + 16, 15);
+        g.strokeStyle = pick(['#ffe9a8', '#ffffff', '#ffd24d']); g.lineWidth = 2;
+        g.beginPath(); g.moveTo(x - 2, y - 5); g.lineTo(x + ww + 2, y - 5); g.stroke(); // headline bar (devanagari-like)
+        for (let sx2 = x; sx2 < x + ww; sx2 += rand(6, 12)) { g.beginPath(); g.moveTo(sx2, y - 5); g.lineTo(sx2 + rand(-2, 2), y - 12 + rand(0, 4)); g.stroke(); }
       }
       continue;
     }
@@ -957,6 +972,9 @@ function scatterProps() {
       for (let vi = 0; vi < tp.count; vi++) tp.setZ(vi, rand(-.1, .14)); tarp.geometry.computeVertexNormals();
       tarp.rotation.x = -Math.PI / 2 + rand(-.14, .14); tarp.rotation.z = rand(0, TAU);
       tarp.position.set(p.x, 2.28, p.z); tarp.castShadow = true; scene.add(tarp);
+      for (const [bx, bz] of [[-1, -.8], [1, -.8], [-1, .8], [1, .8]]) { // lashed to bamboo at each corner
+        const bam = new T.Mesh(new T.CylinderGeometry(.03, .035, 2.25, 6), mat('#a08a52', .9));
+        bam.position.set(p.x + bx, 1.12, p.z + bz); bam.rotation.z = bx * .06; bam.rotation.x = -bz * .05; scene.add(bam); }
     } else {
       const pc = document.createElement('canvas'); pc.width = 64; pc.height = 16; const pg = pc.getContext('2d');
       const c1 = pick(['#c0392b', '#1a5c8a', '#1e7a4a', '#c9760b']);
@@ -1168,22 +1186,22 @@ function spawnDogs(n) {
     const g = new T.Group();
     const cc = pick([['#b3803f', '#e0cba8'], ['#8a6a48', '#d9c9a8'], ['#3a3428', '#a89878'], ['#c9a06a', '#efe2c8'], ['#96703d', '#e8d9b8']]);
     const coat = mat(cc[0], .92), pale = mat(cc[1], .92);
-    const body = new T.Mesh(new T.SphereGeometry(.19, 12, 9), coat); body.scale.set(.62, .68, 1.55); body.position.y = .44; g.add(body);
-    const chest = new T.Mesh(new T.SphereGeometry(.14, 10, 8), pale); chest.scale.set(.6, .72, .9); chest.position.set(0, .4, .26); g.add(chest);
-    const neck = new T.Mesh(new T.CylinderGeometry(.075, .095, .22, 8), coat); neck.rotation.x = -.7; neck.position.set(0, .56, .32); g.add(neck);
-    const head = new T.Mesh(new T.SphereGeometry(.095, 10, 8), coat); head.scale.set(.82, .85, 1); head.position.set(0, .66, .42); g.add(head);
-    const muzzle = new T.Mesh(new T.CylinderGeometry(.032, .05, .14, 8), pale); muzzle.rotation.x = Math.PI / 2 - .12; muzzle.position.set(0, .63, .53); g.add(muzzle);
-    const nose = new T.Mesh(new T.SphereGeometry(.02, 6, 5), mat('#141414', .4)); nose.position.set(0, .645, .6); g.add(nose);
+    const body = new T.Mesh(new T.SphereGeometry(.19, 12, 9), coat); body.scale.set(.68, .7, 1.45); body.position.y = .34; g.add(body);
+    const chest = new T.Mesh(new T.SphereGeometry(.14, 10, 8), pale); chest.scale.set(.66, .74, .9); chest.position.set(0, .31, .24); g.add(chest);
+    const neck = new T.Mesh(new T.CylinderGeometry(.075, .1, .16, 8), coat); neck.rotation.x = -.7; neck.position.set(0, .42, .3); g.add(neck);
+    const head = new T.Mesh(new T.SphereGeometry(.095, 10, 8), coat); head.scale.set(.82, .85, 1); head.position.set(0, .5, .38); g.add(head);
+    const muzzle = new T.Mesh(new T.CylinderGeometry(.032, .05, .13, 8), pale); muzzle.rotation.x = Math.PI / 2 - .12; muzzle.position.set(0, .47, .48); g.add(muzzle);
+    const nose = new T.Mesh(new T.SphereGeometry(.02, 6, 5), mat('#141414', .4)); nose.position.set(0, .485, .54); g.add(nose);
     for (const sx of [-1, 1]) {
-      const ear = new T.Mesh(new T.ConeGeometry(.042, .13, 6), coat); ear.position.set(.062 * sx, .78, .38); ear.rotation.z = -.15 * sx; g.add(ear);
-      const eye = new T.Mesh(new T.SphereGeometry(.014, 6, 5), mat('#1a120a', .3)); eye.position.set(.045 * sx, .685, .49); g.add(eye);
+      const ear = new T.Mesh(new T.ConeGeometry(.04, .11, 6), coat); ear.position.set(.058 * sx, .6, .34); ear.rotation.z = -.15 * sx; g.add(ear);
+      const eye = new T.Mesh(new T.SphereGeometry(.014, 6, 5), mat('#1a120a', .3)); eye.position.set(.045 * sx, .52, .45); g.add(eye);
     }
-    const tail = new T.Mesh(new T.CylinderGeometry(.022, .01, .34, 6), coat); tail.rotation.x = -2.4; tail.position.set(0, .58, -.44); g.add(tail);
+    const tail = new T.Mesh(new T.CylinderGeometry(.022, .01, .3, 6), coat); tail.rotation.x = -2.4; tail.position.set(0, .45, -.4); g.add(tail);
     const legs = [];
-    for (const [sx, sz] of [[-.08, .26], [.08, .26], [-.08, -.28], [.08, -.28]]) {
-      const leg = new T.Mesh(new T.CylinderGeometry(.026, .02, .44, 6), sz > 0 ? coat : coat);
-      leg.position.set(sx, .22, sz); g.add(leg); legs.push(leg);
-      const paw = new T.Mesh(new T.SphereGeometry(.026, 6, 5), pale); paw.position.set(sx, .015, sz + .015); leg.add ? g.add(paw) : 0; }
+    for (const [sx, sz] of [[-.08, .24], [.08, .24], [-.08, -.26], [.08, -.26]]) {
+      const leg = new T.Mesh(new T.CylinderGeometry(.026, .021, .3, 6), coat);
+      leg.position.set(sx, .15, sz); g.add(leg); legs.push(leg);
+      const paw = new T.Mesh(new T.SphereGeometry(.026, 6, 5), pale); paw.position.set(sx, .015, sz + .015); g.add(paw); }
     g.traverse(o => { if (o.isMesh) o.castShadow = true; });
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
     dogs.push({ g, tail, legs, dir: rand(0, TAU), speed: rand(.8, 1.6), t: rand(0, 10), nap: 0, phase: rand(0, TAU) });
@@ -1437,7 +1455,7 @@ function buildAuto(color) {
   // three small wheels (real autos ride on 8-inch wheels)
   const fw = wheel(.24, .14); fw.position.set(0, .24, .95); g.add(fw);
   for (const sx of [-.52, .52]) { const w = wheel(.24, .14); w.position.set(sx, .24, -.7); g.add(w); }
-  g.userData.seat = { x: 0, y: .3, z: .1 };
+  g.userData.seat = { x: 0, y: .04, z: .1 }; // low on the bench — head stays under the canopy
   g.userData.dim = { w: .78, l: 1.42 }; g.userData.maxSpd = 13; g.userData.acc = 10;
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
@@ -1794,7 +1812,7 @@ function acceptRide() {
   const v = n.veh; player.nego = null;
   v.hired = true; v.fareDue = n.fare; v.ai = true;
   // hop in the back seat
-  v.g.add(player.g); player.g.position.set(0, .28, -.85); player.g.rotation.set(0, 0, 0);
+  v.g.add(player.g); player.g.position.set(0, .06, -.68); player.g.rotation.set(0, 0, 0); // tucked INSIDE the cab
   const u = player.g.userData; if (u.human) u.human.seated = true;
   player.riding = v; player.rideT = 0; player.rideDur = rand(16, 26);
   Radio.setOn(true);
@@ -2601,7 +2619,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 18'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 19'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
