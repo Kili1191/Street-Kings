@@ -25,7 +25,13 @@ function applyHand() { document.body.classList.toggle('righty', settings.hand ==
   document.body.classList.toggle('lefty', settings.hand === 'left');
   try { localStorage.setItem('sk_hand', settings.hand); } catch (e) {} }
 const opts = { name:'Raja Bahadur', skin:'#c68642', turban:true, turbanColor:'#ff9933', shades:false, scarf:'#c0392b', outfit:'sherwani',
-  kurta:'#ff9933', dhoti:'#ffffff', beard:'full', moustache:true };
+  kurta:'#ff9933', dhoti:'#ffffff', beard:'full', moustache:true, hair:'crop', hairColor:'#15100b' };
+const HAIRS = [['crop','Court'],['part','Raie'],['jura','Jura (chignon)'],['long','Long'],['curly','Bouclé']];
+const HAIRCOLS = ['#0d0a08','#15100b','#2b1a10','#4a2f18','#6a6a6a'];
+// comfort first, GTA-style: horns, city ambience and SFX each have their own switch
+let ambGain = null;
+const sndCfg = (() => { try { return Object.assign({ horns: true, amb: true, sfx: true }, JSON.parse(localStorage.getItem('sk_snd') || '{}')); } catch (e) { return { horns: true, amb: true, sfx: true }; } })();
+function saveSnd() { try { localStorage.setItem('sk_snd', JSON.stringify(sndCfg)); } catch (e) {} if (ambGain) ambGain.gain.value = sndCfg.amb ? .05 : 0; }
 
 // ---------- Character builder (low-poly humanoid) ----------
 function mat(color, rough) { return new T.MeshStandardMaterial({ color: new T.Color(color), roughness: rough == null ? .88 : rough, metalness: .02 }); }
@@ -245,15 +251,40 @@ function buildHeadgear(o) {
     prof.push(new T.Vector2(0.001, 0.150));
     prof.push(new T.Vector2(0.065, 0.145));
     prof.push(new T.Vector2(0.118, 0.112));
-    prof.push(new T.Vector2(0.140, 0.066));
-    prof.push(new T.Vector2(0.138, 0.020));
-    prof.push(new T.Vector2(0.124, -0.020));
-    prof.push(new T.Vector2(0.100, -0.048));
+    prof.push(new T.Vector2(0.142, 0.066));
+    prof.push(new T.Vector2(0.140, 0.020));
+    prof.push(new T.Vector2(0.128, -0.024));
+    prof.push(new T.Vector2(0.108, -0.062));
     const pag = new T.Mesh(new T.LatheGeometry(prof, 28), tM); pag.position.y = ACC.turbY - 0.035; g.add(pag);
+    // under-wrap dome: fills every gap between the lathe folds and the scalp — no skull peeking through
+    const cap = new T.Mesh(new T.SphereGeometry(0.104, 20, 16), tM);
+    cap.scale.set(1.04, .92, 1.06); cap.position.y = ACC.turbY - 0.052; g.add(cap);
     // front band across the brow
-    const band = new T.Mesh(new T.TorusGeometry(0.101, 0.018, 10, 26), tM); band.rotation.x = Math.PI / 2;
-    band.position.y = ACC.turbY - 0.055; band.scale.set(1, 1, 1.04); g.add(band);
+    const band = new T.Mesh(new T.TorusGeometry(0.103, 0.02, 10, 26), tM); band.rotation.x = Math.PI / 2;
+    band.position.y = ACC.turbY - 0.062; band.scale.set(1, 1, 1.05); g.add(band);
     const jewel = new T.Mesh(new T.SphereGeometry(0.018, 12, 12), mat('#ffd700', .2)); jewel.position.set(0, ACC.turbY + 0.015, 0.125); g.add(jewel);
+  }
+  else if (o.hair && o.hair !== 'none') { // Indian hairstyles (shown when no pagdi)
+    const hM = mat(o.hairColor || '#15100b', .92);
+    const cap = new T.Mesh(new T.SphereGeometry(0.1, 18, 14), hM);
+    cap.scale.set(1.0, .82, 1.0); cap.position.set(0, ACC.turbY - 0.038, -0.008); g.add(cap);
+    if (o.hair === 'part') { // side-parted quiff, oiled and combed
+      const quiff = new T.Mesh(new T.SphereGeometry(0.055, 12, 10), hM);
+      quiff.scale.set(1.5, .55, .9); quiff.position.set(0.02, ACC.turbY + 0.008, 0.055); quiff.rotation.z = -.18; g.add(quiff);
+    } else if (o.hair === 'jura') { // top-knot bun
+      const bun = new T.Mesh(new T.SphereGeometry(0.042, 12, 10), hM);
+      bun.position.set(0, ACC.turbY + 0.045, -0.02); g.add(bun);
+    } else if (o.hair === 'bun') { // low bun at the nape, parted on top
+      const bun = new T.Mesh(new T.SphereGeometry(0.05, 12, 10), hM);
+      bun.position.set(0, ACC.turbY - 0.1, -0.095); g.add(bun);
+    } else if (o.hair === 'long') { // shoulder-length, swept back
+      const back = new T.Mesh(new T.SphereGeometry(0.085, 14, 12), hM);
+      back.scale.set(1.02, 1.9, .62); back.position.set(0, ACC.turbY - 0.145, -0.062); g.add(back);
+    } else if (o.hair === 'curly') { // tight curls: clustered knots over the cap
+      for (let i = 0; i < 14; i++) { const a = i / 14 * TAU, rr = .07;
+        const c = new T.Mesh(new T.SphereGeometry(rand(.024, .036), 8, 6), hM);
+        c.position.set(Math.cos(a) * rr * rand(.5, 1), ACC.turbY - 0.03 + rand(-.02, .035), Math.sin(a) * rr * rand(.4, .9) - .01); g.add(c); }
+    }
   }
   if (o.shades) { // this avatar has no glasses mesh — build proper sunglasses
     const dark = new T.MeshStandardMaterial({ color: '#0c0c10', roughness: .15, metalness: .3 });
@@ -278,7 +309,8 @@ function buildHeadgear(o) {
 function makeHuman(o) {
   const grp = new T.Group();
   const model = window.skeletonClone(HERO.scene);
-  const s = 1.8 / HERO.height; model.scale.setScalar(s);
+  const s = 1.8 / HERO.height * (o.vary ? rand(.93, 1.05) : 1); // people come in sizes
+  model.scale.setScalar(s);
   grp.add(model);
   const skinTint = new T.Color(o.skin); { const hsl = { h: 0, s: 0, l: 0 }; skinTint.getHSL(hsl);
     skinTint.setHSL(hsl.h, Math.min(1, hsl.s * 1.7), Math.min(.92, hsl.l * 1.28)); } // counteract texture-multiply greying
@@ -286,12 +318,7 @@ function makeHuman(o) {
     n.castShadow = true; n.frustumCulled = false;
     const mn = (n.material && n.material.name) || '';
     n.material = n.material.clone();
-    if (/Outfit_Top/i.test(mn)) { // outfit choice: sherwani brocade / plain kurta / western suit
-      if (o.outfit === 'suit') { n.material.color = new T.Color(o.kurta); }
-      else if (o.outfit === 'kurta') { n.material.map = null; n.material.color = new T.Color(o.kurta); n.material.roughness = .85; }
-      else if (o.outfit === 'silk') { n.material.map = null; n.material.color = new T.Color(o.kurta); n.material.roughness = .3; n.material.metalness = .15; }
-      else if (o.outfit === 'khadi') { n.material.map = makeTurbanTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = 1; }
-      else { n.material.map = makeBrocadeTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .72; } }
+    if (/Outfit_Top/i.test(mn)) n.visible = false; // the avatar's western tailcoat is gone for good — we dress him in a real kurta below
     else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // churidar / pyjama
     else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#4a3626');        // leather juttis
     else if (/Skin|Body/i.test(mn)) n.material.color = skinTint;                     // face + body skin tone
@@ -299,18 +326,69 @@ function makeHuman(o) {
     else if (/Beard/i.test(mn)) n.visible = o.moustache !== false;                  // this mesh is actually the moustache
     else if (/visor/i.test(n.name) || /visor/i.test(mn)) { n.visible = !!o.shades; if (o.shades) { n.material.color = new T.Color('#101014'); n.material.roughness = .15; } } });
   grp.updateMatrixWorld(true);
-  let head = null, neck = null, spine = null, rArm = null, lArm = null, rLeg = null, lLeg = null, rCalf = null, lCalf = null, rFore = null, lFore = null, hips = null;
+  let head = null, neck = null, spine = null, rArm = null, lArm = null, rLeg = null, lLeg = null, rCalf = null, lCalf = null, rFore = null, lFore = null, hips = null, rHand = null, lHand = null;
   model.traverse(n => { if (!n.isBone) return; const nm = n.name;
     if (/Head$/.test(nm)) head = n; else if (/Neck$/.test(nm)) neck = n; else if (/Spine2$/.test(nm)) spine = n;
     else if (/Hips$/.test(nm)) hips = n;
     else if (/RightArm$/.test(nm)) rArm = n; else if (/LeftArm$/.test(nm)) lArm = n;
     else if (/RightUpLeg$/.test(nm)) rLeg = n; else if (/LeftUpLeg$/.test(nm)) lLeg = n;
     else if (/RightLeg$/.test(nm)) rCalf = n; else if (/LeftLeg$/.test(nm)) lCalf = n;
-    else if (/RightForeArm$/.test(nm)) rFore = n; else if (/LeftForeArm$/.test(nm)) lFore = n; });
+    else if (/RightForeArm$/.test(nm)) rFore = n; else if (/LeftForeArm$/.test(nm)) lFore = n;
+    else if (/RightHand$/.test(nm)) rHand = n; else if (/LeftHand$/.test(nm)) lHand = n; });
   const V = new T.Vector3();
+  // ---- the real outfit: a bone-draped kurta (the avatar's western tailcoat stays hidden) ----
+  {
+    const kc = o.kurta || '#ffffff';
+    const outfitM =
+      o.outfit === 'kurta' ? new T.MeshStandardMaterial({ color: new T.Color(kc), roughness: .85, side: T.DoubleSide }) :
+      o.outfit === 'silk' ? new T.MeshStandardMaterial({ color: new T.Color(kc), roughness: .3, metalness: .15, side: T.DoubleSide }) :
+      o.outfit === 'khadi' ? new T.MeshStandardMaterial({ color: '#ffffff', map: makeTurbanTexture(kc), roughness: 1, side: T.DoubleSide }) :
+      o.outfit === 'bandhgala' ? new T.MeshStandardMaterial({ color: new T.Color(kc).multiplyScalar(.5), roughness: .48, metalness: .1, side: T.DoubleSide }) :
+      new T.MeshStandardMaterial({ color: '#ffffff', map: makeBrocadeTexture(kc), roughness: .72, side: T.DoubleSide });
+    const WP = new T.Vector3();
+    const worldOf = b => b.getWorldPosition(new T.Vector3());
+    const drape = (bone, a, b, r1, r2, sq, open) => { // cloth tube between two world points, parented to a bone so it follows the rig
+      const ws = bone.getWorldScale(WP).x || 1;
+      const la = bone.worldToLocal(a.clone()), lb = bone.worldToLocal(b.clone());
+      const dir = lb.clone().sub(la), len = dir.length(); if (len < 1e-5) return;
+      const m2 = new T.Mesh(new T.CylinderGeometry(r1 / ws, r2 / ws, len, 16, 1, !!open), outfitM);
+      m2.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir.normalize());
+      if (sq && sq !== 1) m2.scale.z = sq;
+      m2.position.copy(la.add(lb).multiplyScalar(.5)); m2.castShadow = true; bone.add(m2);
+    };
+    if (spine && neck && hips) {
+      const nW = worldOf(neck), hW = worldOf(hips);
+      const top = nW.clone().lerp(hW, .09); // collar sits just below the neck, scarf stays visible
+      drape(spine, top, hW, .128, .162, .72, false);                                  // fitted trunk
+      if (o.female) { // sari: ankle-length pleated fall + pallu thrown over the left shoulder
+        drape(hips, hW, hW.clone().add(new T.Vector3(0, -.82, 0)), .162, .27, .86, true);
+        if (lArm) { const shW = worldOf(lArm);
+          drape(spine, hW.clone().add(new T.Vector3(.12, 0, .1)), shW.clone().add(new T.Vector3(0, .03, .04)), .08, .045, .38, false); }
+      } else {
+        const hemLen = o.outfit === 'bandhgala' ? .28 : (o.salwar ? .34 : .4);         // bandhgala stops at the hip, kurtas fall to the knee
+        drape(hips, hW, hW.clone().add(new T.Vector3(0, -hemLen, 0)), .162, .205, .78, true); // flared kurta skirt
+        // front placket with buttons
+        const btnM = new T.MeshStandardMaterial({ color: (o.outfit === 'sherwani' || o.outfit === 'bandhgala') ? '#d4af37' : '#f2ead6', roughness: .3, metalness: .5 });
+        const ws2 = spine.getWorldScale(WP).x || 1;
+        for (let i = 0; i < 5; i++) { const f = .12 + i * .15;
+          const p = top.clone().lerp(hW, f); p.z += lerp(.128, .162, f) * .72 * .97;
+          const b2 = new T.Mesh(new T.SphereGeometry(.011 / ws2, 8, 6), btnM);
+          b2.position.copy(spine.worldToLocal(p)); spine.add(b2); }
+      }
+    }
+    for (const [a1, a2, a3] of [[rArm, rFore, rHand], [lArm, lFore, lHand]]) {
+      if (!a1) continue;
+      const sh = new T.Mesh(new T.SphereGeometry(.058 / (a1.getWorldScale(WP).x || 1), 12, 10), outfitM);
+      sh.scale.set(1, .85, 1); sh.castShadow = true; a1.add(sh); // small shoulder seam, not a football pad
+      if (a2) drape(a1, worldOf(a1), worldOf(a2), .052, .045, 1, false);              // upper sleeve
+      if (a2 && a3) drape(a2, worldOf(a2), worldOf(a3), .043, .036, 1, false);        // forearm sleeve, moves with the elbow
+    }
+  }
   if (head) { const ws = head.getWorldScale(V).x || 1;
+    // every face its own: vary the skull's proportions per person (accessories inherit the same stretch)
+    if (o.vary) head.scale.set(head.scale.x * rand(.93, 1.09), head.scale.y * rand(.94, 1.1), head.scale.z * rand(.96, 1.06));
     // the avatar has a real beard mesh, so only the pagdi is attached here
-    const acc = buildHeadgear({ turban: o.turban, turbanColor: o.turbanColor, beard: o.beard, shades: o.shades }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
+    const acc = buildHeadgear({ turban: o.turban, turbanColor: o.turbanColor, beard: o.beard, shades: o.shades, hair: o.hair, hairColor: o.hairColor }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
   if (neck && (o.scarf || o.kurta)) { const ws = neck.getWorldScale(V).x || 1;
     const scarf = new T.Group(); const sM = mat(o.scarf || o.kurta, .8);
     const loop = new T.Mesh(new T.TorusGeometry(0.085, 0.028, 8, 18), sM); loop.rotation.x = Math.PI / 2; loop.position.y = -0.02; scarf.add(loop);
@@ -331,32 +409,37 @@ function animateHuman(g, moving, dt, speed) {
   if (h.actions.walk) h.actions.walk.setEffectiveTimeScale(clamp(speed / 3.2, .55, 1.3) * h.gait);
   if (h.actions.run) h.actions.run.setEffectiveTimeScale(clamp(speed / 6, .8, 1.2) * h.gait);
   h.mixer.update(dt);
-  if (h.seated) { // driving pose: hips/knees bent, hands on the bar
+  if (h.seated) { // driving pose: hips/knees bent, hands reach FORWARD to the wheel — never up in the air
     const set = (b, x) => { if (b) b.rotation.x = x; };
     set(h.rLeg, -1.3); set(h.lLeg, -1.3); set(h.rCalf, 1.35); set(h.lCalf, 1.35);
-    if (h.rArm) { h.rArm.rotation.x = -.95; h.rArm.rotation.z = -.3; }
-    if (h.lArm) { h.lArm.rotation.x = -.95; h.lArm.rotation.z = .3; }
+    // arms: relative to the animated pose, so they fold down+forward from wherever idle left them
+    if (h.rArm) { h.rArm.rotation.x -= .5; h.rArm.rotation.z -= .12; }
+    if (h.lArm) { h.lArm.rotation.x -= .5; h.lArm.rotation.z += .12; }
+    if (h.rFore) h.rFore.rotation.x -= .55;
+    if (h.lFore) h.lFore.rotation.x -= .55;
+    if (h.spine) h.spine.rotation.x += .1; // slight lean over the bars
     return;
   }
   // full-body MMA strikes: guard up, hips drive, elbows extend
   if (u.attack && u.attack.t > 0) {
     const p = 1 - u.attack.t, ext = Math.sin(clamp(p * 1.25, 0, 1) * Math.PI), k = u.attack.kind;
-    // fighting stance: both fists up in guard, slight crouch
-    if (h.lArm) { h.lArm.rotation.x -= .85; h.lArm.rotation.z += .35; }
-    if (h.rArm) { h.rArm.rotation.x -= .85; h.rArm.rotation.z -= .35; }
-    if (h.lFore) h.lFore.rotation.x -= 1.15;
-    if (h.rFore) h.rFore.rotation.x -= 1.15;
-    if (h.rLeg) h.rLeg.rotation.x -= .18; if (h.lLeg) h.lLeg.rotation.x -= .18; // crouch
-    if (k === 0) { // JAB: lead straight — shoulders rotate, elbow snaps out
-      if (h.spine) h.spine.rotation.y += .55 * ext;
-      if (h.head) h.head.rotation.y -= .3 * ext;
-      if (h.lArm) { h.lArm.rotation.x = -1.5 * ext - .5; h.lArm.rotation.z = .1; h.lArm.rotation.y = -.2 * ext; }
-      if (h.lFore) h.lFore.rotation.x = -1.15 * (1 - ext); // elbow extends
-    } else if (k === 1) { // CROSS: rear straight — full hip drive
-      if (h.spine) { h.spine.rotation.y -= .8 * ext; h.spine.rotation.x += .15 * ext; }
-      if (h.head) h.head.rotation.y += .35 * ext;
-      if (h.rArm) { h.rArm.rotation.x = -1.55 * ext - .5; h.rArm.rotation.z = -.1; h.rArm.rotation.y = .25 * ext; }
-      if (h.rFore) h.rFore.rotation.x = -1.15 * (1 - ext);
+    // boxing guard: elbows tucked to the ribs, fists in front of the chin — never over the head
+    if (h.lArm) { h.lArm.rotation.x -= .42; h.lArm.rotation.z += .5; }
+    if (h.rArm) { h.rArm.rotation.x -= .42; h.rArm.rotation.z -= .5; }
+    if (h.lFore) { h.lFore.rotation.x -= .55; h.lFore.rotation.y += .9; }
+    if (h.rFore) { h.rFore.rotation.x -= .55; h.rFore.rotation.y -= .9; }
+    if (h.spine) h.spine.rotation.x += .12; // slight forward lean
+    if (h.rLeg) h.rLeg.rotation.x -= .16; if (h.lLeg) h.lLeg.rotation.x -= .16; // crouch
+    if (k === 0) { // JAB: lead straight at chin height — shoulders rotate, elbow snaps out
+      if (h.spine) h.spine.rotation.y += .5 * ext;
+      if (h.head) h.head.rotation.y -= .28 * ext;
+      if (h.lArm) { h.lArm.rotation.x = -1.12 * ext - .28; h.lArm.rotation.z = .12; h.lArm.rotation.y = -.15 * ext; }
+      if (h.lFore) { h.lFore.rotation.x = -.5 * (1 - ext); h.lFore.rotation.y = .9 * (1 - ext); } // elbow extends flat
+    } else if (k === 1) { // CROSS: rear straight — hip drive, fist stays at shoulder line
+      if (h.spine) { h.spine.rotation.y -= .72 * ext; h.spine.rotation.x += .14 * ext; }
+      if (h.head) h.head.rotation.y += .32 * ext;
+      if (h.rArm) { h.rArm.rotation.x = -1.18 * ext - .28; h.rArm.rotation.z = -.12; h.rArm.rotation.y = .2 * ext; }
+      if (h.rFore) { h.rFore.rotation.x = -.5 * (1 - ext); h.rFore.rotation.y = -.9 * (1 - ext); }
     } else { // ROUNDHOUSE LOW KICK: torso counter-rotates, leg whips in an arc
       if (h.spine) { h.spine.rotation.y -= .7 * ext; h.spine.rotation.z += .3 * ext; }
       if (h.rLeg) { h.rLeg.rotation.x = -1.25 * ext; h.rLeg.rotation.z = -.6 * ext; }
@@ -745,6 +828,7 @@ function buildCity() {
   }
   buildLandmarks();
   scatterProps();
+  buildPetrolStations(); buildFilmSet();
   genDelhiWires();
   prerenderMap();
   buildRamps();
@@ -779,46 +863,156 @@ function buildLandmarks() {
   }
 }
 // tree: trunk + rounded canopy (or palm for coastal districts)
+let barkTex = null, frondTex = null, leafMats = null;
+function makeBarkTexture() {
+  if (barkTex) return barkTex;
+  const c = document.createElement('canvas'); c.width = 64; c.height = 128; const q = c.getContext('2d');
+  q.fillStyle = '#6b5138'; q.fillRect(0, 0, 64, 128);
+  for (let i = 0; i < 90; i++) { q.strokeStyle = `rgba(${30 + randi(0, 40)},${22 + randi(0, 28)},${12 + randi(0, 18)},${rand(.25, .6)})`;
+    q.lineWidth = rand(1, 3); const x = rand(0, 64); q.beginPath(); q.moveTo(x, 0); q.bezierCurveTo(x + rand(-6, 6), 42, x + rand(-6, 6), 86, x + rand(-8, 8), 128); q.stroke(); }
+  barkTex = new T.CanvasTexture(c); barkTex.wrapS = barkTex.wrapT = T.RepeatWrapping; return barkTex;
+}
+function makeFrondTexture() { // one palm leaflet blade with feathered, cut edges
+  if (frondTex) return frondTex;
+  const c = document.createElement('canvas'); c.width = 64; c.height = 256; const q = c.getContext('2d');
+  q.clearRect(0, 0, 64, 256);
+  for (let y = 4; y < 252; y += 7) { const w = 26 * (1 - y / 300); // leaflet pairs off a centre rib
+    q.fillStyle = pick(['#2f7a45', '#2a7040', '#38854e']);
+    q.beginPath(); q.moveTo(32, y); q.lineTo(32 - w, y + 5 + rand(0, 3)); q.lineTo(32, y + 6); q.fill();
+    q.beginPath(); q.moveTo(32, y); q.lineTo(32 + w, y + 5 + rand(0, 3)); q.lineTo(32, y + 6); q.fill(); }
+  q.strokeStyle = '#245c36'; q.lineWidth = 2.5; q.beginPath(); q.moveTo(32, 0); q.lineTo(32, 256); q.stroke();
+  frondTex = new T.CanvasTexture(c); return frondTex;
+}
 function buildTree(palm) {
   const g = new T.Group();
+  if (!leafMats) leafMats = ['#3a6b35', '#446f3e', '#2f6032', '#4a7a42'].map(cc => mat(cc, .95));
   if (palm) {
-    const tr = new T.Mesh(new T.CylinderGeometry(.14, .24, 6, 8), mat('#8a6b3a')); tr.position.y = 3; tr.rotation.z = rand(-.08, .08); tr.castShadow = true; g.add(tr);
-    for (let k = 0; k < 8; k++) { const a = k / 8 * TAU; // flat drooping leaves, not cones
-      const fr = new T.Mesh(new T.ConeGeometry(.45, 2.8, 4), mat(pick(['#2e7b4a', '#3a8a55']), .9));
-      fr.scale.set(.4, 1, .07); fr.position.set(Math.cos(a) * 1.1, 5.9, Math.sin(a) * 1.1);
-      fr.rotation.y = -a; fr.rotation.z = Math.cos(a) * 1.25; fr.rotation.x = Math.sin(a) * 1.25;
+    // coconut palm: curved trunk of stacked ringed segments, real drooping textured fronds
+    const lean = rand(.06, .22), leanDir = rand(0, TAU), H = rand(5, 6.6), segs = 7;
+    const bark = new T.MeshStandardMaterial({ color: '#9a7d52', map: makeBarkTexture(), roughness: .95 });
+    let px = 0, pz = 0;
+    for (let i = 0; i < segs; i++) { const t = i / segs;
+      const seg = new T.Mesh(new T.CylinderGeometry(.13 * (1 - t * .35), .16 * (1 - t * .3), H / segs + .1, 8), bark);
+      px = Math.cos(leanDir) * lean * (t * t) * H; pz = Math.sin(leanDir) * lean * (t * t) * H;
+      seg.position.set(px, (i + .5) * H / segs, pz); seg.rotation.z = Math.cos(leanDir) * lean * 1.4; seg.rotation.x = -Math.sin(leanDir) * lean * 1.4;
+      seg.castShadow = true; g.add(seg); }
+    const crownY = H + .05;
+    const fM = new T.MeshStandardMaterial({ map: makeFrondTexture(), transparent: true, alphaTest: .4, side: T.DoubleSide, roughness: .9 });
+    for (let k = 0; k < 9; k++) { const a = k / 9 * TAU + rand(-.15, .15);
+      const geo = new T.PlaneGeometry(.55, 2.7, 1, 6); const pos = geo.attributes.position;
+      for (let vi = 0; vi < pos.count; vi++) { const vy = pos.getY(vi), t2 = (vy + 1.35) / 2.7; // droop increases toward the tip
+        pos.setZ(vi, -(t2 * t2) * 1.15); pos.setX(vi, pos.getX(vi) * (1 - t2 * .55)); }
+      geo.computeVertexNormals();
+      const fr = new T.Mesh(geo, fM);
+      fr.position.set(px, crownY, pz);
+      fr.rotation.order = 'YXZ'; fr.rotation.y = a; fr.rotation.x = -Math.PI / 2 + rand(.5, .9);
       fr.castShadow = true; g.add(fr); }
-    const crown = new T.Mesh(new T.SphereGeometry(.28, 8, 6), mat('#5a4a28')); crown.position.y = 5.9; g.add(crown);
+    const crown = new T.Mesh(new T.SphereGeometry(.22, 8, 6), mat('#5a4a28')); crown.position.set(px, crownY, pz); g.add(crown);
+    for (let k = 0; k < 3; k++) { const nut = new T.Mesh(new T.SphereGeometry(.11, 8, 6), mat('#6d5426', .8));
+      nut.position.set(px + rand(-.2, .2), crownY - .18, pz + rand(-.2, .2)); nut.castShadow = true; g.add(nut); }
   } else {
-    const tr = new T.Mesh(new T.CylinderGeometry(.22, .32, 2.4, 8), mat('#6b4a2a')); tr.position.y = 1.2; tr.castShadow = true; g.add(tr);
-    for (const [dx, dy, dz, r] of [[0, 3, 0, 1.35], [-.85, 2.7, .4, 1.0], [.75, 2.8, -.4, .95], [.2, 3.5, .5, .85], [-.3, 3.3, -.6, .8]]) {
-      const f = new T.Mesh(new T.SphereGeometry(r, 12, 10), mat(pick(['#3a6b39', '#456f42', '#31603a']), .95)); f.scale.y = .78; f.position.set(dx, dy, dz); f.castShadow = true; g.add(f); }
+    // neem / banyan: bark-textured trunk, low branches, organic jittered canopy
+    const bark = new T.MeshStandardMaterial({ color: '#7a6248', map: makeBarkTexture(), roughness: .95 });
+    const tr = new T.Mesh(new T.CylinderGeometry(.24, .38, 2.6, 9), bark); tr.position.y = 1.3; tr.castShadow = true; g.add(tr);
+    for (let b = 0; b < 3; b++) { const a = b / 3 * TAU + rand(-.4, .4);
+      const br = new T.Mesh(new T.CylinderGeometry(.07, .12, 1.6, 6), bark);
+      br.position.set(Math.cos(a) * .55, 2.9, Math.sin(a) * .55);
+      br.rotation.z = Math.cos(a) * .75; br.rotation.x = -Math.sin(a) * .75; br.castShadow = true; g.add(br); }
+    const isBanyan = Math.random() < .22;
+    const blobs = [[0, 3.3, 0, 1.45], [-1.0, 2.9, .45, 1.05], [.9, 3.0, -.5, 1.0], [.25, 3.9, .55, .9], [-.4, 3.7, -.65, .85], [.6, 3.5, .8, .8]];
+    for (const [dx, dy, dz, r] of blobs) {
+      const geo = new T.IcosahedronGeometry(r, 1); const pos = geo.attributes.position;
+      for (let vi = 0; vi < pos.count; vi++) { const j = () => rand(-.16, .16) * r;
+        pos.setXYZ(vi, pos.getX(vi) + j(), pos.getY(vi) * .78 + j(), pos.getZ(vi) + j()); }
+      geo.computeVertexNormals();
+      const f = new T.Mesh(geo, pick(leafMats)); f.position.set(dx, dy, dz); f.castShadow = true; g.add(f); }
+    if (isBanyan) for (let rIdx = 0; rIdx < 4; rIdx++) { // aerial prop roots
+      const a = rand(0, TAU), rr = rand(.7, 1.2);
+      const root = new T.Mesh(new T.CylinderGeometry(.025, .04, 2.8, 5), bark);
+      root.position.set(Math.cos(a) * rr, 1.4, Math.sin(a) * rr); root.rotation.z = rand(-.06, .06); g.add(root); }
   }
   return g;
+}
+const vendorSpots = [], vendors = [], steams = [], steamPuffs = [];
+// clear ground: no building/prop within r — trees stop growing out of walls
+function clearOf(x, z, r) {
+  for (const b of buildings) { if (Math.abs(x - b.x) < b.hw + r && Math.abs(z - b.z) < b.hd + r) return false; }
+  return true;
 }
 // props live on the SIDEWALK (not the road) and are solid so vehicles can't pass through
 function scatterProps() {
   const boxGeo = new T.BoxGeometry(1, 1, 1), area = (WORLD / 180) ** 2;
-  // food stalls
+  // food stalls — every stall has a trade: chai tapri, kadhai fry (jalebi/samosa), or pani puri.
+  // Real equipment on the counter, steam off the pots, and a vendor cooking behind it (spawned once the rig loads).
   for (let i = 0; i < 55 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
-    const cart = new T.Mesh(boxGeo, mat('#6b4a2a')); cart.scale.set(1.5, .85, 1); cart.position.set(p.x, .45, p.z); cart.castShadow = true; scene.add(cart);
-    // striped market parasol
+    const kindS = pick(['chai', 'fry', 'panipuri', 'chai', 'fry']);
+    const face = rand(0, TAU), fs = Math.sin(face), fc = Math.cos(face);
+    const partsFrom = scene.children.length; // everything added below belongs to this stall — and can be smashed over
+    const cart = new T.Mesh(boxGeo, mat(pick(['#6b4a2a', '#1e6a5a', '#8a3a2a']))); cart.scale.set(1.5, .85, 1); cart.position.set(p.x, .45, p.z); cart.rotation.y = face; cart.castShadow = true; scene.add(cart);
+    // overhead: half get the striped parasol, half the great Indian blue tarpaulin on bamboo
     const pole = new T.Mesh(new T.CylinderGeometry(.04, .04, 2.3, 6), mat('#8a6b3a')); pole.position.set(p.x, 1.15, p.z); scene.add(pole);
-    const pc = document.createElement('canvas'); pc.width = 64; pc.height = 16; const pg = pc.getContext('2d');
-    const c1 = pick(['#c0392b', '#1a5c8a', '#1e7a4a', '#c9760b']);
-    for (let s2 = 0; s2 < 8; s2++) { pg.fillStyle = s2 % 2 ? '#f2ead6' : c1; pg.fillRect(s2 * 8, 0, 8, 16); }
-    const ptex = new T.CanvasTexture(pc); ptex.wrapS = T.RepeatWrapping; ptex.repeat.set(2, 1);
-    const um = new T.Mesh(new T.ConeGeometry(1.35, .55, 10, 1, true), new T.MeshStandardMaterial({ map: ptex, roughness: .9, side: T.DoubleSide }));
-    um.position.set(p.x, 2.35, p.z); um.castShadow = true; scene.add(um);
-    buildings.push({ x: p.x, z: p.z, hw: .9, hd: .7 }); }
+    if (Math.random() < .45) {
+      const tarp = new T.Mesh(new T.PlaneGeometry(2.3, 1.9, 3, 3), new T.MeshStandardMaterial({ color: '#2a5ba8', roughness: .95, side: T.DoubleSide }));
+      const tp = tarp.geometry.attributes.position;
+      for (let vi = 0; vi < tp.count; vi++) tp.setZ(vi, rand(-.1, .14)); tarp.geometry.computeVertexNormals();
+      tarp.rotation.x = -Math.PI / 2 + rand(-.14, .14); tarp.rotation.z = rand(0, TAU);
+      tarp.position.set(p.x, 2.28, p.z); tarp.castShadow = true; scene.add(tarp);
+    } else {
+      const pc = document.createElement('canvas'); pc.width = 64; pc.height = 16; const pg = pc.getContext('2d');
+      const c1 = pick(['#c0392b', '#1a5c8a', '#1e7a4a', '#c9760b']);
+      for (let s2 = 0; s2 < 8; s2++) { pg.fillStyle = s2 % 2 ? '#f2ead6' : c1; pg.fillRect(s2 * 8, 0, 8, 16); }
+      const ptex = new T.CanvasTexture(pc); ptex.wrapS = T.RepeatWrapping; ptex.repeat.set(2, 1);
+      const um = new T.Mesh(new T.ConeGeometry(1.35, .55, 10, 1, true), new T.MeshStandardMaterial({ map: ptex, roughness: .9, side: T.DoubleSide }));
+      um.position.set(p.x, 2.35, p.z); um.castShadow = true; scene.add(um);
+    }
+    // the red 14 kg LPG cylinder every stall runs on
+    const cyl = new T.Mesh(new T.CylinderGeometry(.15, .15, .48, 10), mat('#b32418', .55));
+    cyl.position.set(p.x - fc * .9, .24, p.z + fs * .9); cyl.castShadow = true; scene.add(cyl);
+    if (kindS === 'chai') { // battered kettle, milk pan on the burner, glass tumblers, bench for the uncles
+      const pan = new T.Mesh(new T.CylinderGeometry(.2, .17, .12, 12), mat('#9aa0a8', .35)); pan.position.set(p.x + fs * .3, .95, p.z + fc * .3); scene.add(pan);
+      const kettle = new T.Mesh(new T.SphereGeometry(.13, 10, 8), mat('#7a7f86', .4)); kettle.scale.y = .85; kettle.position.set(p.x - fs * .35, .96, p.z - fc * .35); scene.add(kettle);
+      const spout = new T.Mesh(new T.CylinderGeometry(.02, .03, .18, 6), mat('#7a7f86', .4)); spout.rotation.z = 1; spout.position.set(p.x - fs * .35 + .12, 1.0, p.z - fc * .35); scene.add(spout);
+      for (let gl = 0; gl < 4; gl++) { const tum = new T.Mesh(new T.CylinderGeometry(.03, .024, .08, 8), new T.MeshStandardMaterial({ color: '#d9c9a0', roughness: .2, transparent: true, opacity: .75 }));
+        tum.position.set(p.x + fs * .1 + fc * (.15 + gl * .12) - fc * .3, .92, p.z + fc * .1 - fs * (.15 + gl * .12) + fs * .3); scene.add(tum); }
+      const bench = new T.Mesh(new T.BoxGeometry(1.5, .07, .32), mat('#8a6b3a', .9)); bench.position.set(p.x + fc * 1.4, .4, p.z - fs * 1.4); bench.rotation.y = face; bench.castShadow = true; scene.add(bench);
+      for (const bx of [-.6, .6]) { const leg = new T.Mesh(new T.BoxGeometry(.06, .4, .28), mat('#6b4a2a')); leg.position.set(p.x + fc * 1.4 + Math.cos(face) * bx, .2, p.z - fs * 1.4 - Math.sin(face) * bx); scene.add(leg); }
+      steams.push({ x: p.x + fs * .3, y: 1.05, z: p.z + fc * .3, r: .06 });
+    } else if (kindS === 'fry') { // wide black kadhai of bubbling oil + golden pile + glass display case
+      const kad = new T.Mesh(new T.SphereGeometry(.3, 14, 8, 0, TAU, 0, Math.PI / 2), new T.MeshStandardMaterial({ color: '#1c1c1e', roughness: .5, metalness: .4, side: T.DoubleSide }));
+      kad.rotation.x = Math.PI; kad.position.set(p.x + fs * .25, 1.02, p.z + fc * .25); scene.add(kad);
+      const oil = new T.Mesh(new T.CircleGeometry(.26, 14), new T.MeshStandardMaterial({ color: '#8a5a1a', roughness: .15, metalness: .3 }));
+      oil.rotation.x = -Math.PI / 2; oil.position.set(p.x + fs * .25, .99, p.z + fc * .25); scene.add(oil);
+      for (let j2 = 0; j2 < 6; j2++) { const jal = new T.Mesh(new T.TorusGeometry(.045, .018, 6, 10), mat('#e8940a', .5));
+        jal.rotation.x = -Math.PI / 2 + rand(-.3, .3); jal.position.set(p.x - fs * .35 + rand(-.12, .12), .94 + j2 * .012, p.z - fc * .35 + rand(-.12, .12)); scene.add(jal); }
+      const caseG = new T.Mesh(new T.BoxGeometry(.6, .34, .38), new T.MeshStandardMaterial({ color: '#cfe2ec', roughness: .1, transparent: true, opacity: .35 }));
+      caseG.position.set(p.x - fc * .45, 1.05, p.z + fs * .45); caseG.rotation.y = face; scene.add(caseG);
+      for (let sm = 0; sm < 5; sm++) { const smo = new T.Mesh(new T.ConeGeometry(.05, .09, 4), mat('#d9a83a', .7));
+        smo.position.set(p.x - fc * .45 + rand(-.18, .18), .95 + (sm > 2 ? .07 : 0), p.z + fs * .45 + rand(-.1, .1)); scene.add(smo); }
+      steams.push({ x: p.x + fs * .25, y: 1.1, z: p.z + fc * .25, r: .1 });
+    } else { // pani puri: the glass-sided mound of puris + row of clay matkas with coloured pani
+      const mound = new T.Mesh(new T.SphereGeometry(.26, 10, 8, 0, TAU, 0, Math.PI / 2), mat('#e8c87a', .8));
+      mound.position.set(p.x + fs * .2, .9, p.z + fc * .2); scene.add(mound);
+      for (let pu = 0; pu < 8; pu++) { const puri = new T.Mesh(new T.SphereGeometry(.035, 6, 5), mat('#e0bd6a', .75));
+        puri.position.set(p.x + fs * .2 + rand(-.24, .24), .92 + rand(0, .16), p.z + fc * .2 + rand(-.24, .24)); scene.add(puri); }
+      const waters = ['#4a7a2a', '#6b4423', '#b3552a'];
+      for (let mk = 0; mk < 3; mk++) { const matka = new T.Mesh(new T.SphereGeometry(.13, 10, 8), mat('#a8642f', .9));
+        matka.scale.y = .8; const mx2 = p.x - fs * .3 + fc * (mk - 1) * .3, mz2 = p.z - fc * .3 - fs * (mk - 1) * .3;
+        matka.position.set(mx2, .96, mz2); scene.add(matka);
+        const pani = new T.Mesh(new T.CircleGeometry(.08, 10), new T.MeshStandardMaterial({ color: waters[mk], roughness: .2 }));
+        pani.rotation.x = -Math.PI / 2; pani.position.set(mx2, 1.05, mz2); scene.add(pani); }
+    }
+    // the vendor stands behind the counter and cooks — spawned with the rigged human once it's loaded
+    vendorSpots.push({ x: p.x - fs * 1.05, z: p.z - fc * 1.05, yaw: face, kind: kindS });
+    buildings.push({ x: p.x, z: p.z, hw: .9, hd: .7, parts: scene.children.slice(partsFrom) }); }
   // garbage piles (decorative, no collision)
   for (let i = 0; i < 90 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
     const gb = new T.Mesh(new T.SphereGeometry(rand(.3, .6), 7, 6), mat(pick(['#7a6f4a', '#8a5a3a', '#556b4a']))); gb.position.set(p.x, .2, p.z); gb.scale.y = .5; gb.castShadow = true; scene.add(gb); }
-  // trees (solid trunks) — palms near coastal/southern districts
-  for (let i = 0; i < 120 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
+  // trees (solid trunks) — palms near coastal/southern districts; canopies keep clear of walls
+  for (let i = 0; i < 150 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
+    if (!clearOf(p.x, p.z, 1.9)) continue;
     const di = districtAt(p.x, p.z); const palm = [5, 7, 8].includes(di) ? Math.random() < .7 : Math.random() < .2;
-    const tr = buildTree(palm); tr.position.set(p.x, 0, p.z); tr.scale.setScalar(rand(.85, 1.15)); scene.add(tr);
-    buildings.push({ x: p.x, z: p.z, hw: .7, hd: .7 }); }
+    const tr = buildTree(palm); tr.position.set(p.x, 0, p.z); tr.scale.setScalar(rand(.85, 1.12)); scene.add(tr);
+    buildings.push({ x: p.x, z: p.z, hw: .5, hd: .5 }); }
   // scattered litter: papers, plastic bags, bottle bits — everywhere
   const litterGeo = new T.PlaneGeometry(.22, .3);
   for (let i = 0; i < 420 * area; i++) { const p = sidewalkSpot() || roadSpot(); if (!p) continue;
@@ -843,10 +1037,12 @@ function scatterProps() {
         const fr = new T.Mesh(new T.SphereGeometry(.085, 8, 7), mat(fruit, .55)); fr.position.set(fx, .95 + ring * .14, fz); cart.add(fr); } }
     cart.position.set(p.x, 0, p.z); cart.rotation.y = rand(0, TAU);
     cart.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(cart);
-    buildings.push({ x: p.x, z: p.z, hw: 1, hd: .8 }); }
-  // parked old bicycles
+    buildings.push({ x: p.x, z: p.z, hw: 1, hd: .8, parts: [cart] }); }
+  // parked roadster bicycles — walk up and ride off on one (F)
   for (let i = 0; i < 26 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
-    const b = buildBicycle(); b.position.set(p.x, 0, p.z); b.rotation.y = rand(0, TAU); b.rotation.z = rand(-.08, .08); scene.add(b); }
+    const b = buildBicycle(); b.position.set(p.x, 0, p.z); b.rotation.y = rand(0, TAU); scene.add(b);
+    vehicles.push({ g: b, kind: 'cycle', yaw: b.rotation.y, speed: 0, ai: false, parked: true,
+      hw: .35, hl: 1.0, horn: 4 }); }
   // street lamps (solid poles)
   for (let i = 0; i < 60 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
     const pole = new T.Mesh(new T.CylinderGeometry(.08, .1, 5, 6), mat('#444')); pole.position.set(p.x, 2.5, p.z); pole.castShadow = true; scene.add(pole);
@@ -891,10 +1087,9 @@ const npcs = [];
 function spawnNPCs(n) {
   for (let i = 0; i < n; i++) {
     const p = sidewalkSpot() || roadSpot(); if (!p) continue;
-    const o = { skin: pick(SKINS), turban: Math.random() < .4, turbanColor: pick(TURBANS),
-      kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: Math.random() < .6 };
+    const o = npcLook(districtAt(p.x, p.z)); // men, women in saris, sadhus, sardars — dressed like their district
     const g = makeCharacter(o); g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
-    npcs.push({ g, dir: rand(0, TAU), speed: rand(.7, 1.5), turn: 0, down: 0, t: rand(0, 10), pause: 0 });
+    npcs.push({ g, wealth: o.wealth || 0, dir: rand(0, TAU), speed: rand(.7, 1.5), turn: 0, down: 0, t: rand(0, 10), pause: 0 });
   }
 }
 // cows
@@ -969,24 +1164,247 @@ function updateMonkeys(dt) {
 }
 function spawnDogs(n) {
   for (let i = 0; i < n; i++) { const p = sidewalkSpot(); if (!p) continue;
-    const g = new T.Group(); const coat = mat(pick(['#a9713f', '#7a6a54', '#3a3428', '#c9b89a']), .95);
-    const body = new T.Mesh(new T.SphereGeometry(.2, 10, 8), coat); body.scale.set(.7, .75, 1.7); body.position.y = .42; g.add(body);
-    const head = new T.Mesh(new T.SphereGeometry(.13, 10, 8), coat); head.scale.set(.85, .9, 1.2); head.position.set(0, .58, .4); g.add(head);
-    for (const sx of [-1, 1]) { const ear = new T.Mesh(new T.ConeGeometry(.04, .1, 6), coat); ear.position.set(.07 * sx, .7, .36); g.add(ear); }
-    const tail = new T.Mesh(new T.CylinderGeometry(.02, .012, .35, 6), coat); tail.rotation.x = -.9; tail.position.set(0, .55, -.42); g.add(tail);
-    for (const [sx, sz] of [[-.1, .22], [.1, .22], [-.1, -.24], [.1, -.24]]) { const leg = new T.Mesh(new T.CylinderGeometry(.03, .025, .4, 6), coat); leg.position.set(sx, .2, sz); g.add(leg); }
+    // Indian pariah dog: lean, wedge head, big erect ears, sickle tail — two-tone coat
+    const g = new T.Group();
+    const cc = pick([['#b3803f', '#e0cba8'], ['#8a6a48', '#d9c9a8'], ['#3a3428', '#a89878'], ['#c9a06a', '#efe2c8'], ['#96703d', '#e8d9b8']]);
+    const coat = mat(cc[0], .92), pale = mat(cc[1], .92);
+    const body = new T.Mesh(new T.SphereGeometry(.19, 12, 9), coat); body.scale.set(.62, .68, 1.55); body.position.y = .44; g.add(body);
+    const chest = new T.Mesh(new T.SphereGeometry(.14, 10, 8), pale); chest.scale.set(.6, .72, .9); chest.position.set(0, .4, .26); g.add(chest);
+    const neck = new T.Mesh(new T.CylinderGeometry(.075, .095, .22, 8), coat); neck.rotation.x = -.7; neck.position.set(0, .56, .32); g.add(neck);
+    const head = new T.Mesh(new T.SphereGeometry(.095, 10, 8), coat); head.scale.set(.82, .85, 1); head.position.set(0, .66, .42); g.add(head);
+    const muzzle = new T.Mesh(new T.CylinderGeometry(.032, .05, .14, 8), pale); muzzle.rotation.x = Math.PI / 2 - .12; muzzle.position.set(0, .63, .53); g.add(muzzle);
+    const nose = new T.Mesh(new T.SphereGeometry(.02, 6, 5), mat('#141414', .4)); nose.position.set(0, .645, .6); g.add(nose);
+    for (const sx of [-1, 1]) {
+      const ear = new T.Mesh(new T.ConeGeometry(.042, .13, 6), coat); ear.position.set(.062 * sx, .78, .38); ear.rotation.z = -.15 * sx; g.add(ear);
+      const eye = new T.Mesh(new T.SphereGeometry(.014, 6, 5), mat('#1a120a', .3)); eye.position.set(.045 * sx, .685, .49); g.add(eye);
+    }
+    const tail = new T.Mesh(new T.CylinderGeometry(.022, .01, .34, 6), coat); tail.rotation.x = -2.4; tail.position.set(0, .58, -.44); g.add(tail);
+    const legs = [];
+    for (const [sx, sz] of [[-.08, .26], [.08, .26], [-.08, -.28], [.08, -.28]]) {
+      const leg = new T.Mesh(new T.CylinderGeometry(.026, .02, .44, 6), sz > 0 ? coat : coat);
+      leg.position.set(sx, .22, sz); g.add(leg); legs.push(leg);
+      const paw = new T.Mesh(new T.SphereGeometry(.026, 6, 5), pale); paw.position.set(sx, .015, sz + .015); leg.add ? g.add(paw) : 0; }
     g.traverse(o => { if (o.isMesh) o.castShadow = true; });
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
-    dogs.push({ g, dir: rand(0, TAU), speed: rand(.6, 1.3), t: rand(0, 10), nap: 0 });
+    dogs.push({ g, tail, legs, dir: rand(0, TAU), speed: rand(.8, 1.6), t: rand(0, 10), nap: 0, phase: rand(0, TAU) });
   }
 }
+const corpses = []; // the street cleans itself: dogs and monkeys strip what traffic leaves behind
 function updateDogs(dt) {
   for (const d of dogs) {
-    if (d.nap > 0) { d.nap -= dt; d.g.rotation.z = Math.PI / 2 * .85; continue; }
-    d.g.rotation.z = 0;
+    d.phase += dt * (4 + d.speed * 3);
+    // a corpse nearby beats everything — trot over and feed
+    let target = null, td2 = 55 * 55;
+    for (const c of corpses) { const q = c.n.g.position.distanceToSquared(d.g.position); if (q < td2) { td2 = q; target = c; } }
+    if (target) { d.nap = 0;
+      const dx = target.n.g.position.x - d.g.position.x, dz = target.n.g.position.z - d.g.position.z, dd = Math.hypot(dx, dz);
+      if (dd > 1.1) { const sp = 3; d.g.rotation.y = Math.atan2(dx, dz);
+        const nx = d.g.position.x + dx / dd * sp * dt, nz = d.g.position.z + dz / dd * sp * dt;
+        if (!blocked(nx, nz)) { d.g.position.x = nx; d.g.position.z = nz; }
+        for (const l of d.legs) l.rotation.x = Math.sin(d.phase + (d.legs.indexOf(l) % 2 ? Math.PI : 0)) * .6;
+      } else { target.eaten += dt; d.g.rotation.x = .35 + Math.sin(d.phase * 2) * .15; // head-down feeding bob
+        d.tail.rotation.z = Math.sin(d.phase * 3) * .4; }
+      continue;
+    }
+    d.g.rotation.x = 0;
+    if (d.nap > 0) { d.nap -= dt; d.g.rotation.z = Math.PI / 2 * .85; d.g.position.y = -.18; continue; }
+    d.g.rotation.z = 0; d.g.position.y = 0;
     if (Math.random() < .0015) { d.nap = rand(4, 10); continue; } // street dogs nap anywhere
     wanderMesh(d, dt);
+    const moving = true; // trot: diagonal legs swing, sickle tail sways
+    if (moving) { let li = 0; for (const l of d.legs) { l.rotation.x = Math.sin(d.phase + (li % 2 ? Math.PI : 0)) * .55 * Math.min(1, d.speed); li++; }
+      d.tail.rotation.z = Math.sin(d.phase * .9) * .25; }
   }
+}
+// ---------- district looks: dress people the way that part of India dresses ----------
+function npcLook(di) {
+  // clothes tell you who has money: threadbare khadi at the bottom, pressed silk and shades at the top
+  const wr = Math.random(), wealth = wr < .45 ? 0 : wr < .87 ? 1 : 2;
+  const o = { vary: true, wealth, skin: pick(SKINS), kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: Math.random() < .8,
+    turban: Math.random() < .22, turbanColor: pick(TURBANS),
+    outfit: wealth === 0 ? 'khadi' : wealth === 1 ? pick(['kurta', 'kurta', 'silk']) : pick(['silk', 'sherwani', 'bandhgala']),
+    hair: pick(['crop', 'crop', 'part', 'curly', 'jura']), hairColor: pick(HAIRCOLS) };
+  if (wealth === 0) { o.kurta = pick(['#c9bfa8', '#b8ab90', '#a89f8a', '#8a8272', '#d9d0b8']); o.dhoti = pick(['#c9bfa8', '#8a8272']); }
+  if (wealth === 2) { o.shades = Math.random() < .4; o.kurta = pick(['#f4efe2', '#1a1a2e', '#7b1fa2', '#00695c', '#d4af37', '#880e4f']); }
+  if (Math.random() < .42) { // women — sari (regional weaves) or salwar-kameez
+    o.female = true; o.beard = 'none'; o.moustache = false; o.turban = false;
+    o.hair = pick(['bun', 'long', 'bun']); o.outfit = 'silk';
+    o.kurta = pick(['#c2185b', '#7b1fa2', '#00695c', '#e65100', '#1a237e', '#b71c1c', '#f9a825', '#00838f']);
+    if (di === 5) { o.kurta = '#f2ecd9'; }                                              // Kerala kasavu: cream & gold
+    else if (di === 6) { o.kurta = pick(['#f2ede2', '#efe6d8']); }                       // Bengal: white with red border
+    else if (di === 7) { o.kurta = pick(['#b71c1c', '#4a148c', '#e65100', '#00695c']); } // Kanjeevaram silks
+    else if (di === 2) { o.kurta = pick(['#e91e63', '#ff5722', '#ffc107', '#00bcd4']); } // Rajasthani ghagra brights
+    else if (di === 4 && Math.random() < .6) { o.female = false; o.salwar = true; o.beard = 'none'; o.moustache = false; o.turban = false;
+      o.hair = 'long'; o.outfit = 'kurta'; o.kurta = pick(['#c2185b', '#00838f', '#7b1fa2']); o.dhoti = '#ffffff'; } // Punjabi salwar-kameez
+    return o;
+  }
+  if (di === 4) { o.turban = Math.random() < .75; } // Punjab: sardars everywhere
+  else if (di === 3 && Math.random() < .4) { o.outfit = 'khadi'; o.kurta = '#ff8c1a'; o.dhoti = '#ff8c1a'; o.beard = 'long'; o.hair = 'long'; o.turban = false; } // Kashi: saffron sadhus
+  else if (di === 2) { o.turban = Math.random() < .6; o.turbanColor = pick(['#e91e63', '#ff5722', '#ffc107', '#d81b60', '#ff9933']); } // Marwar: blazing pagris
+  else if (di === 5 && Math.random() < .5) { o.outfit = 'kurta'; o.kurta = '#ffffff'; o.dhoti = '#ffffff'; o.turban = false; } // Kerala: white mundu
+  else if (di === 8 && Math.random() < .4) { o.outfit = 'kurta'; o.kurta = pick(['#f4e6c8', '#e8e8e8', '#b3d9e8']); o.shades = Math.random() < .5; o.turban = false; } // Goa: susegad
+  return o;
+}
+// ---------- Hinglish street talk ----------
+const LINES = {
+  hail: ['“Kahan jaana hai, bhaiya?”', '“Arre, meter kharab hai — fixed price only!”', '“Baitho baitho! Best price for you, boss.”', '“Traffic bahut hai aaj… thoda extra, haan?”'],
+  ok: ['“Theek hai theek hai, chalo!”', '“Arre okay okay — sit, sit.”', '“Bas aapke liye, boss. Chalo.”'],
+  no: ['“Nahi nahi! Not possible!”', '“Kya?! Petrol bhi nahi milta itne mein!”', '“Arre boss, joking or what?”'],
+};
+const CHAT = [
+  ['“Arre bhai, best kebab is behind Jama Masjid, trust me.”', '“Mind the wires, beta. And the monkeys.”', '“Chandni Chowk mein sab milta hai — sab!”'],
+  ['“One day I will be hero in pictures, you watch.”', '“Dabbawala never late. NEVER.”', '“Local train full? Arre, there is always room for one more.”'],
+  ['“Padharo mhare desh! Welcome welcome.”', '“The fort? Climb before sun gets angry, saab.”', '“This blue? Jodhpur blue. No other blue like it.”'],
+  ['“Ganga maiya ki jai! You take dip?”', '“Aarti at sunset — you must see, bhaiya.”', '“Baba is meditating 40 years. FORTY.”'],
+  ['“O paaji! Come, langar is for everyone.”', '“Balle balle! You dance bhangra or not?”', '“Tractor is new, 110 horsepower. Punjab da!”'],
+  ['“Slow down, chetta. Backwater life is slow life.”', '“Best fish curry? My amma makes it. Second best — that shop.”', '“Monsoon comes first to Kerala, always.”'],
+  ['“Kolkata adda: we argue two hours, agree nothing, drink five chai.”', '“Durga Pujo is coming — THEN you see the city.”', '“Rosogolla is ours. Full stop.”'],
+  ['“Filter kaapi, degree coffee — nothing else, saar.”', '“Marina beach at 6am — whole Chennai is walking.”', '“Rajini is not actor. Rajini is emotion.”'],
+  ['“Susegad, friend. Why hurry?”', '“Feni? Careful, it looks like water. It is NOT water.”', '“Beach is that side. Everything else — also beach.”'],
+];
+// ---------- street vendors: they stand at their stalls and actually cook ----------
+function spawnVendors() {
+  if (!HERO) return;
+  let count = 0;
+  for (const s of vendorSpots) { if (count >= 16) break; if (Math.random() < .45) continue;
+    const o = npcLook(districtAt(s.x, s.z));
+    const g = makeHuman(o); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw;
+    scene.add(g); vendors.push({ g, kind: s.kind, phase: rand(0, TAU), h: g.userData.human, called: 0 });
+    count++; }
+}
+const VENDOR_CRIES = { chai: '“Chaaai chai chai! Garam chai!”', fry: '“Garam jalebi! Samosa le lo!”', panipuri: '“Pani puri, ekdum fresh!”' };
+function updateVendors(dt) {
+  for (const v of vendors) { const d2 = v.g.position.distanceToSquared(player.pos); if (d2 > 45 * 45) continue;
+    v.phase += dt * 2.6;
+    animateChar(v.g, false, dt, 0);
+    const h = v.h; if (!h) continue;
+    if (h.rArm) { h.rArm.rotation.x = -.55 + Math.sin(v.phase) * .3; h.rArm.rotation.z = -.28; } // stirring / ladling
+    if (h.rFore) h.rFore.rotation.x = -.8 + Math.cos(v.phase) * .22;
+    if (h.lArm) { h.lArm.rotation.x = -.2; h.lArm.rotation.z = .15; }
+    if (h.spine) h.spine.rotation.x = .1 + Math.sin(v.phase * .5) * .05;
+    v.called -= dt;
+    if (d2 < 8 * 8 && v.called <= 0) { v.called = rand(9, 18); hint(VENDOR_CRIES[v.kind] || VENDOR_CRIES.chai); }
+  }
+}
+// ---------- Bollywood: a live film shoot in Bambai — join the dance, earn an actor's fee ----------
+const FILM = { x: null, z: null, dancers: [], playerIn: false, timer: 0, cool: 0 };
+function buildFilmSet() {
+  let p = null;
+  for (let t = 0; t < 400; t++) { const x = rand(-CELL * .42, CELL * .42), z = -CELL + rand(-CELL * .42, CELL * .42);
+    if (!onRoad(x, z) && !blocked(x, z) && clearOf(x, z, 4) && farFromLandmarks(x, z, 14)) { p = { x, z }; break; } }
+  if (!p) return;
+  FILM.x = p.x; FILM.z = p.z;
+  // painted backdrop flat + scaffold
+  const bc = document.createElement('canvas'); bc.width = 256; bc.height = 128; const bq = bc.getContext('2d');
+  const grd = bq.createLinearGradient(0, 0, 0, 128); grd.addColorStop(0, '#7ec3e8'); grd.addColorStop(.7, '#f2d9a0'); bq.fillStyle = grd; bq.fillRect(0, 0, 256, 128);
+  bq.fillStyle = '#b98ac9'; for (let m = 0; m < 5; m++) { bq.beginPath(); bq.moveTo(m * 60 - 20, 95); bq.lineTo(m * 60 + 15, 55 + (m % 2) * 12); bq.lineTo(m * 60 + 55, 95); bq.fill(); }
+  bq.fillStyle = '#e8b23a'; bq.beginPath(); bq.arc(200, 30, 16, 0, TAU); bq.fill();
+  const flat = new T.Mesh(new T.BoxGeometry(9, 4.6, .25), new T.MeshStandardMaterial({ map: new T.CanvasTexture(bc), roughness: .9 }));
+  flat.position.set(p.x, 2.3, p.z - 3.4); flat.castShadow = true; scene.add(flat);
+  for (const sx of [-3.8, 0, 3.8]) { const sc = new T.Mesh(new T.CylinderGeometry(.05, .05, 4.4, 6), mat('#5a5f66', .6)); sc.position.set(p.x + sx, 2.2, p.z - 3.7); sc.rotation.x = .18; scene.add(sc); }
+  // camera on tripod + operator light rigs + director's chair
+  const cam3 = new T.Group();
+  for (let li = 0; li < 3; li++) { const a = li / 3 * TAU; const leg = new T.Mesh(new T.CylinderGeometry(.025, .035, 1.35, 6), mat('#2a2c30', .5));
+    leg.position.set(Math.cos(a) * .34, .62, Math.sin(a) * .34); leg.rotation.z = Math.cos(a) * .45; leg.rotation.x = -Math.sin(a) * .45; cam3.add(leg); }
+  const camBody = new T.Mesh(new T.BoxGeometry(.42, .3, .56), mat('#17181c', .35)); camBody.position.y = 1.42; cam3.add(camBody);
+  const lens = new T.Mesh(new T.CylinderGeometry(.09, .11, .3, 12), mat('#0c0c10', .2)); lens.rotation.x = Math.PI / 2; lens.position.set(0, 1.42, .4); cam3.add(lens);
+  cam3.position.set(p.x, 0, p.z + 5.2); cam3.rotation.y = Math.PI; cam3.traverse(o2 => { if (o2.isMesh) o2.castShadow = true; }); scene.add(cam3);
+  for (const sx of [-4, 4]) { const stand = new T.Mesh(new T.CylinderGeometry(.04, .05, 2.6, 6), mat('#3a3c40', .5)); stand.position.set(p.x + sx, 1.3, p.z + 3.4); scene.add(stand);
+    const soft = new T.Mesh(new T.BoxGeometry(.8, .8, .2), new T.MeshStandardMaterial({ color: '#fff6dd', emissive: '#ffedb8', emissiveIntensity: 1.4, roughness: .6 }));
+    soft.position.set(p.x + sx, 2.7, p.z + 3.2); soft.rotation.x = .5; soft.rotation.y = sx > 0 ? -.5 : .5; scene.add(soft); }
+  const chair = new T.Mesh(new T.BoxGeometry(.5, .95, .5), mat('#8a2a2a', .8)); chair.position.set(p.x + 1.6, .5, p.z + 5.6); scene.add(chair);
+  buildings.push({ x: p.x, z: p.z - 3.4, hw: 4.6, hd: .4 }, { x: p.x, z: p.z + 5.2, hw: .5, hd: .5 });
+}
+function spawnDancers() {
+  if (!HERO || FILM.x == null) return;
+  for (let i = 0; i < 5; i++) {
+    const o = npcLook(1); o.turban = false; o.outfit = 'silk';
+    o.kurta = pick(['#e91e63', '#ffc107', '#00bcd4', '#8bc34a', '#ff5722']);
+    const g = makeHuman(o); g.position.set(FILM.x + (i - 2) * 1.15, 0, FILM.z + rand(-.1, .1)); g.rotation.y = Math.PI;
+    scene.add(g); FILM.dancers.push(g); }
+}
+function danceMove(g, t, i) { // synchronized filmi choreography, driven by shared clock
+  const h = g.userData.human; if (!h) return;
+  const b = t * 3.4 + i * .55, up = Math.sin(b), sway = Math.sin(b * .5);
+  if (h.rArm) { h.rArm.rotation.x = -1.9 + up * .55; h.rArm.rotation.z = -.7 - up * .2; }
+  if (h.lArm) { h.lArm.rotation.x = -1.9 - up * .55; h.lArm.rotation.z = .7 - up * .2; }
+  if (h.rFore) h.rFore.rotation.x = -.5 + up * .3;
+  if (h.lFore) h.lFore.rotation.x = -.5 - up * .3;
+  if (h.spine) { h.spine.rotation.z = sway * .18; h.spine.rotation.y = up * .12; }
+  if (h.head) h.head.rotation.z = -sway * .14;
+  g.position.y = Math.abs(up) * .09; // bhangra bounce
+}
+function updateFilmSet(dt) {
+  if (FILM.x == null || !FILM.dancers.length) return;
+  if (FILM.cool > 0) FILM.cool -= dt;
+  const d2 = (FILM.x - player.pos.x) ** 2 + (FILM.z - player.pos.z) ** 2;
+  if (d2 > 70 * 70) return;
+  const t = performance.now() / 1000;
+  for (let i = 0; i < FILM.dancers.length; i++) { const g = FILM.dancers[i];
+    animateChar(g, false, dt, 0); danceMove(g, t, i); }
+  if (FILM.playerIn) {
+    danceMove(player.g, t, 2.5);
+    FILM.timer -= dt;
+    if (FILM.timer <= 0) { FILM.playerIn = false; FILM.cool = 25; player.g.position.y = 0;
+      player.cash += 300; cashSnd(); toast('🎬 CUT! Cachet d’acteur +₹300', '#8ef58e'); }
+  } else if (d2 < 8 * 8 && FILM.cool <= 0 && !player.inVehicle && !player.riding) {
+    hint('🎬 E — rejoindre la danse (cachet ₹300)');
+  }
+}
+// ---------- petrol: pumps in the city + the pricier jerrican man on call ----------
+const PUMPS = [];
+let petrolWala = null;
+function buildPetrolStations() {
+  let placed = 0;
+  for (let t = 0; t < 600 && placed < 5; t++) {
+    const p = sidewalkSpot(); if (!p || !clearOf(p.x, p.z, 3.4)) continue;
+    // orange-and-white canopy over two pumps, desi highway style
+    const roof = new T.Mesh(new T.BoxGeometry(5.4, .25, 3.6), mat('#e8e2d2', .8)); roof.position.set(p.x, 3.1, p.z); roof.castShadow = true; scene.add(roof);
+    const band = new T.Mesh(new T.BoxGeometry(5.5, .3, 3.7), mat('#e07020', .6)); band.position.set(p.x, 2.9, p.z); scene.add(band);
+    for (const [cx2, cz2] of [[-2.4, -1.5], [2.4, -1.5], [-2.4, 1.5], [2.4, 1.5]]) {
+      const pil = new T.Mesh(new T.CylinderGeometry(.09, .09, 2.9, 8), mat('#c9ccd2', .5)); pil.position.set(p.x + cx2, 1.45, p.z + cz2); scene.add(pil); }
+    for (const px2 of [-1.2, 1.2]) {
+      const unit = new T.Mesh(new T.BoxGeometry(.6, 1.15, .45), mat('#d94f10', .55)); unit.position.set(p.x + px2, .58, p.z); unit.castShadow = true; scene.add(unit);
+      const scr = new T.Mesh(new T.BoxGeometry(.4, .3, .04), mat('#dfe8e2', .3)); scr.position.set(p.x + px2, .88, p.z + .24); scene.add(scr);
+      buildings.push({ x: p.x + px2, z: p.z, hw: .45, hd: .4 }); }
+    PUMPS.push({ x: p.x, z: p.z });
+    placed++;
+  }
+}
+function tryFuelPump() {
+  if (!player.inVehicle) return false;
+  for (const pu of PUMPS) { if ((pu.x - player.pos.x) ** 2 + (pu.z - player.pos.z) ** 2 < 7 * 7) {
+    if (player.fuel > 96) { toast('⛽ Tank is full, boss', '#ffd24d'); return true; }
+    if (player.cash < 40) { toast('⛽ “No money, no petrol.”', '#ff9f43'); return true; }
+    player.cash -= 40; player.fuel = 100; cashSnd(); toast('⛽ Full tank −₹40', '#8ef58e'); return true; } }
+  return false;
+}
+function callPetrolWala() {
+  if (!player.inVehicle) { toast('📞 You are not even in a gaadi…', '#ffd24d'); return; }
+  if (petrolWala) { toast('📞 “Aa raha hoon, aa raha hoon!”', '#ffd24d'); return; }
+  if (player.cash < 150) { toast('📞 ₹150 needed for home delivery', '#ff9f43'); return; }
+  const a = rand(0, TAU), sx = player.pos.x + Math.sin(a) * 60, sz = player.pos.z + Math.cos(a) * 60;
+  const bike = buildBicycle(); bike.position.set(clamp(sx, -HALF + 4, HALF - 4), 0, clamp(sz, -HALF + 4, HALF - 4)); scene.add(bike);
+  let rider = null;
+  if (HERO) { rider = makeHuman(npcLook(districtAt(sx, sz))); bike.add(rider);
+    const st = bike.userData.seat; rider.position.set(st.x, st.y, st.z);
+    if (rider.userData.human) { rider.userData.human.seated = true; animateChar(rider, false, .03, 0); } }
+  const can = new T.Mesh(new T.BoxGeometry(.22, .3, .16), mat('#c9a020', .6)); can.position.set(0, .85, -.6); bike.add(can); // the jerrican on the carrier
+  petrolWala = { g: bike, stage: 'riding', t: 0 };
+  toast('📞 “Petrol? Haan ji! 10 minute… matlab 2 minute!”', '#8ef58e');
+}
+function updatePetrolWala(dt) {
+  const w = petrolWala; if (!w) return;
+  if (w.stage === 'riding') {
+    const dx = player.pos.x - w.g.position.x, dz = player.pos.z - w.g.position.z, d = Math.hypot(dx, dz);
+    if (d > 3) { const sp = 7; w.g.position.x += dx / d * sp * dt; w.g.position.z += dz / d * sp * dt; w.g.rotation.y = Math.atan2(dx, dz); }
+    else { w.stage = 'filling'; w.t = 2.6; toast('⛽ “Jerrican se full kar deta hoon…”', '#8ef58e'); }
+  } else if (w.stage === 'filling') {
+    w.t -= dt;
+    if (w.t <= 0) { player.cash -= 150; player.fuel = 100; cashSnd(); toast('⛽ Full! −₹150 (home delivery, boss)', '#8ef58e'); w.stage = 'leaving'; w.t = 8; }
+  } else { w.t -= dt; const away = Math.atan2(w.g.position.x - player.pos.x, w.g.position.z - player.pos.z);
+    w.g.position.x += Math.sin(away) * 6 * dt; w.g.position.z += Math.cos(away) * 6 * dt; w.g.rotation.y = away;
+    if (w.t <= 0) { scene.remove(w.g); petrolWala = null; } }
 }
 // ---------- Vehicle: auto-rickshaw ----------
 function wheel(r, w) { const g = new T.Group();
@@ -1020,6 +1438,7 @@ function buildAuto(color) {
   const fw = wheel(.24, .14); fw.position.set(0, .24, .95); g.add(fw);
   for (const sx of [-.52, .52]) { const w = wheel(.24, .14); w.position.set(sx, .24, -.7); g.add(w); }
   g.userData.seat = { x: 0, y: .3, z: .1 };
+  g.userData.dim = { w: .78, l: 1.42 }; g.userData.maxSpd = 13; g.userData.acc = 10;
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -1048,21 +1467,31 @@ function buildCar(kind, color) {
     const yroof = new T.Mesh(new T.SphereGeometry(.9, 18, 12), mat('#e8b820', .5)); yroof.scale.set(.87, .31, 1.21); yroof.position.set(0, 1.63, -L * .04); g.add(yroof); }
   if (kind === 'cop') { const bar = new T.Mesh(new T.BoxGeometry(1.1, .14, .34), mat('#ff3b3b')); bar.position.set(0, 1.86, -L * .04); g.add(bar); g.userData.bar = bar; }
   g.userData.seat = { x: .38, y: .14, z: L * .06 }; // right-hand drive, like India
+  g.userData.dim = { w: .95, l: L / 2 + .15 };
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
 // ---------- real vehicle models (Kenney CC0 + Montreal Bus CC-BY) ----------
 const VEHM = {}; // name -> { scene, scale, yawFix, seat }
 const VEH_SPECS = {
-  sedan:  { len: 4.4, seat: { x: .35, y: .35, z: .2 } },
-  hatch:  { len: 3.8, seat: { x: .35, y: .35, z: .1 } },
-  taxi:   { len: 4.4, seat: { x: .35, y: .35, z: .2 } },
-  van:    { len: 4.8, seat: { x: .35, y: .45, z: .9 } },
-  truck:  { len: 5.6, seat: { x: .35, y: .55, z: 1.2 } },
-  suv:    { len: 4.6, seat: { x: .35, y: .45, z: .2 } },
-  police: { len: 4.5, seat: { x: .35, y: .35, z: .2 } },
-  moto:   { len: 2.2, seat: { x: 0, y: .55, z: -.1 } },
-  bus:    { len: 9.5, seat: { x: .4, y: .5, z: 3.4 } },
+  sedan:  { len: 4.4, spd: 20, acc: 14, seat: { x: .35, y: .35, z: .2 } },
+  hatch:  { len: 3.8, spd: 18, acc: 13, seat: { x: .35, y: .35, z: .1 } },
+  taxi:   { len: 4.4, spd: 19, acc: 13, seat: { x: .35, y: .35, z: .2 } },
+  van:    { len: 4.8, spd: 16, acc: 11, seat: { x: .35, y: .45, z: .9 } },
+  truck:  { len: 5.6, spd: 15, acc: 10, seat: { x: .35, y: .55, z: 1.2 } },
+  suv:    { len: 4.6, spd: 19, acc: 13, seat: { x: .35, y: .45, z: .2 } },
+  police: { len: 4.5, spd: 21, acc: 15, seat: { x: .35, y: .35, z: .2 } },
+  moto:   { len: 2.2, spd: 20, acc: 15, open: true, seat: { x: 0, y: .55, z: -.1 } },
+  bus:    { len: 9.5, spd: 14, acc: 9,  seat: { x: .4, y: .5, z: 3.4 } },
+};
+// street-plausible Indian paint jobs, light enough to keep the kits' texture detail
+const VEH_PAINTS = {
+  sedan: ['#ffffff', '#e8e8e8', '#d9c9a8', '#b8c9e8', '#c9a8a8', '#8a8f96'],
+  hatch: ['#ffffff', '#e8d9b0', '#c94040', '#5577bb', '#99b9d9', '#e8e8e8'],
+  suv:   ['#ffffff', '#3a3f46', '#6a7078', '#8a3030', '#e8e8e8'],
+  van:   ['#ffffff', '#e8e8e8', '#d9d0b8', '#7a9ab8'],
+  truck: ['#e88a2a', '#d9a030', '#c96040', '#7aa050'],   // hand-painted Tata oranges
+  bus:   ['#c94040', '#d98a30', '#4a7a50', '#ffffff'],
 };
 function loadVehModels(cb) {
   const B = window.VEH_ASSETS;
@@ -1081,9 +1510,15 @@ function loadVehModels(cb) {
         const size = new T.Vector3(); box.getSize(size);
         const spec = VEH_SPECS[k] || { len: 4.4, seat: { x: .35, y: .35, z: .2 } };
         const long = Math.max(size.x, size.z);
-        VEHM[k] = { scene: g.scene, scale: spec.len / Math.max(.001, long),
+        const scale = spec.len / Math.max(.001, long);
+        // closed cabins: sink the seat so the driver's head stays UNDER the roof (legs clip the floor, GTA-style)
+        const seat = { ...spec.seat };
+        if (!spec.open) seat.y = Math.min(seat.y, size.y * scale - 1.74);
+        VEHM[k] = { scene: g.scene, scale,
           yawFix: size.x > size.z ? Math.PI / 2 : 0, // some kits model along X
-          minY: box.min.y, seat: spec.seat };
+          minY: box.min.y, seat,
+          spd: spec.spd, acc: spec.acc,
+          dim: { w: Math.min(size.x, size.z) * scale / 2 + .12, l: long * scale / 2 + .12 } };
         if (--left === 0) cb();
       }, () => { if (--left === 0) cb(); });
     } catch (e) { if (--left === 0) cb(); }
@@ -1096,9 +1531,12 @@ function buildVehModel(k) {
   m.scale.setScalar(M.scale);
   m.rotation.y = M.yawFix;
   m.position.y = -M.minY * M.scale; // sit on the road
-  m.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
+  const paint = (VEH_PAINTS[k] && k !== 'taxi' && k !== 'police') ? pick(VEH_PAINTS[k]) : null;
+  m.traverse(o => { if (o.isMesh) { o.castShadow = true;
+    if (paint && /body/i.test(o.name)) { o.material = o.material.clone(); o.material.color = new T.Color(paint); } } });
   g.add(m);
-  g.userData.seat = M.seat;
+  g.userData.seat = M.seat; g.userData.dim = M.dim;
+  g.userData.maxSpd = M.spd; g.userData.acc = M.acc;
   if (k === 'police') { const bar = new T.Mesh(new T.BoxGeometry(.9, .12, .3), mat('#ff3b3b')); bar.position.set(0, 1.75, 0); g.add(bar); g.userData.bar = bar; }
   return g;
 }
@@ -1118,19 +1556,52 @@ function buildEnfield() {
   const lamp = new T.Mesh(new T.SphereGeometry(.13, 12, 10), chromeLight(true)); lamp.position.set(0, 1.18, 1.05); g.add(lamp);
   const fenderF = new T.Mesh(new T.CylinderGeometry(.56, .56, .14, 12, 1, false, Math.PI * .1, Math.PI * .55), chrome); fenderF.rotation.z = Math.PI / 2; fenderF.position.set(0, .5, .95); g.add(fenderF);
   g.userData.seat = { x: 0, y: .5, z: -.28 };
+  g.userData.dim = { w: .45, l: 1.15 }; g.userData.maxSpd = 19; g.userData.acc = 14;
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
-// old Indian bicycle (roadster): parked prop
+// old Indian roadster bicycle (Hero/Atlas style) — rideable
 function buildBicycle() {
-  const g = new T.Group(); const black = mat('#1c1c20', .6);
-  for (const sz of [.62, -.62]) { const w = new T.Mesh(new T.TorusGeometry(.42, .028, 8, 20), black); w.rotation.y = Math.PI / 2; w.position.set(0, .42, sz); g.add(w); }
-  const bar1 = new T.Mesh(new T.CylinderGeometry(.022, .022, 1.15, 6), black); bar1.rotation.x = Math.PI / 2; bar1.position.set(0, .78, 0); g.add(bar1);
-  const bar2 = new T.Mesh(new T.CylinderGeometry(.022, .022, .8, 6), black); bar2.rotation.x = Math.PI / 4; bar2.position.set(0, .6, .3); g.add(bar2);
-  const seatp = new T.Mesh(new T.BoxGeometry(.16, .06, .26), mat('#3a2a1a', .7)); seatp.position.set(0, .92, -.34); g.add(seatp);
-  const hb = new T.Mesh(new T.CylinderGeometry(.02, .02, .5, 6), black); hb.rotation.z = Math.PI / 2; hb.position.set(0, .95, .58); g.add(hb);
-  const basket = new T.Mesh(new T.BoxGeometry(.3, .2, .24), mat('#8a6b3a', .9)); basket.position.set(0, .8, .66); g.add(basket);
+  const g = new T.Group(); const black = mat('#1c1c20', .55);
+  const chrome = new T.MeshStandardMaterial({ color: '#c2c7cd', roughness: .3, metalness: .8 });
+  const tube = (a, b, r) => { const d = b.clone().sub(a), l = d.length();
+    const m = new T.Mesh(new T.CylinderGeometry(r, r, l, 8), black);
+    m.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), d.normalize());
+    m.position.copy(a.clone().add(b).multiplyScalar(.5)); g.add(m); return m; };
+  const V3 = (x, y, z) => new T.Vector3(x, y, z);
+  // spoked wheels
+  for (const sz of [.62, -.62]) {
+    const wg = new T.Group();
+    const tyre = new T.Mesh(new T.TorusGeometry(.42, .03, 10, 24), mat('#141416', .95)); wg.add(tyre);
+    const rim = new T.Mesh(new T.TorusGeometry(.395, .01, 6, 24), chrome); wg.add(rim);
+    for (let i = 0; i < 8; i++) { const sp = new T.Mesh(new T.CylinderGeometry(.006, .006, .76, 4), chrome);
+      sp.rotation.z = i / 8 * Math.PI; wg.add(sp); }
+    const hub = new T.Mesh(new T.CylinderGeometry(.03, .03, .07, 8), chrome); hub.rotation.x = Math.PI / 2; wg.add(hub);
+    wg.rotation.y = Math.PI / 2; wg.position.set(0, .42, sz); g.add(wg);
+    // black roadster fender over the top
+    const fen = new T.Mesh(new T.CylinderGeometry(.455, .455, .06, 14, 1, true, Math.PI * (sz > 0 ? 1.05 : 1.45), Math.PI * .55), black);
+    fen.rotation.z = Math.PI / 2; fen.position.set(0, .42, sz); g.add(fen);
+  }
+  // diamond frame
+  const K = V3(0, .46, .05), S = V3(0, .93, -.28), H = V3(0, .97, .42), R = V3(0, .42, -.62), F = V3(0, .42, .62);
+  tube(K, H, .024); tube(K, S, .024); tube(S, H, .022); tube(S, R, .016); tube(K, R, .016); tube(H, F, .02);
+  // chainguard: full-cover disc, the desi signature
+  const guard = new T.Mesh(new T.CylinderGeometry(.16, .16, .035, 14), mat('#24262c', .5));
+  guard.rotation.z = Math.PI / 2; guard.position.set(.05, .46, .05); g.add(guard);
+  for (const px of [-.09, .09]) { const ped = new T.Mesh(new T.BoxGeometry(.05, .025, .1), mat('#3a3a40', .8));
+    ped.position.set(px, .46 + (px > 0 ? .1 : -.1), .05 + (px > 0 ? .06 : -.06)); g.add(ped); }
+  // sprung leather saddle + rear carrier rack
+  const seatp = new T.Mesh(new T.BoxGeometry(.17, .06, .28), mat('#4a3320', .7)); seatp.position.set(0, .97, -.3); g.add(seatp);
+  const rack = new T.Mesh(new T.BoxGeometry(.15, .02, .34), chrome); rack.position.set(0, .8, -.6); g.add(rack);
+  tube(V3(0, .78, -.44), V3(0, .8, -.72), .01);
+  // swept-back handlebar with grips
+  const hb = new T.Mesh(new T.CylinderGeometry(.016, .016, .46, 8), chrome); hb.rotation.z = Math.PI / 2; hb.position.set(0, 1.02, .42); g.add(hb);
+  for (const sx of [-.23, .23]) { const grip = new T.Mesh(new T.CylinderGeometry(.022, .022, .09, 8), black);
+    grip.rotation.z = Math.PI / 2; grip.position.set(sx, 1.02, .38); g.add(grip); }
+  const bell = new T.Mesh(new T.SphereGeometry(.03, 8, 6), chrome); bell.position.set(.1, 1.04, .44); g.add(bell);
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.userData.seat = { x: 0, y: .42, z: -.3 };
+  g.userData.dim = { w: .35, l: 1.0 }; g.userData.maxSpd = 7.5; g.userData.acc = 5.5;
   return g;
 }
 // stunt ramps (tremplins) on paved roads — drive up, fly off
@@ -1177,32 +1648,39 @@ const vehicles = [];
 function spawnVehicles(n) {
   for (let i = 0; i < n; i++) { const p = roadSpot(); if (!p) continue;
     const r = Math.random();
-    let g = null;
-    if (VEHM.sedan) { // real models: Kenney kit + bus
-      g = r < .34 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
-          r < .46 ? buildVehModel('moto') : r < .58 ? buildVehModel('taxi') :
-          r < .66 ? buildVehModel('sedan') : r < .73 ? buildVehModel('hatch') :
-          r < .79 ? buildVehModel('suv') : r < .85 ? buildVehModel('van') :
-          r < .9 ? buildVehModel('truck') : r < .95 ? buildVehModel('bus') : buildEnfield();
+    let g = null, kind = '';
+    if (VEHM.sedan) { // real models: Kenney kit + bus + our Bajaj / Enfield / roadster cycle
+      kind = r < .3 ? 'auto' : r < .41 ? 'moto' : r < .52 ? 'taxi' : r < .6 ? 'sedan' : r < .67 ? 'hatch' :
+             r < .73 ? 'suv' : r < .79 ? 'van' : r < .84 ? 'truck' : r < .89 ? 'bus' : r < .95 ? 'cycle' : 'enfield';
+      g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
+          kind === 'enfield' ? buildEnfield() : kind === 'cycle' ? buildBicycle() : buildVehModel(kind);
     }
-    if (!g) g = r < .34 ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
-              r < .52 ? buildCar('hatch') : r < .74 ? buildCar('sedan') : r < .88 ? buildCar('taxi') : buildEnfield();
+    if (!g) { kind = r < .34 ? 'auto' : r < .5 ? 'hatch' : r < .68 ? 'sedan' : r < .82 ? 'taxi' : r < .92 ? 'cycle' : 'enfield';
+      g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
+          kind === 'enfield' ? buildEnfield() : kind === 'cycle' ? buildBicycle() : buildCar(kind); }
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU);
     scene.add(g);
-    const v = { g, yaw: g.rotation.y, speed: 0, ai: true, aiDir: rand(0, TAU), aiTimer: 0 };
+    const dim = g.userData.dim || { w: .95, l: 2.2 };
+    const v = { g, kind, yaw: g.rotation.y, speed: 0, ai: true, aiDir: rand(0, TAU), aiTimer: 0,
+      hw: dim.w, hl: dim.l,
+      horn: kind === 'cycle' ? 4 : (kind === 'truck' || kind === 'bus') ? 2 :
+            Math.random() < .22 ? 3 : (kind === 'moto' || kind === 'auto') ? 1 : 0 };
+    if (kind === 'cycle') { v.cruise = rand(2, 3.5); }
     // riders are always visible on two-wheelers; autos often carry a hireable driver
-    const isBike = g.userData.seat && Math.abs(g.userData.seat.x) < .01 && (r >= .34 && r < .46 || r >= .95);
+    const isBike = kind === 'moto' || kind === 'enfield' || kind === 'cycle';
     if (HERO && isBike) {
       const o = { skin: pick(SKINS), turban: Math.random() < .3, turbanColor: pick(TURBANS),
-        kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: true };
+        kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: true,
+        outfit: pick(['kurta', 'kurta', 'khadi', 'silk']), hair: pick(['crop', 'crop', 'part', 'curly']) };
       const d = makeHuman(o); const seat = g.userData.seat;
       g.add(d); d.position.set(seat.x, seat.y, seat.z);
       if (d.userData.human) { d.userData.human.seated = true; animateChar(d, false, .03, 0); }
-      v.driver = { g: d, fare: randi(40, 90) };
+      v.driver = { g: d, fare: kind === 'cycle' ? randi(15, 40) : randi(40, 90) };
     }
-    else if (HERO && r < .6 && Math.random() < .55) {
+    else if (HERO && kind !== 'cycle' && r < .6 && Math.random() < .55) {
       const o = { skin: pick(SKINS), turban: Math.random() < .5, turbanColor: pick(TURBANS),
-        kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: true };
+        kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: pick(BEARDS), moustache: true,
+        outfit: pick(['kurta', 'kurta', 'khadi', 'sherwani']), hair: pick(['crop', 'part', 'curly']) };
       const d = makeHuman(o); const seat = g.userData.seat || { x: 0, y: .55, z: .3 };
       g.add(d); d.position.set(seat.x, seat.y, seat.z);
       if (d.userData.human) { d.userData.human.seated = true; animateChar(d, false, .03, 0); }
@@ -1213,7 +1691,15 @@ function spawnVehicles(n) {
 
 // ---------- Player ----------
 const player = { g: null, pos: new T.Vector3(0, 0, 4), yaw: 0, vel: new T.Vector3(),
-  health: 100, fuel: 100, cash: 500, inVehicle: null, moving: false, speed: 0 }; // pocket money for tickets & autos
+  health: 100, fuel: 100, cash: 500, dharma: 50, inVehicle: null, moving: false, speed: 0 }; // pocket money for tickets & autos
+// India doesn't run on money alone: your izzat/dharma (conduct) opens doors that cash can't.
+// And "log kya kahenge" — a misdeed WITNESSED costs far more face than one done in an empty lane.
+function karma(d) {
+  if (d < 0) { let wit = 0;
+    for (const n of npcs) { if (!n.dead && n.down <= 0 && n.g.position.distanceToSquared(player.pos) < 15 * 15) wit++; }
+    d *= 1 + Math.min(2.5, wit * .25); }
+  player.dharma = clamp(player.dharma + d, 0, 100);
+}
 const cam = { yaw: 0, pitch: 0.2, dist: 5.4 };
 
 // ---------- Input ----------
@@ -1229,6 +1715,7 @@ addEventListener('keydown', e => { const k = e.key.toLowerCase();
   if (k === 'm') toggleBigMap();
   if (k === 'e') { if (player.nego) acceptRide(); else tryVisit(); }
   if (k === 'n' && player.nego) haggle();
+  if (k === 'p') callPetrolWala();
 });
 addEventListener('keyup', e => { keys[e.key.toLowerCase()] = false; });
 // mouse drag to orbit
@@ -1243,11 +1730,19 @@ addEventListener('click', e => { if (started && !dragging) { /* click punch on f
 // touch
 const tHeld = {};
 (function touch() {
-  const bind = (id, fn, up) => { const el = $(id); if (!el) return;
-    el.addEventListener('touchstart', e => { e.preventDefault(); fn(); });
-    if (up) el.addEventListener('touchend', e => { e.preventDefault(); up(); }); };
-  bind('tAct', tryEnterExit); bind('tPunch', punch); bind('tSpit', spit);
+  // pointerdown covers finger AND mouse \u2014 the on-screen buttons work on PC too
+  const bind = (id, fn) => { const el = $(id); if (!el) return;
+    el.addEventListener('pointerdown', e => { e.preventDefault(); fn(); });
+    el.addEventListener('touchstart', e => e.preventDefault(), { passive: false }); };
+  bind('tAct', () => { if (player.nego) acceptRide(); else tryEnterExit(); });
+  bind('tPunch', punch); bind('tSpit', spit);
   bind('tRadio', () => { if (player.inVehicle) { const st = Radio.switch(); toast('\ud83d\udcfb ' + st.name, '#8ef58e'); } });
+  bind('tPhone', callPetrolWala);
+  bind('tE', () => { if (player.nego) haggle(); else tryVisit(); });
+  bind('tSnd', () => { const p = $('sndPanel'); if (p) p.classList.toggle('on'); });
+  for (const key of ['horns', 'amb', 'sfx']) { const el = $('snd_' + key); if (!el) continue;
+    const paint = () => { el.classList.toggle('on', !!sndCfg[key]); };
+    el.addEventListener('pointerdown', e => { e.preventDefault(); sndCfg[key] = !sndCfg[key]; saveSnd(); paint(); }); paint(); }
 })();
 // analog thumbstick (touch + mouse)
 window.joy = { x: 0, z: 0, active: false };
@@ -1308,12 +1803,14 @@ function acceptRide() {
 function haggle() {
   const n = player.nego; if (!n) return;
   n.tries++;
-  if (n.tries <= 2 && Math.random() < .65) {
-    n.fare = Math.max(30, Math.round(n.fare * rand(.6, .85)));
+  // your reputation haggles with you: high dharma softens drivers, a badmash gets nowhere
+  const odds = clamp(.35 + player.dharma / 160, .35, .92);
+  if (n.tries <= 2 && Math.random() < odds) {
+    n.fare = Math.max(15, Math.round(n.fare * rand(.6, .85)));
     n.veh.driver.fare = n.fare;
-    toast('\u201cTheek hai\u2026 \u20b9' + n.fare + '\u201d', '#8ef58e');
+    toast(pick(LINES.ok) + ' \u20b9' + n.fare, '#8ef58e');
   } else {
-    toast('\u201cNahi nahi!\u201d \u2014 he drives off', '#ff9f43');
+    toast(pick(LINES.no) + ' \u2014 il red\u00e9marre', '#ff9f43');
     n.veh.ai = true; player.nego = null;
   }
 }
@@ -1326,7 +1823,7 @@ function endRide() {
   player.g.rotation.set(0, v.yaw + Math.PI / 2, 0);
   const u = player.g.userData; if (u.human) u.human.seated = false;
   player.riding = null; v.hired = false;
-  Radio.setOn(false);
+  Radio.setOn(false); karma(2); // paid the man his fare \u2014 izzat intact
   toast('Pahunch gaye! \u2212\u20b9' + (v.fareDue || 0), '#8ef58e');
 }
 function updateTransition(dt) {
@@ -1363,8 +1860,15 @@ function punch() {
       n.down = kind === 2 ? 5 : 4; n.g.rotation.z = Math.PI / 2 - .1; n.g.position.y = 0.4;
       // knock-back
       n.g.position.x += Math.sin(player.yaw) * (kind === 2 ? 1.6 : .8); n.g.position.z += Math.cos(player.yaw) * (kind === 2 ? 1.6 : .8);
-      crime(1); toast(label, '#ff9f43'); spark(n.g.position); break; }
+      // this is India, not a punching bag: some get up ANGRY and swing back, others bolt
+      if (n.mood !== 'fight') n.mood = Math.random() < .45 ? 'fight' : 'flee';
+      n.moodT = n.mood === 'fight' ? rand(9, 16) : rand(4, 7);
+      if (n.mood === 'fight') toast(label + '  — “Abey!! 😡”', '#ff9f43'); else toast(label, '#ff9f43');
+      crime(1); karma(-1.5); spark(n.g.position); break; }
   }
+  // a good kick tips a stall right over
+  for (const b of buildings) { if (!b.parts) continue;
+    if ((fx - b.x) ** 2 + (fz - b.z) ** 2 < 2.2 * 2.2) { smashProp(b, Math.sin(player.yaw), Math.cos(player.yaw), 6); break; } }
 }
 let spitCount = 0;
 function spit() {
@@ -1378,10 +1882,21 @@ function spit() {
   spitParts.push({ m: p, vx: Math.sin(player.yaw) * 3, vz: Math.cos(player.yaw) * 3, vy: 2, life: .6, decal: [fx, fz] });
   spitCount++; if (spitCount === 3) toast('PAAN MASALA 🔴', '#e74c3c');
 }
-const spitParts = [], sparks = [];
+const spitParts = [], sparks = [], debris = [];
+// smash a stall / cart: its pieces fly with the hit, tumble, and stay lying in the street
+function smashProp(b, dirx, dirz, force) {
+  if (!b.parts) return;
+  for (const m of b.parts) {
+    debris.push({ m, vx: dirx * force * rand(.35, .7) + rand(-1.5, 1.5), vy: rand(1.5, 3.5 + force * .3),
+      vz: dirz * force * rand(.35, .7) + rand(-1.5, 1.5),
+      rx: rand(-4, 4), rz: rand(-4, 4), life: rand(.9, 1.5) });
+  }
+  b.parts = null; b.hw = 0; b.hd = 0; // no longer blocks anything
+  AudioSysCrash(); crime(1); karma(-2); // somebody's livelihood, that was
+}
 function spark(pos) { for (let i = 0; i < 8; i++) { const m = new T.Mesh(new T.SphereGeometry(.08, 5, 5), new T.MeshBasicMaterial({ color: '#ffd24d' }));
   m.position.copy(pos); m.position.y = 1; scene.add(m); sparks.push({ m, vx: rand(-3, 3), vy: rand(2, 5), vz: rand(-3, 3), life: .5 }); } }
-function horn() { hornSound(.55, .16); }
+function horn() { const v = player.inVehicle; hornSound(.55, .16, v ? (v.horn == null ? (v.kind === 'cycle' ? 4 : 0) : v.horn) : 0); }
 
 // ---------- wanted / crime / bribe (light) ----------
 let wanted = 0, heat = 0, wantedTimer = 0;
@@ -1399,26 +1914,63 @@ function tryBribe() {
   for (const c of cops) { const d = c.g.position.distanceToSquared(player.pos); if (d < bd) { bd = d; best = c; } }
   if (!best) { toast('No cop close enough', '#ffd24d'); return; }
   const cost = 100 + wanted * 250;
-  if (best.corrupt) { if (player.cash >= cost) { player.cash -= cost; wanted = 0; heat = 0; cops.forEach(c => scene.remove(c.g)); cops.length = 0; updateStars(); cashSnd(); toast('BRIBE ACCEPTED 🤝  −₹' + cost, '#8ef58e'); }
+  if (best.corrupt) { if (player.cash >= cost) { player.cash -= cost; wanted = 0; heat = 0; cops.forEach(c => scene.remove(c.g)); cops.length = 0; updateStars(); cashSnd(); karma(-3); toast('BRIBE ACCEPTED 🤝  −₹' + cost, '#8ef58e'); }
     else toast('Need ₹' + cost, '#ffd24d'); }
   else { toast('HONEST COP! 🚨', '#ff6b6b'); wanted = clamp(wanted + 1, 0, 5); wantedTimer = 14; updateStars(); }
 }
 
 // ---------- Audio ----------
-let actx, amaster, sirenNode = null;
+let actx, amaster, sirenNode = null, ambOn = false;
 function ensureAudio() { if (actx) return; try { actx = new (window.AudioContext || window.webkitAudioContext)(); amaster = actx.createGain(); amaster.gain.value = .5; amaster.connect(actx.destination); } catch (e) {} }
-function hornSound(dur, vol) { // real Indian horn: two detuned tones through a resonant band
-  if (!actx) return; const t = actx.currentTime;
-  const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 900; bp.Q.value = 2.2;
-  const g = actx.createGain(); g.gain.setValueAtTime(0, t);
-  g.gain.linearRampToValueAtTime(vol, t + .02); g.gain.setValueAtTime(vol, t + dur - .05); g.gain.linearRampToValueAtTime(0, t + dur);
-  bp.connect(g); g.connect(amaster);
-  for (const f of [420, 528]) { const o = actx.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(bp); o.start(t); o.stop(t + dur + .02); }
+// low, unpitched city bed — distant traffic rumble, no notes, no melody
+function startAmbience() { if (!actx || ambOn) return; ambOn = true;
+  const len = actx.sampleRate * 3, buf = actx.createBuffer(1, len, actx.sampleRate), d = buf.getChannelData(0);
+  let last = 0; for (let i = 0; i < len; i++) { const w = Math.random() * 2 - 1; last = (last + .02 * w) / 1.02; d[i] = last * 3.2; }
+  const src = actx.createBufferSource(); src.buffer = buf; src.loop = true;
+  const lp = actx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 480;
+  const g = actx.createGain(); g.gain.value = .05;
+  const lfo = actx.createOscillator(), lg = actx.createGain(); lfo.frequency.value = .07; lg.gain.value = .018;
+  lfo.connect(lg); lg.connect(g.gain);
+  src.connect(lp); lp.connect(g); g.connect(amaster); src.start(); lfo.start();
+  ambGain = g; if (!sndCfg.amb) g.gain.value = 0;
 }
-function AudioSysCrash() { if (!actx) return; const t = actx.currentTime, b = actx.createBufferSource(), buf = actx.createBuffer(1, 4410, 44100), d = buf.getChannelData(0);
+// Indian horns: every vehicle has its own — fresh two-tone, tinny scooter beep,
+// truck air-horn, a tired dying horn — and a cycle bell. `vol` is pre-attenuated by distance.
+function hornSound(dur, vol, kind) {
+  if (!actx || vol <= 0.002 || !sndCfg.horns) return; const t = actx.currentTime; kind = kind || 0;
+  const out = actx.createGain(); out.connect(amaster);
+  const env = (g, v, d2, tail) => { g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + .02);
+    g.gain.setValueAtTime(v, t + Math.max(.03, d2 - (tail || .05))); g.gain.linearRampToValueAtTime(0, t + d2); };
+  if (kind === 4) { // cycle bell: two bright pings
+    for (const [f, dt2] of [[1420, 0], [1420, .14]]) { const o = actx.createOscillator(), g = actx.createGain();
+      o.type = 'sine'; o.frequency.value = f; const o2 = actx.createOscillator(); o2.type = 'sine'; o2.frequency.value = f * 2.51;
+      g.gain.setValueAtTime(vol, t + dt2); g.gain.exponentialRampToValueAtTime(.001, t + dt2 + .22);
+      o.connect(g); o2.connect(g); g.connect(out); o.start(t + dt2); o.stop(t + dt2 + .25); o2.start(t + dt2); o2.stop(t + dt2 + .25); }
+    return; }
+  const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.Q.value = 2.2;
+  const g = actx.createGain(); bp.connect(g); g.connect(out);
+  if (kind === 1) { // tinny scooter beep — short, high, a bit rude
+    bp.frequency.value = 1350; env(g, vol, Math.min(dur, .22));
+    const o = actx.createOscillator(); o.type = 'square'; o.frequency.value = 830; o.connect(bp); o.start(t); o.stop(t + .25);
+  } else if (kind === 2) { // truck/bus air-horn: low detuned pair, long
+    bp.frequency.value = 520; bp.Q.value = 1.4; const d2 = Math.max(dur, .6); env(g, vol * 1.25, d2, .12);
+    for (const f of [255, 322]) { const o = actx.createOscillator(); o.type = 'sawtooth'; o.frequency.value = f; o.connect(bp); o.start(t); o.stop(t + d2 + .02); }
+  } else if (kind === 3) { // tired horn: sags in pitch, crackles, nearly gives up
+    bp.frequency.value = 760; env(g, vol, dur);
+    const o = actx.createOscillator(); o.type = 'sawtooth';
+    o.frequency.setValueAtTime(505, t); o.frequency.linearRampToValueAtTime(348, t + dur);
+    const wob = actx.createOscillator(), wg = actx.createGain(); wob.frequency.value = 13; wg.gain.value = vol * .5;
+    wob.connect(wg); wg.connect(g.gain);
+    o.connect(bp); o.start(t); o.stop(t + dur + .02); wob.start(t); wob.stop(t + dur + .02);
+  } else { // fresh two-tone — the classic
+    bp.frequency.value = 900; env(g, vol, dur);
+    for (const f of [420, 528]) { const o = actx.createOscillator(); o.type = 'square'; o.frequency.value = f; o.connect(bp); o.start(t); o.stop(t + dur + .02); }
+  }
+}
+function AudioSysCrash() { if (!actx || !sndCfg.sfx) return; const t = actx.currentTime, b = actx.createBufferSource(), buf = actx.createBuffer(1, 4410, 44100), d = buf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
   const g = actx.createGain(); g.gain.value = .25; b.buffer = buf; b.connect(g); g.connect(amaster); b.start(t); }
-function blip(f, d, ty, v) { if (!actx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain(); o.type = ty || 'square'; o.frequency.value = f; g.gain.setValueAtTime(v || .2, t); g.gain.exponentialRampToValueAtTime(.001, t + d); o.connect(g); g.connect(amaster); o.start(t); o.stop(t + d); }
+function blip(f, d, ty, v) { if (!actx || !sndCfg.sfx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain(); o.type = ty || 'square'; o.frequency.value = f; g.gain.setValueAtTime(v || .2, t); g.gain.exponentialRampToValueAtTime(.001, t + d); o.connect(g); g.connect(amaster); o.start(t); o.stop(t + d); }
 function cashSnd() { blip(880, .08, 'sine', .3); setTimeout(() => blip(1320, .12, 'sine', .3), 70); }
 function siren(on) { if (!actx) return; if (on && !sirenNode) { const o = actx.createOscillator(), g = actx.createGain(), lfo = actx.createOscillator(), lg = actx.createGain(); o.type = 'sine'; o.frequency.value = 700; lfo.frequency.value = 2; lg.gain.value = 250; lfo.connect(lg); lg.connect(o.frequency); g.gain.value = .04; o.connect(g); g.connect(amaster); o.start(); lfo.start(); sirenNode = { o, lfo }; } else if (!on && sirenNode) { try { sirenNode.o.stop(); sirenNode.lfo.stop(); } catch (e) {} sirenNode = null; } }
 
@@ -1463,16 +2015,46 @@ const MONUMENTS = [
 ];
 let tour = null; // { d, i, next, guided }
 function tryVisit() {
-  if (!started || player.inVehicle || player.riding || tour) return;
+  if (!started || player.riding || tour) return;
+  if (player.inVehicle) { tryFuelPump(); return; } // at a pump, E fills the tank
+  // on the Bambai film set, E puts you in the number
+  if (FILM.x != null && !FILM.playerIn && FILM.cool <= 0 && (FILM.x - player.pos.x) ** 2 + (FILM.z - player.pos.z) ** 2 < 8 * 8) {
+    FILM.playerIn = true; FILM.timer = 9; karma(2); toast('\ud83c\udfac ACTION! Suis la chor\u00e9!', '#ffd24d'); return; }
   for (const l of landmarks) {
     if ((l.x - player.pos.x) ** 2 + (l.z - player.pos.z) ** 2 > 18 * 18) continue;
     const M = MONUMENTS[l.d];
-    if (player.cash >= 90) { player.cash -= 90; tour = { d: l.d, i: 0, next: 0, guided: true };
+    if (l.d === 4) { // Harmandir Sahib: no ticket, ever \u2014 and seva restores your izzat like nothing else
+      tour = { d: l.d, i: 0, next: 0, guided: true };
+      karma(8); toast('\ud83d\ude4f Langar seva \u2014 sab barabar (tous \u00e9gaux)', '#8ef58e'); return; }
+    if (player.cash >= 90) { player.cash -= 90; karma(3); tour = { d: l.d, i: 0, next: 0, guided: true };
       toast('\ud83c\udfab Ticket + guide \u2212\u20b990', '#8ef58e'); }
-    else if (player.cash >= 50) { player.cash -= 50; tour = { d: l.d, i: 0, next: 0, guided: false };
+    else if (player.cash >= 50) { player.cash -= 50; karma(2); tour = { d: l.d, i: 0, next: 0, guided: false };
       toast('\ud83c\udfab Ticket \u2212\u20b950', '#8ef58e'); }
     else toast('Need \u20b950 for a ticket', '#ffd24d');
     return;
+  }
+  // rob the fallen \u2014 quick money, heavy shame (and the poor barely carry anything)
+  for (const n of npcs) { if ((n.down <= 0 && !n.dead) || n.looted) continue;
+    if (n.g.position.distanceToSquared(player.pos) < 2.2 * 2.2) {
+      const take = n.wealth === 2 ? randi(150, 600) : n.wealth === 1 ? randi(30, 150) : randi(5, 40);
+      n.looted = true; player.cash += take; karma(-6); crime(1); cashSnd();
+      toast('\ud83e\udef3 +\u20b9' + take + (n.wealth === 0 ? ' \u2014 c\u2019\u00e9tait tout ce qu\u2019il avait\u2026' : n.wealth === 2 ? ' \u2014 portefeuille de seth!' : ''), '#ffd24d');
+      return; } }
+  // feeding the street's animals is everyday piety
+  for (const c of cows) { if (c.g.position.distanceToSquared(player.pos) < 3.2 * 3.2 && player.cash >= 5) {
+    player.cash -= 5; karma(2); toast('\ud83c\udf3e Chara for gau mata \u2212\u20b95 \u00b7 +dharma', '#8ef58e'); return; } }
+  for (const d of dogs) { if (d.g.position.distanceToSquared(player.pos) < 2.6 * 2.6 && player.cash >= 5) {
+    player.cash -= 5; karma(1.5); d.nap = 0; toast('\ud83c\udf6a Biscuit for the doggie \u2212\u20b95 \u00b7 +dharma', '#8ef58e'); return; } }
+  // no monument? then it's a chat: people answer you \u2014 in their district's own way
+  let bestN = null, bd = 2.6 * 2.6;
+  for (const n of npcs) { if (n.down > 0 || n.dead || n.mood) continue;
+    const d2 = n.g.position.distanceToSquared(player.pos); if (d2 < bd) { bd = d2; bestN = n; } }
+  if (bestN) {
+    bestN.g.rotation.y = Math.atan2(player.pos.x - bestN.g.position.x, player.pos.z - bestN.g.position.z);
+    bestN.pause = 3;
+    const di = districtAt(bestN.g.position.x, bestN.g.position.z);
+    const line = (player.dharma < 25 && Math.random() < .4) ? '\u201cSharam karo! (Aie honte!)\u201d \ud83d\ude20' : pick(CHAT[di] || CHAT[0]);
+    toast(line, '#ffe9b8');
   }
 }
 function updateTour(dt, now) {
@@ -1486,54 +2068,42 @@ function updateTour(dt, now) {
 }
 // ---------- Desi FM: generative radio (offline, three stations) ----------
 
+// REAL Indian radio — live web streams, no synthesized music, ever.
+// On page load we ask the radio-browser.info directory for India's most-listened stations;
+// if that fails (offline / sandboxed page) we fall back to well-known stream URLs.
+// A dead stream auto-skips to the next station.
 const Radio = {
-  idx: 0, on: false, nextT: 0, step: 0, bus: null,
+  idx: 0, on: false, el: null, fails: 0,
   stations: [
-    { name: 'Bhangra Beats 98.3', root: 196, scale: [0, 2, 4, 5, 7, 9, 10], bpm: 122, style: 0 },
-    { name: 'Filmi Gold 91.1', root: 220, scale: [0, 2, 3, 7, 8], bpm: 82, style: 1 },
-    { name: 'Chennai Express 104.8', root: 233.08, scale: [0, 2, 4, 7, 11], bpm: 104, style: 2 },
+    { name: 'Radio Mirchi 98.3 (Bollywood)', url: 'https://radioindia.net/radio/mirchi98/icecast.audio' },
+    { name: 'Bombay Beats', url: 'https://radioindia.net/radio/sc-bb/icecast.audio' },
+    { name: 'Radio City 91.1 Hindi', url: 'https://prclive4.listenon.in/Hindi' },
+    { name: 'AIR Vividh Bharati', url: 'https://airhlspush.pc.cdn.bitgravity.com/httppush/hlspbaudio005/hlspbaudio00564kbps.m3u8' },
   ],
-  ensure() { if (this.bus || !actx) return;
-    const g = actx.createGain(); g.gain.value = 0;
-    const bp = actx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1500; bp.Q.value = .5;
-    g.connect(bp); bp.connect(amaster); this.bus = g; },
-  setOn(v) { ensureAudio(); this.ensure(); if (!this.bus) return; this.on = v;
-    this.bus.gain.setTargetAtTime(v ? .5 : 0, actx.currentTime, .25);
-    if (v) { this.nextT = actx.currentTime + .1; this.step = 0; } },
-  switch() { this.idx = (this.idx + 1) % this.stations.length; this.static_(); this.step = 0; return this.stations[this.idx]; },
-  static_() { if (!this.bus) return; const t = actx.currentTime, b = actx.createBufferSource(), buf = actx.createBuffer(1, 6600, 44100), d = buf.getChannelData(0);
-    for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * .45 * (1 - i / d.length);
-    b.buffer = buf; b.connect(this.bus); b.start(t); },
-  osc(t, f, dur, type, vol, slideTo) { const o = actx.createOscillator(), g = actx.createGain();
-    o.type = type; o.frequency.setValueAtTime(f, t); if (slideTo) o.frequency.setTargetAtTime(slideTo, t + dur * .3, dur * .2);
-    g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + .015); g.gain.exponentialRampToValueAtTime(.001, t + dur);
-    o.connect(g); g.connect(this.bus); o.start(t); o.stop(t + dur + .05); },
-  drum(t, f, vol, snare) { const o = actx.createOscillator(), g = actx.createGain();
-    o.type = 'sine'; o.frequency.setValueAtTime(f * 2.2, t); o.frequency.exponentialRampToValueAtTime(f, t + .07);
-    g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + (snare ? .09 : .16));
-    o.connect(g); g.connect(this.bus); o.start(t); o.stop(t + .25);
-    if (snare) { const b = actx.createBufferSource(), buf = actx.createBuffer(1, 3000, 44100), d = buf.getChannelData(0);
-      for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
-      const g2 = actx.createGain(); g2.gain.value = vol * .5; b.buffer = buf; b.connect(g2); g2.connect(this.bus); b.start(t); } },
-  tick() { if (!this.on || !actx || !this.bus) return;
-    const st = this.stations[this.idx], s16 = 60 / st.bpm / 4;
-    while (this.nextT < actx.currentTime + .3) {
-      const t = this.nextT, i = this.step;
-      if (st.style === 0) { // dhol-driven bhangra
-        if (i % 8 === 0) this.drum(t, 62, .5); if (i % 8 === 4) this.drum(t, 190, .3, true);
-        if (i % 4 === 2) this.drum(t, 62, .2); if (i % 4 === 0) this.osc(t, 2400, .025, 'triangle', .02); }
-      else if (st.style === 1) { // slow filmi ballad
-        if (i % 16 === 0) this.drum(t, 56, .38); if (i % 16 === 8) this.drum(t, 170, .2, true); if (i % 16 === 12) this.drum(t, 62, .18); }
-      else { // carnatic-flavoured groove
-        if ([0, 3, 6, 10, 12].includes(i % 16)) this.drum(t, 88, .28); if (i % 16 === 8) this.drum(t, 200, .2, true); }
-      if (i % 32 === 0) { this.osc(t, st.root / 2, s16 * 30, 'triangle', .05); this.osc(t, st.root * .75, s16 * 30, 'triangle', .03); } // tanpura drone
-      if ([0, 3, 6, 8, 11, 14].includes(i % 16) && Math.random() < .85) { // melody, filmi slides
-        const deg = pick(st.scale), oct = Math.random() < .3 ? 2 : 1;
-        const f = st.root * Math.pow(2, deg / 12) * oct;
-        const slide = st.style === 1 && Math.random() < .5 ? f * Math.pow(2, pick([-2, -1, 1, 2]) / 12) : 0;
-        this.osc(t, f, s16 * (st.style === 1 ? 3.4 : 1.8), 'triangle', .05, slide); }
-      this.nextT += s16; this.step = (this.step + 1) % 64;
-    } }
+  init() { // enrich with live-verified stations from the public directory (runs in the player's browser)
+    try {
+      fetch('https://de1.api.radio-browser.info/json/stations/search?country=India&order=clickcount&reverse=true&limit=30&hidebroken=true')
+        .then(r => r.json())
+        .then(list => { const good = list
+          .filter(s => /^https:/.test(s.url_resolved) && /mp3|aac/i.test(s.codec || ''))
+          .slice(0, 9).map(s => ({ name: s.name.trim().slice(0, 34), url: s.url_resolved }));
+          if (good.length >= 3) this.stations = good; })
+        .catch(() => {});
+    } catch (e) {}
+  },
+  ensure() { if (this.el) return; this.el = new Audio(); this.el.volume = .55;
+    this.el.onerror = () => this.skipDead(); },
+  play() { const st = this.stations[this.idx]; this.el.src = st.url;
+    const p = this.el.play(); if (p && p.catch) p.catch(() => this.skipDead()); },
+  skipDead() { if (!this.on) return; this.fails++;
+    if (this.fails > this.stations.length) { this.on = false; try { this.el.pause(); } catch (e) {}
+      toast('📻 radio indisponible hors ligne', '#ffd24d'); return; }
+    this.idx = (this.idx + 1) % this.stations.length; this.play(); },
+  setOn(v) { this.ensure(); this.on = v; this.fails = 0;
+    if (v) this.play(); else { try { this.el.pause(); } catch (e) {} } },
+  switch() { this.ensure(); this.fails = 0; this.idx = (this.idx + 1) % this.stations.length;
+    if (this.on) this.play(); return this.stations[this.idx]; },
+  tick() {}
 };
 // ---------- UI helpers ----------
 function toast(text, color) { const b = $('toastBig'); b.textContent = text; b.style.color = color || '#fff'; b.style.opacity = 1; b.style.transform = 'translateY(-10px) scale(1.05)'; clearTimeout(toast._t); toast._t = setTimeout(() => { b.style.opacity = 0; b.style.transform = 'translateY(0) scale(1)'; }, 1100); }
@@ -1543,6 +2113,27 @@ let hintT = 0; function hint(t) { const el = $('hint'); el.textContent = t; el.s
 // ---------- collision ----------
 function blocked(x, z) { if (Math.abs(x) > HALF - 1 || Math.abs(z) > HALF - 1) return true;
   for (const b of buildings) { if (Math.abs(x - b.x) < b.hw && Math.abs(z - b.z) < b.hd) return true; } return false; }
+// push a walking body out of a vehicle's oriented box — nobody phases through metal
+function pushOutOfVehicle(pos, v, pr) {
+  const dx = pos.x - v.g.position.x, dz = pos.z - v.g.position.z;
+  const hw = (v.hw || .95), hl = (v.hl || 2.2);
+  if (dx * dx + dz * dz > (hl + pr) * (hl + pr)) return;
+  const cy = Math.cos(v.yaw), sy = Math.sin(v.yaw);
+  const lx = dx * cy - dz * sy, lz = dx * sy + dz * cy; // world → vehicle local (forward = +lz)
+  const cx = clamp(lx, -hw, hw), cz = clamp(lz, -hl, hl);
+  let ox = lx - cx, oz = lz - cz, d2 = ox * ox + oz * oz;
+  if (d2 >= pr * pr) return;
+  let nlx = lx, nlz = lz;
+  if (d2 > 1e-6) { const d = Math.sqrt(d2); nlx = cx + ox / d * pr; nlz = cz + oz / d * pr; }
+  else { // inside the box: exit by the nearest face
+    const exs = [hw + pr - lx, lx + hw + pr, hl + pr - lz, lz + hl + pr];
+    const m = Math.min(...exs);
+    if (m === exs[0]) nlx = hw + pr; else if (m === exs[1]) nlx = -hw - pr;
+    else if (m === exs[2]) nlz = hl + pr; else nlz = -hl - pr;
+  }
+  pos.x = v.g.position.x + nlx * cy + nlz * sy; // vehicle local → world
+  pos.z = v.g.position.z - nlx * sy + nlz * cy;
+}
 
 // ---------- update ----------
 let curDistrict = -1, started = false;
@@ -1568,11 +2159,13 @@ function update(dt) {
   if (player.nego) {
     const n = player.nego, d2 = n.veh.g.position.distanceToSquared(player.pos);
     if (d2 > 9 * 9) { n.veh.ai = true; player.nego = null; }
-    else hint('\ud83d\udee9 Auto-wala asks \u20b9' + n.fare + ' \u2014 E hop in \u00b7 N haggle');
+    else hint('\ud83d\udefa ' + (n.line || (n.line = pick(LINES.hail))) + ' \u20b9' + n.fare + ' \u2014 E hop in \u00b7 N haggle');
   }
   updateTour(dt, performance.now());
 
+  if (scandal) { scandal.t -= dt; if (scandal.t <= 0) scandal = null; }
   updateNPCs(dt); updateCows(dt); updateVehicles(dt); updateCops(dt); updateMonkeys(dt); updateDogs(dt); recycleLife(dt);
+  updateVendors(dt); updateFilmSet(dt); updatePetrolWala(dt);
   Radio.tick();
   updateParticles(dt);
 
@@ -1608,6 +2201,7 @@ function update(dt) {
   if (wanted === 0 && player.health < 100) player.health = clamp(player.health + dt * 2, 0, 100);
   if (!player.inVehicle) player.fuel = clamp(player.fuel + dt * 3, 0, 100);
   if (hintT > 0) { hintT -= dt; if (hintT <= 0) $('hint').style.opacity = 0; }
+  if (player.inVehicle && player.fuel < 30) hint('⛽ Réservoir bas — E à la pompe (₹40) · P petrol-wala à domicile (₹150)');
   if (!player.inVehicle && !player.riding && !player.nego) {
     let hinted = false;
     for (const l of landmarks) { if ((l.x - player.pos.x) ** 2 + (l.z - player.pos.z) ** 2 < 18 * 18 && !tour) {
@@ -1634,18 +2228,41 @@ function updateFoot(dt, f, s) {
     const lx = player.pos.x + Math.sin(player.yaw) * 2.4 * dt, lz = player.pos.z + Math.cos(player.yaw) * 2.4 * dt;
     if (!blocked(lx, lz)) { player.pos.x = lx; player.pos.z = lz; }
   }
+  // the world is solid: cars, cows and people all have bodies
+  for (const v of vehicles) pushOutOfVehicle(player.pos, v, .42);
+  for (const c of cows) { const dx = player.pos.x - c.g.position.x, dz = player.pos.z - c.g.position.z, d2 = dx * dx + dz * dz;
+    if (d2 < 1.3 * 1.3 && d2 > 1e-6) { const d = Math.sqrt(d2); player.pos.x = c.g.position.x + dx / d * 1.3; player.pos.z = c.g.position.z + dz / d * 1.3; } }
+  for (const n of npcs) { if (n.down > 0) continue; const dx = n.g.position.x - player.pos.x, dz = n.g.position.z - player.pos.z, d2 = dx * dx + dz * dz;
+    if (d2 < .8 * .8 && d2 > 1e-6) { const d = Math.sqrt(d2); // shoulder through the crowd — they give way
+      const nx2 = player.pos.x + dx / d * .8, nz2 = player.pos.z + dz / d * .8;
+      if (!blocked(nx2, nz2)) { n.g.position.x = nx2; n.g.position.z = nz2; } } }
   player.g.position.copy(player.pos); player.g.rotation.y = player.yaw;
   animateChar(player.g, player.moving, dt, 3.4 * sprint);
 }
 function updateDrive(dt, f, s) {
   const v = player.inVehicle;
+  const mx = v.g.userData.maxSpd || 20, ac = v.g.userData.acc || 14;
   if (player.fuel <= 0) v.speed *= .96;
-  else v.speed += f * dt * 14;
-  v.speed *= .985; v.speed = clamp(v.speed, -8, 20);
-  if (Math.abs(v.speed) > .2) { const damp = clamp(1 - Math.abs(v.speed) / 34, .5, 1); v.yaw -= s * dt * 0.75 * damp * Math.sign(v.speed) * clamp(Math.abs(v.speed) / 5, .3, 1); }
+  else v.speed += f * dt * ac;
+  v.speed *= .985; v.speed = clamp(v.speed, -mx * .4, mx);
+  // responsive steering: quick at city speed, settles a little at top speed
+  if (Math.abs(v.speed) > .2) { const damp = clamp(1 - Math.abs(v.speed) / 46, .62, 1); v.yaw -= s * dt * 1.7 * damp * Math.sign(v.speed) * clamp(Math.abs(v.speed) / 4, .35, 1); }
+  // plough through a stall and it EXPLODES into its pieces (slow bumps still just stop you)
+  if (Math.abs(v.speed) > 4.5) for (const b of buildings) { if (!b.parts) continue;
+    if (Math.abs(v.g.position.x - b.x) < b.hw + 1 && Math.abs(v.g.position.z - b.z) < b.hd + 1) {
+      smashProp(b, Math.sin(v.yaw) * Math.sign(v.speed), Math.cos(v.yaw) * Math.sign(v.speed), Math.abs(v.speed));
+      v.speed *= .78; damage(3); spark(v.g.position); toast('💥 “Mera thela!!”', '#ff9f43'); break; } }
   const nx = v.g.position.x + Math.sin(v.yaw) * v.speed * dt, nz = v.g.position.z + Math.cos(v.yaw) * v.speed * dt;
   if (!blocked(nx, v.g.position.z)) v.g.position.x = nx; else v.speed *= -.3;
   if (!blocked(v.g.position.x, nz)) v.g.position.z = nz; else v.speed *= -.3;
+  // metal on metal: you cannot drive through other vehicles
+  for (const o of vehicles) { if (o === v) continue;
+    const rr = (v.hl || 2) * .8 + (o.hl || 2) * .8;
+    const dx = v.g.position.x - o.g.position.x, dz = v.g.position.z - o.g.position.z, d2 = dx * dx + dz * dz;
+    if (d2 < rr * rr && d2 > 1e-6) { const d = Math.sqrt(d2), push = (rr - d);
+      v.g.position.x += dx / d * push; v.g.position.z += dz / d * push;
+      if (Math.abs(v.speed) > 5) { damage(5); AudioSysCrash(); spark(v.g.position); crime(1); }
+      o.speed *= .3; v.speed *= -.32; break; } }
   // ramps & air time
   v.y = v.y || 0; v.vy = v.vy || 0;
   const gy = rampHeightAt(v.g.position.x, v.g.position.z);
@@ -1660,11 +2277,24 @@ function updateDrive(dt, f, s) {
   v.g.position.y = v.y;
   v.g.rotation.y = v.yaw; player.pos.copy(v.g.position);
   if (Math.abs(v.speed) > .1) player.fuel = clamp(player.fuel - Math.abs(v.speed) * dt * .05, 0, 100);
-  player.speed = v.speed; if (!(cam.freeUntil > performance.now())) cam.yaw = angLerp(cam.yaw, v.yaw, .05);
+  player.speed = v.speed; if (!(cam.freeUntil > performance.now())) cam.yaw = angLerp(cam.yaw, v.yaw, Math.min(1, dt * 3.2)); // camera keeps up with the steering
   animateChar(player.g, false, dt, 0); // seated driving pose
   // run over npcs/cows
-  for (const n of npcs) { if (n.down > 0) continue; if (n.g.position.distanceToSquared(v.g.position) < 2.2 && Math.abs(v.speed) > 3) { n.down = 5; n.g.rotation.z = Math.PI / 2; n.g.position.y = .3; crime(1); spark(n.g.position); toast('HIT & RUN', '#ff6b6b'); } }
-  for (const c of cows) { if (c.g.position.distanceToSquared(v.g.position) < 4 && Math.abs(v.speed) > 3) { crime(2); toast('HOLY COW! 🐄', '#ff6b6b'); const rp = roadSpot(); if (rp) c.g.position.set(rp.x, 0, rp.z); } }
+  for (const n of npcs) { if (n.down > 0 || n.dead) continue;
+    if (n.g.position.distanceToSquared(v.g.position) < 2.2 && Math.abs(v.speed) > 3) {
+      if (Math.abs(v.speed) > 7) { // fatal: the body stays — and the street's scavengers take care of it
+        n.dead = true; n.g.rotation.z = Math.PI / 2; n.g.position.y = .18; corpses.push({ n, eaten: 0 });
+        crime(2); karma(-8); spark(n.g.position); toast('HIT & RUN', '#ff6b6b');
+      } else { n.down = 5; n.g.rotation.z = Math.PI / 2; n.g.position.y = .3; crime(1); spark(n.g.position); toast('HIT & RUN', '#ff6b6b'); } } }
+  for (const c of cows) { if (c.down > 0) continue;
+    if (c.g.position.distanceToSquared(v.g.position) < 4 && Math.abs(v.speed) > 3) {
+      // hitting a cow is a SCANDAL — she is sacred. The whole street comes running, furious.
+      c.down = 24; c.g.rotation.z = Math.PI / 2 * .88; c.g.position.y = .3;
+      scandal = { x: c.g.position.x, z: c.g.position.z, t: 22 };
+      crime(3); karma(-18); toast('🐄 GAU MATA!! SCANDALE!', '#ff4d4d'); hornSound(.9, .12, 2);
+      for (const n of npcs) { if (n.down > 0) continue; // the closest witnesses turn on you
+        if (n.g.position.distanceToSquared(v.g.position) < 20 * 20 && Math.random() < .3) { n.mood = 'fight'; n.moodT = rand(10, 18); } }
+    } }
 }
 function wanderMesh(o, dt, speedScale) {
   o.t += dt; if (Math.random() < .01) o.dir += rand(-1, 1);
@@ -1692,17 +2322,66 @@ function recycleLife(dt) {
       if (p) { v.g.position.set(p.x, 0, p.z); } } }
   for (const d of dogs) { if (d.g.position.distanceToSquared(player.pos) > 140 * 140) { const p = nearPlayerSpot(30, 70, true); if (p) d.g.position.set(p.x, 0, p.z); } }
 }
-function updateNPCs(dt) { for (const n of npcs) { if (n.down > 0) { n.down -= dt; if (n.down <= 0) { n.g.rotation.z = 0; n.g.position.y = 0; } continue; }
+function updateNPCs(dt) {
+  // corpses shrink away as the dogs and monkeys feed, then the person quietly respawns elsewhere
+  for (let ci = corpses.length - 1; ci >= 0; ci--) { const c = corpses[ci];
+    if (c.eaten > 5) c.n.g.scale.multiplyScalar(Math.max(0, 1 - dt * .12));
+    if (c.n.g.scale.x < .3) { const p = nearPlayerSpot(45, 90, true);
+      c.n.g.scale.setScalar(1); c.n.g.rotation.z = 0; c.n.g.position.y = 0; c.n.dead = false; c.n.mood = null;
+      if (p) { c.n.g.position.x = p.x; c.n.g.position.z = p.z; } corpses.splice(ci, 1); } }
+  for (const n of npcs) { if (n.dead) continue;
+  if (n.down > 0) { n.down -= dt; if (n.down <= 0) { n.g.rotation.z = 0; n.g.position.y = 0; } continue; }
+  if (n.mood) { // punched people react: brawlers close in and swing, the rest run for it
+    n.moodT -= dt;
+    const dx = player.pos.x - n.g.position.x, dz = player.pos.z - n.g.position.z, d = Math.hypot(dx, dz);
+    if (n.moodT <= 0 || d > 40 || player.inVehicle) { n.mood = null; }
+    else if (n.mood === 'fight') {
+      n.g.rotation.y = Math.atan2(dx, dz);
+      if (d > 1.5) { const sp = 3.6, nx = n.g.position.x + dx / d * sp * dt, nz = n.g.position.z + dz / d * sp * dt;
+        if (!blocked(nx, nz)) { n.g.position.x = nx; n.g.position.z = nz; }
+        n.swing = 0; animateChar(n.g, true, dt, sp);
+      } else {
+        n.swing = (n.swing || 0) - dt;
+        if (n.swing <= 0) { n.swing = rand(.9, 1.6); n.g.userData.attack = { kind: randi(0, 3), t: 1 }; n.hitDone = false; blip(180, .08, 'square', .12); }
+        const a = n.g.userData.attack;
+        if (a && !n.hitDone && a.t < .55 && d < 1.8) { n.hitDone = true; damage(7); spark(player.pos); }
+        animateChar(n.g, false, dt, 0);
+      }
+      continue;
+    } else { // flee, arms pumping
+      const dir = Math.atan2(-dx, -dz); n.g.rotation.y = dir;
+      const sp = 4.6, nx = n.g.position.x + Math.sin(dir) * sp * dt, nz = n.g.position.z + Math.cos(dir) * sp * dt;
+      if (!blocked(nx, nz)) { n.g.position.x = nx; n.g.position.z = nz; } else n.g.rotation.y += 1.5;
+      animateChar(n.g, true, dt, sp * 1.4);
+      continue;
+    }
+  }
+  if (scandal) { // a cow is down: everyone nearby drops what they're doing and crowds around, furious
+    const dx = scandal.x - n.g.position.x, dz = scandal.z - n.g.position.z, d2 = dx * dx + dz * dz;
+    if (d2 < 42 * 42) { const d = Math.hypot(dx, dz) || 1;
+      if (d > rand(2.2, 3.6)) { const sp = 3.4, nx = n.g.position.x + dx / d * sp * dt, nz = n.g.position.z + dz / d * sp * dt;
+        n.g.rotation.y = Math.atan2(dx, dz);
+        if (!blocked(nx, nz)) { n.g.position.x = nx; n.g.position.z = nz; }
+        animateChar(n.g, true, dt, sp); }
+      else { n.g.rotation.y = Math.atan2(dx, dz); // ring around the cow, shaking fists
+        if (Math.random() < .008) n.g.userData.attack = { kind: randi(0, 2), t: 1 };
+        animateChar(n.g, false, dt, 0); }
+      continue; } }
   if (n.pause > 0) { n.pause -= dt; animateChar(n.g, false, dt, 0); continue; }
   if (Math.random() < .003) { n.pause = rand(1.5, 5); animateChar(n.g, false, dt, 0); continue; }
   wanderMesh(n, dt); if (n.g.position.distanceToSquared(player.pos) < 70 * 70) animateChar(n.g, true, dt, n.speed * 2.4); } }
-function updateCows(dt) { for (const c of cows) wanderMesh(c, dt); }
+let scandal = null; // { x, z, t } — an angry crowd forms here (sacred cow knocked down)
+function updateCows(dt) { for (const c of cows) {
+  if (c.down > 0) { c.down -= dt; if (c.down <= 0) { c.g.rotation.z = 0; c.g.position.y = 0; } continue; }
+  wanderMesh(c, dt); } }
 let honkNext = 0;
 function updateVehicles(dt) {
-  // India runs on the horn: nearby traffic honks at random
-  if (actx && performance.now() > honkNext) { honkNext = performance.now() + rand(4200, 10500);
-    const near = vehicles.filter(v => v.ai && v.g.position.distanceToSquared(player.pos) < 35 * 35);
-    if (near.length && Math.random() < .6) hornSound(rand(.35, .6), .035); }
+  // India runs on the horn — but only when traffic is actually around you, each vehicle with its own horn
+  if (actx && performance.now() > honkNext) { honkNext = performance.now() + rand(2600, 7500);
+    const near = vehicles.filter(v => v.ai && Math.abs(v.speed) > .5 && v.g.position.distanceToSquared(player.pos) < 28 * 28);
+    if (near.length && Math.random() < .65) { const hv = pick(near);
+      const d = Math.sqrt(hv.g.position.distanceToSquared(player.pos));
+      hornSound(rand(.3, .65), .09 * (1 - d / 30), hv.horn == null ? 0 : hv.horn); } }
   for (const v of vehicles) { if (v.driver && v.g.position.distanceToSquared(player.pos) < 70 * 70) animateChar(v.driver.g, false, dt, 0); }
   for (const v of vehicles) { if (v === player.inVehicle || !v.ai) continue;
     v.aiTimer -= dt; if (v.aiTimer <= 0) { v.aiDir = Math.round(v.aiDir / (Math.PI / 2)) * (Math.PI / 2) + (Math.random() < .3 ? (Math.random() < .5 ? Math.PI / 2 : -Math.PI / 2) : 0); v.aiTimer = rand(2, 5); }
@@ -1712,13 +2391,18 @@ function updateVehicles(dt) {
     if (!player.inVehicle && !player.riding) {
       const dp2 = (player.pos.x - ax) ** 2 + (player.pos.z - az) ** 2;
       if (dp2 < 3.4 * 3.4) { blockAhead = true;
-        if (actx && Math.random() < .02) hornSound(.4, .06);
+        if (actx && Math.random() < .02) hornSound(.4, .09, v.horn || 0);
         const dHit = v.g.position.distanceToSquared(player.pos);
         if (dHit < 2 * 2 && v.speed > 2.5) { damage(18); // clipped by traffic
           player.pos.x += Math.sin(v.aiDir) * 1.6; player.pos.z += Math.cos(v.aiDir) * 1.6;
           if (player.g) player.g.position.copy(player.pos); toast('OUCH!', '#ff6b6b'); v.speed *= .3; } } }
     if (!blockAhead) for (const c of cows) { if ((c.g.position.x - ax) ** 2 + (c.g.position.z - az) ** 2 < 3.4 * 3.4) { blockAhead = true; break; } }
     if (!blockAhead) for (const n of npcs) { if (n.down > 0) continue; if ((n.g.position.x - ax) ** 2 + (n.g.position.z - az) ** 2 < 2.4 * 2.4) { blockAhead = true; break; } }
+    // traffic never rolls through other traffic: brake behind whoever is ahead
+    if (!blockAhead) for (const o of vehicles) { if (o === v) continue;
+      const rr = 2.2 + (o.hl || 2);
+      if ((o.g.position.x - ax) ** 2 + (o.g.position.z - az) ** 2 < rr * rr) { blockAhead = true;
+        if (actx && Math.random() < .012 && v.g.position.distanceToSquared(player.pos) < 26 * 26) hornSound(.35, .05, v.horn || 0); break; } }
     if (blockAhead) { v.speed = lerp(v.speed, 0, .25); }
     else v.speed = lerp(v.speed, v.cruise || (v.cruise = rand(4, 7.5)), .04); const nx = v.g.position.x + Math.sin(v.aiDir) * v.speed * dt, nz = v.g.position.z + Math.cos(v.aiDir) * v.speed * dt;
     // traffic stays ON the road (not on sidewalks) and off obstacles
@@ -1743,12 +2427,31 @@ function wasted() { toast('WASTED', '#ff4d4d'); player.cash -= Math.floor(player
 function updateParticles(dt) {
   for (let i = spitParts.length - 1; i >= 0; i--) { const s = spitParts[i]; s.m.position.x += s.vx * dt; s.m.position.z += s.vz * dt; s.m.position.y += s.vy * dt; s.vy -= 9 * dt; s.life -= dt; if (s.life <= 0 || s.m.position.y <= .05) { scene.remove(s.m); spitParts.splice(i, 1); } }
   for (let i = sparks.length - 1; i >= 0; i--) { const s = sparks[i]; s.m.position.x += s.vx * dt; s.m.position.y += s.vy * dt; s.m.position.z += s.vz * dt; s.vy -= 12 * dt; s.life -= dt; if (s.life <= 0) { scene.remove(s.m); sparks.splice(i, 1); } }
+  // smashed-stall pieces: fly, tumble, land, and stay there
+  for (let i = debris.length - 1; i >= 0; i--) { const d = debris[i];
+    d.m.position.x += d.vx * dt; d.m.position.z += d.vz * dt; d.m.position.y += d.vy * dt; d.vy -= 12 * dt;
+    d.m.rotation.x += d.rx * dt; d.m.rotation.z += d.rz * dt;
+    if (d.m.position.y < .1 && d.vy < 0) { d.m.position.y = .1; d.vy = 0; d.vx *= .6; d.vz *= .6; d.rx *= .5; d.rz *= .5; }
+    d.life -= dt; if (d.life <= 0) debris.splice(i, 1); } // pieces simply rest where they fell
+  // cooking steam drifting off the stalls near you
+  const now2 = performance.now();
+  if (!updateParticles._st || now2 > updateParticles._st) { updateParticles._st = now2 + 240;
+    for (const s of steams) { if ((s.x - player.pos.x) ** 2 + (s.z - player.pos.z) ** 2 > 40 * 40) continue;
+      if (steamPuffs.length > 40) break;
+      const m = new T.Mesh(new T.PlaneGeometry(.26, .26), new T.MeshBasicMaterial({ color: '#e8e8e8', transparent: true, opacity: .34, depthWrite: false }));
+      m.position.set(s.x + rand(-s.r, s.r), s.y, s.z + rand(-s.r, s.r)); scene.add(m);
+      steamPuffs.push({ m, life: 1.3 }); } }
+  for (let i = steamPuffs.length - 1; i >= 0; i--) { const s = steamPuffs[i];
+    s.m.position.y += dt * .75; s.m.material.opacity -= dt * .26; s.m.lookAt(camera.position); s.m.scale.multiplyScalar(1 + dt * .8);
+    s.life -= dt; if (s.life <= 0) { scene.remove(s.m); steamPuffs.splice(i, 1); } }
 }
 function updateHUD() {
   $('hpFill').style.width = player.health + '%'; $('fuelFill').style.width = player.fuel + '%';
   $('cash').textContent = '₹' + Math.max(0, player.cash | 0).toLocaleString('en-IN');
   $('kmh').textContent = player.inVehicle ? Math.round(Math.abs(player.speed) * 6) : '—';
-  $('gearv').textContent = player.inVehicle ? 'AUTO' : 'ON FOOT';
+  $('gearv').textContent = player.inVehicle ? (player.inVehicle.kind === 'cycle' ? 'CYCLE' : 'AUTO') : 'ON FOOT';
+  const dh = $('dharma'); if (dh) { const v = Math.round(player.dharma);
+    dh.textContent = '🪷 ' + v; dh.style.color = v >= 60 ? '#9be89b' : v >= 30 ? '#ffe9a8' : '#ff8a8a'; }
 }
 
 // ---------- loop ----------
@@ -1803,7 +2506,9 @@ function wireCreator() {
   chipRow('chMoustache', [{ t: 'Yes', v: true }, { t: 'No', v: false }], () => opts.moustache, v => opts.moustache = v);
   swatchRow('swScarf', KURTAS, () => opts.scarf, v => opts.scarf = v);
   chipRow('chShades', [{ t: '\ud83d\udd76 Shades on', v: true }, { t: 'No shades', v: false }], () => opts.shades, v => opts.shades = v);
-  chipRow('chOutfit', [{ t: 'Sherwani (brocade)', v: 'sherwani' }, { t: 'Kurta', v: 'kurta' }, { t: 'Silk kurta', v: 'silk' }, { t: 'Khadi', v: 'khadi' }, { t: 'Suit', v: 'suit' }], () => opts.outfit, v => opts.outfit = v);
+  chipRow('chOutfit', [{ t: 'Sherwani (brocade)', v: 'sherwani' }, { t: 'Kurta', v: 'kurta' }, { t: 'Silk kurta', v: 'silk' }, { t: 'Khadi', v: 'khadi' }, { t: 'Bandhgala', v: 'bandhgala' }], () => opts.outfit, v => opts.outfit = v);
+  chipRow('chHair', HAIRS.map(([v, t]) => ({ t, v })), () => opts.hair, v => { opts.hair = v; opts.turban = false; });
+  swatchRow('swHair', HAIRCOLS, () => opts.hairColor, v => opts.hairColor = v);
   chipRow('chHand', [{ t: '\ud83d\udd90 Right-handed \u2014 stick right', v: 'right' }, { t: 'Left-handed \u2014 stick left', v: 'left' }], () => settings.hand, v => { settings.hand = v; applyHand(); });
   $('nameIn').addEventListener('input', e => opts.name = e.target.value || 'Raja');
   $('enterBtn').addEventListener('click', startGame);
@@ -1818,11 +2523,13 @@ function startGame() {
   $('minimap3d').style.pointerEvents = 'auto'; $('minimap3d').addEventListener('click', toggleBigMap);
   $('bigmap').addEventListener('click', toggleBigMap);
   applyHand();
-  $('controls').innerHTML = '<b>Thumbstick</b> / WASD move · <b>drag</b> look<br><b>F</b> drive · <b>J</b> fight · <b>T</b> spit · <b>B</b> bribe · <b>R</b> radio · <b>M</b> map';
+  $('controls').innerHTML = '<b>Thumbstick</b> / WASD move · <b>drag</b> look<br><b>F</b> drive · <b>E</b> talk/visit · <b>J</b> fight · <b>T</b> spit · <b>B</b> bribe<br><b>R</b> radio · <b>P</b> petrol-wala · <b>M</b> map';
+  startAmbience(); // low city rumble — mutable in the 🔊 panel
   // build player from chosen opts
   player.pos.copy(findSpawn());
   player.g = makeCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
   spawnNPCs(40); spawnCows(9); spawnVehicles(32); spawnMonkeys(12); spawnDogs(13);
+  spawnVendors(); spawnDancers(); // the rigged human is loaded by now — staff the stalls, roll camera
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
 }
@@ -1855,10 +2562,12 @@ function drawMinimap3d() {
   g.fillStyle = '#4a86ff';
   for (const c of cops) { const cx2 = (c.g.position.x + HALF) / WORLD * 1024, cz2 = (c.g.position.z + HALF) / WORLD * 1024;
     g.beginPath(); g.arc(cx2, cz2, 2.4, 0, TAU); g.fill(); }
-  g.fillStyle = 'rgba(240,240,240,.75)';
-  for (const v of vehicles) { if (v.g.position.distanceToSquared(player.pos) > 90 * 90) continue;
-    const vx2 = (v.g.position.x + HALF) / WORLD * 1024, vz2 = (v.g.position.z + HALF) / WORLD * 1024;
-    g.beginPath(); g.arc(vx2, vz2, 1.6, 0, TAU); g.fill(); }
+  // GTA-style blips: services and landmarks, never raw traffic
+  g.fillStyle = '#57b9e8';
+  for (const pu of PUMPS) { const px2 = (pu.x + HALF) / WORLD * 1024, pz2 = (pu.z + HALF) / WORLD * 1024;
+    g.fillRect(px2 - 2.6, pz2 - 2.6, 5.2, 5.2); }
+  if (FILM.x != null) { g.fillStyle = '#e85794'; const fx2 = (FILM.x + HALF) / WORLD * 1024, fz2 = (FILM.z + HALF) / WORLD * 1024;
+    g.beginPath(); g.arc(fx2, fz2, 3, 0, TAU); g.fill(); }
   g.restore();
   g.save(); g.translate(W / 2, H / 2 + 20);
   g.fillStyle = '#ffffff'; g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2;
@@ -1892,13 +2601,16 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 17'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 18'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
   const enable = () => { btn.disabled = false; btn.textContent = '▶ Enter the City'; };
   const failsafe = setTimeout(enable, 7000);
-  loadHero(h => { if (h) HERO = h; loadVehModels(() => { clearTimeout(failsafe); enable(); rebuildPreview(); }); });
+  loadHero(h => { if (h) HERO = h; window.__heroOk = !!h; loadVehModels(() => { clearTimeout(failsafe); enable(); rebuildPreview(); }); });
   window.__tp = (x, z) => { player.pos.set(x, 0, z); if (player.inVehicle) { player.inVehicle.g.position.set(x, 0, z); } };
+  window.__tpkind = (k) => { const v = vehicles.find(v2 => v2.kind === k); if (!v) return false;
+    player.pos.set(v.g.position.x + 2, 0, v.g.position.z); player.g.position.copy(player.pos); return v.g.position.toArray(); };
   window.__tpveh = () => { if (!vehicles.length) return false; const v = vehicles[0];
     player.pos.set(v.g.position.x + 2.2, 0, v.g.position.z); if (player.g) player.g.position.copy(player.pos); return true; };
   window.__lookveh = () => { // stand facing the first Kenney-model vehicle
@@ -1913,6 +2625,7 @@ function boot() {
     player.pos.set(v.g.position.x + 2.2, 0, v.g.position.z); if (player.g) player.g.position.copy(player.pos); return true; };
   window.__state = () => ({ nego: !!player.nego, fare: player.nego ? player.nego.fare : -1, riding: !!player.riding, cash: player.cash });
   window.__facefront = () => { previewSpin = false; if (pChar) pChar.rotation.y = 0; };
+  window.__opts = opts;
   window.__facezoom = (y) => { previewSpin = false; if (pChar) pChar.rotation.y = 0; pCam.position.set(0, y, 1.25); pCam.lookAt(0, y, 0); };
   window.__dbg = () => ({ cam: camera.position.toArray().map(v => +v.toFixed(2)),
     rotX: +camera.rotation.x.toFixed(3), player: player.pos.toArray().map(v => +v.toFixed(2)),

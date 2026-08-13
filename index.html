@@ -60,6 +60,7 @@
   #hpFill { background:linear-gradient(90deg,#ff4d4d,#ff8a5c); }
   #fuelFill { background:linear-gradient(90deg,#38d,#5cf); }
   #cash { top:14px; right:14px; font-size:24px; font-weight:900; color:#8ef58e; text-shadow:0 2px 10px rgba(0,0,0,.6); }
+  #dharma { position:absolute; top:84px; right:14px; font-size:17px; font-weight:900; color:#ffe9a8; text-shadow:0 2px 10px rgba(0,0,0,.6); }
   #stars { position:absolute; top:52px; right:14px; font-size:20px; text-align:right; min-height:24px;
     filter:drop-shadow(0 2px 6px rgba(0,0,0,.6)); }
   #district { position:absolute; top:14px; left:50%; transform:translateX(-50%);
@@ -109,14 +110,29 @@
   body.righty #tPunch { right:232px !important; left:auto !important; bottom:108px; }
   body.righty #tSpit  { right:168px !important; left:auto !important; bottom:46px;  }
   body.righty #tRadio { right:104px !important; left:auto !important; bottom:210px; }
+  body.righty #tE     { right:238px !important; left:auto !important; bottom:182px; }
+  body.righty #tPhone { right:30px  !important; left:auto !important; bottom:222px; }
   body.lefty #tAct    { left:168px !important;  right:auto !important; bottom:170px; }
   body.lefty #tPunch  { left:232px !important;  right:auto !important; bottom:108px; }
   body.lefty #tSpit   { left:168px !important;  right:auto !important; bottom:46px;  }
   body.lefty #tRadio  { left:104px !important;  right:auto !important; bottom:210px; }
-  /* GTA-style minimap, opposite the stick */
-  #minimap3d { position:fixed; bottom:24px; width:250px; height:180px; z-index:11;
-    border-radius:14px; border:2px solid rgba(255,255,255,.22);
-    box-shadow:0 8px 24px rgba(0,0,0,.5); background:#101014; display:none; }
+  body.lefty #tE      { left:238px !important;  right:auto !important; bottom:182px; }
+  body.lefty #tPhone  { left:30px  !important;  right:auto !important; bottom:222px; }
+  /* sound comfort panel (GTA-style options) */
+  #tSnd { position:fixed; top:118px; right:14px; width:44px; height:44px; z-index:14; border-radius:50%;
+    background:rgba(16,16,20,.6); border:2px solid rgba(255,255,255,.25);
+    display:none; align-items:center; justify-content:center; font-size:20px; pointer-events:auto; }
+  #touch.on #tSnd { display:flex; }
+  #sndPanel { position:fixed; top:170px; right:14px; z-index:14; display:none; flex-direction:column; gap:8px;
+    background:rgba(14,14,18,.92); border:1px solid rgba(255,255,255,.2); border-radius:14px; padding:12px 14px; }
+  #sndPanel.on { display:flex; }
+  #sndPanel .opt { padding:8px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.25);
+    font-weight:700; font-size:13px; opacity:.45; cursor:pointer; user-select:none; }
+  #sndPanel .opt.on { opacity:1; background:rgba(255,153,51,.22); border-color:#ff9933; }
+  /* GTA-style minimap, opposite the stick — a clean circle, no backing rectangle */
+  #minimap3d { position:fixed; bottom:24px; width:210px; height:210px; z-index:11;
+    border-radius:50%; border:2px solid rgba(255,255,255,.22);
+    box-shadow:0 8px 24px rgba(0,0,0,.5); background:transparent; display:none; }
   body.righty #minimap3d { left:14px; }
   body.lefty #minimap3d { right:14px; }
   #minimap3d.on { display:block; }
@@ -144,6 +160,7 @@
       <div class="row"><span class="lbl">Fuel</span><span class="bar"><i id="fuelFill" style="width:100%"></i></span></div>
     </div>
     <div id="cash" class="panel">₹0</div>
+    <div id="dharma" class="panel" title="Dharma / Izzat — ta réputation dans la rue">🪷 50</div>
     <div id="stars"></div>
     <div id="district">📍 <span id="distName">—</span></div>
     <div class="panel" id="controls" id="ctl"></div>
@@ -156,7 +173,7 @@
 
   <div id="joystick"><div id="joyknob"></div></div>
 
-  <canvas id="minimap3d" width="500" height="360"></canvas>
+  <canvas id="minimap3d" width="420" height="420"></canvas>
   <div id="bigmap"><canvas id="bigmapcv" width="900" height="900"></canvas><div class="cap">M — close map</div></div>
 
   <div id="touch">
@@ -164,6 +181,14 @@
     <div class="thumb" id="tPunch" style="right:96px;bottom:110px;font-size:16px;">👊</div>
     <div class="thumb" id="tSpit"  style="right:20px;bottom:60px;font-size:16px;">💦</div>
     <div class="thumb" id="tRadio" style="right:96px;bottom:200px;font-size:16px;">📻</div>
+    <div class="thumb" id="tE"     style="right:160px;bottom:200px;font-size:16px;">E</div>
+    <div class="thumb" id="tPhone" style="right:160px;bottom:20px;font-size:16px;">📞</div>
+    <div class="thumb" id="tSnd">🔊</div>
+    <div id="sndPanel">
+      <div class="opt" id="snd_horns">🚗 Klaxons & circulation</div>
+      <div class="opt" id="snd_amb">🌆 Ambiance de ville</div>
+      <div class="opt" id="snd_sfx">👊 Bruitages</div>
+    </div>
   </div>
 
   <!-- ---------- Character creator ---------- -->
@@ -193,6 +218,10 @@
           <div class="grp"><div class="lbl">Dhoti / Pyjama</div><div class="swatches" id="swDhoti"></div></div>
         </div>
         <div class="grp"><div class="lbl">Outfit</div><div class="chips" id="chOutfit"></div></div>
+        <div class="rowsplit">
+          <div class="grp"><div class="lbl">Coiffure (sans pagdi)</div><div class="chips" id="chHair"></div></div>
+          <div class="grp"><div class="lbl">Couleur cheveux</div><div class="swatches" id="swHair"></div></div>
+        </div>
         <div class="rowsplit">
           <div class="grp"><div class="lbl">Scarf / Angavastram</div><div class="swatches" id="swScarf"></div></div>
           <div class="grp"><div class="lbl">Sunglasses</div><div class="chips" id="chShades"></div></div>
