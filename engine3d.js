@@ -950,8 +950,12 @@ function buildGanga() {
     step.position.y = .9 - s2 * .16; step.position.x = -HALF + 15 - s2 * 1.4;
     step.receiveShadow = true; step.castShadow = true; scene.add(step);
   }
-  // high platform edging the street side
-  const prom = new T.Mesh(new T.BoxGeometry(2.2, 1.1, len), stepM[3]); prom.position.set(-HALF + 16.4, .55, zm); prom.receiveShadow = true; scene.add(prom);
+  // high platform edging the street side — painted in the red-and-white worship stripes of the real ghats
+  const spc = document.createElement('canvas'); spc.width = 128; spc.height = 32; const spg = spc.getContext('2d');
+  for (let s3 = 0; s3 < 16; s3++) { spg.fillStyle = s3 % 2 ? '#f2ece0' : '#b3402a'; spg.fillRect(s3 * 8, 0, 8, 32); }
+  const spt = new T.CanvasTexture(spc); spt.wrapS = T.RepeatWrapping; spt.repeat.set(len / 14, 1);
+  const prom = new T.Mesh(new T.BoxGeometry(2.2, 1.1, len), new T.MeshStandardMaterial({ map: spt, roughness: .9 }));
+  prom.rotation.y = 0; prom.position.set(-HALF + 16.4, .55, zm); prom.receiveShadow = true; scene.add(prom);
   // cremation platforms: stacked log pyres, embers, mourners come with the crowd spawn
   for (const pz of [zm - 18, zm + 22]) {
     const plat = new T.Mesh(new T.BoxGeometry(5, .5, 6), mat('#9a8a70', .95)); plat.position.set(-HALF + 11.5, .25, pz); plat.receiveShadow = true; scene.add(plat);
@@ -960,10 +964,15 @@ function buildGanga() {
       const log = new T.Mesh(new T.CylinderGeometry(.09, .11, 1.6, 6), mat('#5c452e', .9));
       log.rotation.z = Math.PI / 2; log.rotation.y = layer % 2 ? Math.PI / 2 : 0;
       log.position.set((li - 1) * .3 * (layer % 2 ? 1 : 0), .55 + layer * .17, (li - 1) * .3 * (layer % 2 ? 0 : 1)); g.add(log); }
-    const fire = new T.Mesh(new T.ConeGeometry(.42, .9, 8), new T.MeshStandardMaterial({ color: '#ff8a2a', emissive: '#ff6a00', emissiveIntensity: 1.6, transparent: true, opacity: .85 }));
-    fire.position.y = 1.25; g.add(fire);
-    const embers = new T.Mesh(new T.SphereGeometry(.3, 8, 6), new T.MeshStandardMaterial({ color: '#c94a10', emissive: '#e85500', emissiveIntensity: 1.1 }));
-    embers.scale.y = .3; embers.position.y = .95; g.add(embers);
+    const fire = new T.Mesh(new T.ConeGeometry(.5, 1.25, 8), new T.MeshStandardMaterial({ color: '#ff8a2a', emissive: '#ff5500', emissiveIntensity: 2.2, transparent: true, opacity: .9 }));
+    fire.position.y = 1.4; g.add(fire);
+    const fire2 = new T.Mesh(new T.ConeGeometry(.26, .85, 8), new T.MeshStandardMaterial({ color: '#ffd24d', emissive: '#ffb300', emissiveIntensity: 2.6, transparent: true, opacity: .95 }));
+    fire2.position.y = 1.35; g.add(fire2);
+    const embers = new T.Mesh(new T.SphereGeometry(.42, 8, 6), new T.MeshStandardMaterial({ color: '#8a2408', emissive: '#e84400', emissiveIntensity: 1.4 }));
+    embers.scale.y = .28; embers.position.y = .95; g.add(embers);
+    const char2 = new T.Mesh(new T.CircleGeometry(1.1, 12), new T.MeshStandardMaterial({ color: '#191512', roughness: 1 }));
+    char2.rotation.x = -Math.PI / 2; char2.position.y = .52; g.add(char2);
+    const fglow = makeGlowSprite('#ff7722', 5); fglow.position.y = 1.5; fglow.visible = true; g.add(fglow);
     g.position.set(-HALF + 11.5, .25, pz); scene.add(g);
     pyres.push({ fire, t: rand(0, TAU), x: -HALF + 11.5, z: pz });
     steams.push({ x: -HALF + 11.5, y: 2.1, z: pz, r: .2 }); // smoke column
@@ -1102,7 +1111,9 @@ function buildCity() {
       const texPick = (di2 === 0 || di2 === 3) ? pick([pool[1], pool[2], pool[3]])
         : (di2 === 1 || di2 === 6) ? pick([pool[0], pool[2], pool[3]])
         : pick(pool);
-      const bm = new T.MeshStandardMaterial({ color: new T.Color(baseCol), map: texPick, roughness: .92, metalness: .02 });
+      // slide each building's texture window sideways so neighbours never show the same clone columns
+      const texB = texPick.clone(); texB.needsUpdate = true; texB.offset.x = pick([0, .25, .5, .75]);
+      const bm = new T.MeshStandardMaterial({ color: new T.Color(baseCol), map: texB, roughness: .92, metalness: .02 });
       const m = new T.Mesh(boxGeo, bm); m.scale.set(w, h, d); m.position.set(px2, h / 2, pz2); m.rotation.y = rot; m.castShadow = true; m.receiveShadow = true; scene.add(m);
       if (lowRise) { // Kerala / Goa: steep clay-tile hipped roof
         const roofM = mat(pick(['#a24a30', '#94402a', '#b0563a']), .9);
@@ -1188,19 +1199,22 @@ function buildTree(palm) {
   const g = new T.Group();
   if (!leafMats) leafMats = ['#3a6b35', '#446f3e', '#2f6032', '#4a7a42'].map(cc => mat(cc, .95));
   if (palm) {
-    // coconut palm: curved trunk of stacked ringed segments, real drooping textured fronds
-    const lean = rand(.06, .22), leanDir = rand(0, TAU), H = rand(5, 6.6), segs = 7;
+    // coconut palm: one smooth curved trunk — segments laid ALONG the curve so nothing zigzags
+    const lean = rand(.04, .12), leanDir = rand(0, TAU), H = rand(5, 6.6), segs = 6;
     const bark = new T.MeshStandardMaterial({ color: '#9a7d52', map: makeBarkTexture(), roughness: .95 });
+    const ptAt = t => new T.Vector3(Math.cos(leanDir) * lean * t * t * H, t * H, Math.sin(leanDir) * lean * t * t * H);
     let px = 0, pz = 0;
-    for (let i = 0; i < segs; i++) { const t = i / segs;
-      const seg = new T.Mesh(new T.CylinderGeometry(.13 * (1 - t * .35), .16 * (1 - t * .3), H / segs + .1, 8), bark);
-      px = Math.cos(leanDir) * lean * (t * t) * H; pz = Math.sin(leanDir) * lean * (t * t) * H;
-      seg.position.set(px, (i + .5) * H / segs, pz); seg.rotation.z = Math.cos(leanDir) * lean * 1.4; seg.rotation.x = -Math.sin(leanDir) * lean * 1.4;
-      seg.castShadow = true; g.add(seg); }
+    for (let i = 0; i < segs; i++) {
+      const a = ptAt(i / segs), b2 = ptAt((i + 1) / segs), dir = b2.clone().sub(a);
+      const seg = new T.Mesh(new T.CylinderGeometry(.125 * (1 - (i + 1) / segs * .35), .15 * (1 - i / segs * .3), dir.length() + .06, 8), bark);
+      seg.position.copy(a.clone().add(b2).multiplyScalar(.5));
+      seg.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), dir.normalize());
+      seg.castShadow = true; g.add(seg);
+      px = b2.x; pz = b2.z; }
     const crownY = H + .05;
     const fM = new T.MeshStandardMaterial({ map: makeFrondTexture(), transparent: true, alphaTest: .4, side: T.DoubleSide, roughness: .9 });
-    for (let k = 0; k < 9; k++) { const a = k / 9 * TAU + rand(-.15, .15);
-      const geo = new T.PlaneGeometry(.55, 2.7, 1, 6); const pos = geo.attributes.position;
+    for (let k = 0; k < 13; k++) { const a = k / 13 * TAU + rand(-.12, .12);
+      const geo = new T.PlaneGeometry(.72, 2.9, 1, 6); const pos = geo.attributes.position;
       for (let vi = 0; vi < pos.count; vi++) { const vy = pos.getY(vi), t2 = (vy + 1.35) / 2.7; // droop increases toward the tip
         pos.setZ(vi, -(t2 * t2) * 1.15); pos.setX(vi, pos.getX(vi) * (1 - t2 * .55)); }
       geo.computeVertexNormals();
@@ -1246,6 +1260,7 @@ function scatterProps() {
   // food stalls — every stall has a trade: chai tapri, kadhai fry (jalebi/samosa), or pani puri.
   // Real equipment on the counter, steam off the pots, and a vendor cooking behind it (spawned once the rig loads).
   for (let i = 0; i < 55 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
+    if (inGhats(p.x, p.z)) continue; // the ghats keep their own furniture
     const kindS = pick(['chai', 'fry', 'panipuri', 'chai', 'fry']);
     const face = rand(0, TAU), fs = Math.sin(face), fc = Math.cos(face);
     const partsFrom = scene.children.length; // everything added below belongs to this stall — and can be smashed over
@@ -1313,8 +1328,8 @@ function scatterProps() {
     const gb = new T.Mesh(new T.SphereGeometry(rand(.3, .6), 7, 6), mat(pick(['#7a6f4a', '#8a5a3a', '#556b4a']))); gb.position.set(p.x, .2, p.z); gb.scale.y = .5; scene.add(gb); }
   // trees (solid trunks) — palms near coastal/southern districts; canopies keep clear of walls
   for (let i = 0; i < 150 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
-    if (!clearOf(p.x, p.z, 1.9)) continue;
-    const di = districtAt(p.x, p.z); const palm = [5, 7, 8].includes(di) ? Math.random() < .7 : Math.random() < .2;
+    if (!clearOf(p.x, p.z, 1.9) || inGhats(p.x, p.z)) continue;
+    const di = districtAt(p.x, p.z); const palm = inBeach(p.x, p.z) ? true : [5, 7, 8].includes(di) ? Math.random() < .7 : Math.random() < .2;
     const tr = buildTree(palm); tr.position.set(p.x, 0, p.z); tr.scale.setScalar(rand(.85, 1.12)); scene.add(tr);
     buildings.push({ x: p.x, z: p.z, hw: .5, hd: .5 }); }
   // scattered litter: papers, plastic bags, bottle bits — everywhere
@@ -1349,9 +1364,12 @@ function scatterProps() {
       hw: .35, hl: 1.0, horn: 4 }); }
   // street lamps (solid poles)
   for (let i = 0; i < 60 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
+    if (inGhats(p.x, p.z) || inBeach(p.x, p.z)) continue;
     const pole = new T.Mesh(new T.CylinderGeometry(.08, .1, 5, 6), mat('#444')); pole.position.set(p.x, 2.5, p.z); pole.castShadow = true; scene.add(pole);
     const arm = new T.Mesh(boxGeo, mat('#444')); arm.scale.set(.9, .1, .1); arm.position.set(p.x + .4, 4.8, p.z); scene.add(arm);
     const lamp = new T.Mesh(new T.SphereGeometry(.2, 10, 8), new T.MeshStandardMaterial({ color: '#ffe9a8', emissive: '#ffca6a', emissiveIntensity: 1.6, roughness: .4 })); lamp.position.set(p.x + .8, 4.7, p.z); scene.add(lamp);
+    const halo = makeGlowSprite('#ffca6a', 7); halo.position.set(p.x + .8, 4.4, p.z); scene.add(halo); nightGlows.push(halo);
+    const pool = makeGlowSprite('#ffb84d', 5.5); pool.position.set(p.x + .8, .6, p.z); scene.add(pool); nightGlows.push(pool);
     buildings.push({ x: p.x, z: p.z, hw: .35, hd: .35 }); }
 }
 function genDelhiWires() { // Chandni Chowk's black wire spaghetti (district 0 cell)
@@ -1374,7 +1392,7 @@ function genDelhiWires() { // Chandni Chowk's black wire spaghetti (district 0 c
     count++;
   }
 }
-function roadSpot() { for (let i = 0; i < 24; i++) { const x = rand(-HALF, HALF), z = rand(-HALF, HALF); if (onRoad(x, z)) return { x, z }; } return null; }
+function roadSpot() { for (let i = 0; i < 24; i++) { const x = rand(-HALF, HALF), z = rand(-HALF, HALF); if (onRoad(x, z) && !inGhats(x, z) && !inBeach(x, z)) return { x, z }; } return null; }
 function sidewalkSpot() { for (let i = 0; i < 60; i++) { const x = rand(-HALF + 4, HALF - 4), z = rand(-HALF + 4, HALF - 4); if (onSidewalk(x, z) && !blocked(x, z)) return { x, z }; } return null; }
 const LANDMARK_CENTRES = [];
 for (let i = 0; i < 9; i++) LANDMARK_CENTRES.push([((i % 3) - 1) * CELL, (((i / 3) | 0) - 1) * CELL]);
@@ -1911,7 +1929,7 @@ let petrolWala = null;
 function buildPetrolStations() {
   let placed = 0;
   for (let t = 0; t < 600 && placed < 5; t++) {
-    const p = sidewalkSpot(); if (!p || !clearOf(p.x, p.z, 3.4)) continue;
+    const p = sidewalkSpot(); if (!p || !clearOf(p.x, p.z, 3.4) || inGhats(p.x, p.z) || inBeach(p.x, p.z)) continue;
     // orange-and-white canopy over two pumps, desi highway style
     const roof = new T.Mesh(new T.BoxGeometry(5.4, .25, 3.6), mat('#e8e2d2', .8)); roof.position.set(p.x, 3.1, p.z); roof.castShadow = true; scene.add(roof);
     const band = new T.Mesh(new T.BoxGeometry(5.5, .3, 3.7), mat('#e07020', .6)); band.position.set(p.x, 2.9, p.z); scene.add(band);
@@ -2329,6 +2347,7 @@ function spawnVehicles(n) {
             Math.random() < .22 ? 3 : (kind === 'moto' || kind === 'auto') ? 1 : 0 };
     if (kind === 'cycle') { v.cruise = rand(2, 3.5); }
     v.smoke = kind === 'auto' || kind === 'truck' || kind === 'bus' || Math.random() < .18; // old engines cough
+    const head = makeGlowSprite('#ffe9b8', 2.6); head.position.set(0, .7, (dim.l || 1.5) + .4); g.add(head); nightGlows.push(head); // headlight at night
     addWtfLoad(g, kind); // India carries EVERYTHING on two wheels
     // riders are always visible on two-wheelers; autos often carry a hireable driver
     const isBike = kind === 'moto' || kind === 'enfield' || kind === 'cycle';
@@ -2814,17 +2833,30 @@ function pushOutOfVehicle(pos, v, pr) {
 let curDistrict = -1, started = false;
 // ---------- day & night: a full cycle every ~7 minutes — and the city stays just as busy after dark ----------
 let dayT = .25, dayHemi = null, nightSkyTex = null, daySkyTex = null;
+let isNight = false;
+const nightGlows = []; // streetlamp halos, switched on at dusk
 function updateDayNight(dt) {
   dayT = (dayT + dt / 420) % 1; // 0=midnight .25=morning .5=noon .75=evening
   const sunUp = Math.sin(dayT * TAU - Math.PI / 2) * .5 + .5;   // 0 at midnight, 1 at noon
   const day = clamp((sunUp - .18) / .5, 0, 1);
-  if (sun) { sun.intensity = .08 + day * 1.62;
+  if (sun) { sun.intensity = .14 + day * 1.56;
     sun.color.setHSL(.08, .75, .5 + day * .22); }
-  if (dayHemi) dayHemi.intensity = .1 + day * .34;
-  if (renderer) renderer.toneMappingExposure = .42 + day * .58;
+  if (dayHemi) dayHemi.intensity = .16 + day * .28;
+  if (renderer) renderer.toneMappingExposure = .52 + day * .48;
   const night = day < .32;
-  if (scene && nightSkyTex && daySkyTex && updateDayNight._night !== night) {
-    updateDayNight._night = night; scene.background = night ? nightSkyTex : daySkyTex; }
+  if (night !== isNight) { isNight = night;
+    if (scene && nightSkyTex && daySkyTex) scene.background = night ? nightSkyTex : daySkyTex;
+    if (scene && scene.fog) scene.fog.color.set(night ? '#131320' : '#ecc9a0');
+    for (const gl2 of nightGlows) gl2.visible = night; }
+}
+let glowTex = null;
+function makeGlowSprite(color, size) { // soft radial billboard for lamp pools and headlights
+  if (!glowTex) { const c = document.createElement('canvas'); c.width = c.height = 64; const q = c.getContext('2d');
+    const gr = q.createRadialGradient(32, 32, 2, 32, 32, 31);
+    gr.addColorStop(0, 'rgba(255,255,255,.9)'); gr.addColorStop(.4, 'rgba(255,255,255,.28)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    q.fillStyle = gr; q.fillRect(0, 0, 64, 64); glowTex = new T.CanvasTexture(c); }
+  const s = new T.Sprite(new T.SpriteMaterial({ map: glowTex, color, transparent: true, opacity: .8, blending: T.AdditiveBlending, depthWrite: false }));
+  s.scale.setScalar(size); s.visible = false; return s;
 }
 function makeNightSky() {
   const S = 512, c = document.createElement('canvas'); c.width = S; c.height = S; const g = c.getContext('2d');
@@ -3136,7 +3168,7 @@ function updateVehicles(dt) {
     }
     const nx = v.g.position.x + Math.sin(v.aiDir) * v.speed * dt, nz = v.g.position.z + Math.cos(v.aiDir) * v.speed * dt;
     // traffic stays ON the road (not on sidewalks) and off obstacles
-    if (onRoad(nx, nz) && !blocked(nx, nz) && !((v.hw || .95) > .7 && inGali(nx, nz)) && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { v.g.position.x = nx; v.g.position.z = nz; v.yaw = lerp(v.yaw, v.aiDir, .1); v.g.rotation.y = v.yaw; }
+    if (onRoad(nx, nz) && !blocked(nx, nz) && !inGhats(nx, nz) && !((v.hw || .95) > .7 && inGali(nx, nz)) && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { v.g.position.x = nx; v.g.position.z = nz; v.yaw = lerp(v.yaw, v.aiDir, .1); v.g.rotation.y = v.yaw; }
     else { v.aiDir += (Math.random() < .5 ? 1 : -1) * Math.PI / 2; v.aiTimer = rand(1, 2.5); }
   }
 }
@@ -3340,7 +3372,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 21'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 22'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
