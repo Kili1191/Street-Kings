@@ -600,27 +600,33 @@ function makeSky() {
   g.globalAlpha = 1;
   const tex = new T.CanvasTexture(c); if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
 }
+// graphics quality: phones and weak laptops default to LIGHT (no bloom, no shadows, tight fog);
+// switchable from the 🔊 panel — the choice persists and reloads
+const GFX = (() => { try { const saved = localStorage.getItem('sk_gfx'); if (saved) return saved; } catch (e) {}
+  const mob = (matchMedia && matchMedia('(pointer:coarse)').matches) || innerWidth < 900 || (navigator.hardwareConcurrency || 8) <= 4;
+  return mob ? 'low' : 'high'; })();
 function initThree() {
-  renderer = new T.WebGLRenderer({ canvas: $('game'), antialias: true });
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+  const low = GFX === 'low';
+  renderer = new T.WebGLRenderer({ canvas: $('game'), antialias: !low, powerPreference: 'high-performance' });
+  renderer.setPixelRatio(low ? 1 : Math.min(devicePixelRatio || 1, 1.75));
   renderer.setSize(innerWidth, innerHeight);
-  renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFSoftShadowMap;
+  renderer.shadowMap.enabled = !low; renderer.shadowMap.type = T.PCFSoftShadowMap;
   if ('outputColorSpace' in renderer && T.SRGBColorSpace) renderer.outputColorSpace = T.SRGBColorSpace;
   else if ('sRGBEncoding' in T) renderer.outputEncoding = T.sRGBEncoding;
   renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.0;
   scene = new T.Scene();
-  scene.background = makeSky();
-  scene.fog = new T.Fog('#ecc9a0', 60, 175);
-  camera = new T.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 500);
-  const hemi = new T.HemisphereLight('#a8c4e8', '#6b5335', 0.42); scene.add(hemi);
+  daySkyTex = makeSky(); nightSkyTex = makeNightSky(); scene.background = daySkyTex;
+  scene.fog = low ? new T.Fog('#ecc9a0', 42, 120) : new T.Fog('#ecc9a0', 60, 175);
+  camera = new T.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, low ? 135 : 220);
+  const hemi = new T.HemisphereLight('#a8c4e8', '#6b5335', 0.42); scene.add(hemi); dayHemi = hemi;
   const amb = new T.AmbientLight('#ffe9d0', 0.12); scene.add(amb);
   // low golden-hour sun for long cinematic shadows
-  sun = new T.DirectionalLight('#ffc178', 1.7); sun.position.set(36, 48, 20); sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048); sun.shadow.bias = -0.0004;
+  sun = new T.DirectionalLight('#ffc178', 1.7); sun.position.set(36, 48, 20); sun.castShadow = !low;
+  sun.shadow.mapSize.set(low ? 512 : 1536, low ? 512 : 1536); sun.shadow.bias = -0.0004;
   const sc = sun.shadow.camera; sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 260;
   scene.add(sun); scene.add(sun.target);
-  // post: bloom + gamma
-  if (window.EffectComposer) {
+  // post: bloom + gamma — only on the pretty tier
+  if (window.EffectComposer && !low) {
     composer = new window.EffectComposer(renderer);
     composer.addPass(new window.RenderPass(scene, camera));
     const bloom = new window.UnrealBloomPass(new T.Vector2(innerWidth, innerHeight), 0.2, 0.3, 0.9);
@@ -873,10 +879,200 @@ function addDistrictArchitecture(di, x, z, w, h, d, boxGeo) {
       break; }
   }
 }
+// the coast: the south and south-east of the city meet the sea — Marina, Goa, Kerala backwater mouths
+const BEACH_W = 14;
+const inBeach = (x, z) => z > HALF - BEACH_W || (x > HALF - BEACH_W && z > -HALF + CELL);
+let seaMats = [];
+function buildSea() {
+  // sand: warm strips inside the world edge
+  const sc = document.createElement('canvas'); sc.width = sc.height = 256; const sg = sc.getContext('2d');
+  sg.fillStyle = '#dcc493'; sg.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 4000; i++) { sg.fillStyle = pick(['#cdb27b', '#e8d3a8', '#c2a76e']); sg.globalAlpha = .5; sg.fillRect(Math.random() * 256, Math.random() * 256, 1.6, 1.6); }
+  sg.globalAlpha = 1;
+  const sandTex = new T.CanvasTexture(sc); sandTex.wrapS = sandTex.wrapT = T.RepeatWrapping; sandTex.repeat.set(10, 2);
+  const sandM = new T.MeshStandardMaterial({ map: sandTex, roughness: 1 });
+  const south = new T.Mesh(new T.PlaneGeometry(WORLD, BEACH_W), sandM);
+  south.rotation.x = -Math.PI / 2; south.position.set(0, .04, HALF - BEACH_W / 2); south.receiveShadow = true; scene.add(south);
+  const east = new T.Mesh(new T.PlaneGeometry(BEACH_W, HALF * 2 - CELL), sandM);
+  east.rotation.x = -Math.PI / 2; east.position.set(HALF - BEACH_W / 2, .04, CELL / 2 + (HALF - CELL) / 2 + CELL / 2); scene.add(east);
+  east.position.z = (-HALF + CELL + HALF) / 2; east.receiveShadow = true;
+  // the sea itself: two big animated sheets beyond the edge, wet where they kiss the sand
+  const wc = document.createElement('canvas'); wc.width = wc.height = 128; const wg = wc.getContext('2d');
+  wg.fillStyle = '#1e6f8a'; wg.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 46; i++) { wg.strokeStyle = 'rgba(255,255,255,.16)'; wg.lineWidth = rand(1, 2.2);
+    const y = rand(0, 128); wg.beginPath(); wg.moveTo(0, y); wg.bezierCurveTo(42, y + rand(-6, 6), 84, y + rand(-6, 6), 128, y); wg.stroke(); }
+  const mkSea = (w, h) => { const tx = new T.CanvasTexture(wc); tx.wrapS = tx.wrapT = T.RepeatWrapping; tx.repeat.set(w / 22, h / 22);
+    const m = new T.MeshStandardMaterial({ map: tx, roughness: .25, metalness: .15, transparent: true, opacity: .93 });
+    seaMats.push(m); return new T.Mesh(new T.PlaneGeometry(w, h), m); };
+  const seaS = mkSea(WORLD + 400, 200); seaS.rotation.x = -Math.PI / 2; seaS.position.set(0, -.12, HALF + 97); scene.add(seaS);
+  const seaE = mkSea(200, HALF * 2 - CELL + 6); seaE.rotation.x = -Math.PI / 2; seaE.position.set(HALF + 97, -.12, (-HALF + CELL + HALF) / 2 + 3); scene.add(seaE);
+  // foam line at the waterline
+  const foamS = new T.Mesh(new T.PlaneGeometry(WORLD, 1.4), new T.MeshBasicMaterial({ color: '#e8f4f2', transparent: true, opacity: .55 }));
+  foamS.rotation.x = -Math.PI / 2; foamS.position.set(0, .05, HALF - 2.2); scene.add(foamS);
+  const foamE = new T.Mesh(new T.PlaneGeometry(1.4, HALF * 2 - CELL), new T.MeshBasicMaterial({ color: '#e8f4f2', transparent: true, opacity: .55 }));
+  foamE.rotation.x = -Math.PI / 2; foamE.position.set(HALF - 2.2, .05, (-HALF + CELL + HALF) / 2); scene.add(foamE);
+  // wooden fishing boats hauled up on the sand, nets and all
+  for (let i = 0; i < 9; i++) {
+    const onSouth = Math.random() < .6;
+    const bx = onSouth ? rand(-HALF + 8, HALF - 8) : rand(HALF - BEACH_W + 3, HALF - 3);
+    const bz = onSouth ? rand(HALF - BEACH_W + 3, HALF - 3) : rand(-HALF + CELL + 8, HALF - 8);
+    const boat = new T.Group();
+    const hull = new T.Mesh(new T.SphereGeometry(1, 12, 8, 0, TAU, 0, Math.PI / 2), mat(pick(['#3a6b8a', '#8a4a3a', '#4a7a50', '#c9760b']), .8));
+    hull.scale.set(.85, .7, 2.6); hull.rotation.x = Math.PI; hull.position.y = .62; boat.add(hull);
+    const rim = new T.Mesh(new T.TorusGeometry(1, .09, 8, 20), mat('#6b4a2a', .85)); rim.rotation.x = Math.PI / 2; rim.scale.set(.85, 2.6, 1); rim.position.y = .62; boat.add(rim);
+    for (const bzz of [-1.2, 0, 1.2]) { const bench = new T.Mesh(new T.BoxGeometry(1.5, .08, .3), mat('#8a6b3a', .9)); bench.position.set(0, .5, bzz); boat.add(bench); }
+    boat.position.set(bx, 0, bz); boat.rotation.y = rand(0, TAU); boat.rotation.z = rand(-.05, .05);
+    boat.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(boat);
+    buildings.push({ x: bx, z: bz, hw: 1.1, hd: 2 });
+  }
+}
+// Varanasi's riverfront: the Ganga flows along Kashi's western edge — stone ghats stepping down
+// to the water, cremation pyres burning on Manikarnika-style platforms, bathers in the river.
+const GHAT_X = -HALF + 16; // east limit of the ghat zone
+const inGhats = (x, z) => x < GHAT_X && z > -HALF + CELL && z < -HALF + 2 * CELL;
+const bathers = [], pyres = [], ripples = [];
+function buildGanga() {
+  const z0 = -HALF + CELL, z1 = -HALF + 2 * CELL, zm = (z0 + z1) / 2, len = z1 - z0;
+  // the river: wide green-brown water sheet off the west edge
+  const rc = document.createElement('canvas'); rc.width = rc.height = 128; const rg = rc.getContext('2d');
+  rg.fillStyle = '#5a7a5e'; rg.fillRect(0, 0, 128, 128);
+  for (let i = 0; i < 40; i++) { rg.strokeStyle = 'rgba(220,230,210,.14)'; rg.lineWidth = rand(1, 2);
+    const y = rand(0, 128); rg.beginPath(); rg.moveTo(0, y); rg.bezierCurveTo(42, y + rand(-5, 5), 84, y + rand(-5, 5), 128, y); rg.stroke(); }
+  const rt = new T.CanvasTexture(rc); rt.wrapS = rt.wrapT = T.RepeatWrapping; rt.repeat.set(6, 5);
+  const river = new T.Mesh(new T.PlaneGeometry(70, len), new T.MeshStandardMaterial({ map: rt, roughness: .3, metalness: .1, transparent: true, opacity: .94 }));
+  river.rotation.x = -Math.PI / 2; river.position.set(-HALF - 35 + 10, -.14, zm); scene.add(river);
+  seaMats.push(river.material);
+  // stone ghat steps, some painted in worship stripes
+  const stepM = [mat('#c9b896', .95), mat('#b8a884', .95), mat('#d98a2b', .9), mat('#e8e0cc', .9)];
+  for (let s2 = 0; s2 < 6; s2++) {
+    const step = new T.Mesh(new T.BoxGeometry(1.4, .32, len), s2 % 4 === 2 ? stepM[2] : stepM[s2 % 2]);
+    step.position.set(-HALF + 10 - s2 * 1.35 + 6, .16 - s2 * 0, zm);
+    step.position.y = .9 - s2 * .16; step.position.x = -HALF + 15 - s2 * 1.4;
+    step.receiveShadow = true; step.castShadow = true; scene.add(step);
+  }
+  // high platform edging the street side
+  const prom = new T.Mesh(new T.BoxGeometry(2.2, 1.1, len), stepM[3]); prom.position.set(-HALF + 16.4, .55, zm); prom.receiveShadow = true; scene.add(prom);
+  // cremation platforms: stacked log pyres, embers, mourners come with the crowd spawn
+  for (const pz of [zm - 18, zm + 22]) {
+    const plat = new T.Mesh(new T.BoxGeometry(5, .5, 6), mat('#9a8a70', .95)); plat.position.set(-HALF + 11.5, .25, pz); plat.receiveShadow = true; scene.add(plat);
+    const g = new T.Group();
+    for (let layer = 0; layer < 3; layer++) for (let li = 0; li < 3; li++) {
+      const log = new T.Mesh(new T.CylinderGeometry(.09, .11, 1.6, 6), mat('#5c452e', .9));
+      log.rotation.z = Math.PI / 2; log.rotation.y = layer % 2 ? Math.PI / 2 : 0;
+      log.position.set((li - 1) * .3 * (layer % 2 ? 1 : 0), .55 + layer * .17, (li - 1) * .3 * (layer % 2 ? 0 : 1)); g.add(log); }
+    const fire = new T.Mesh(new T.ConeGeometry(.42, .9, 8), new T.MeshStandardMaterial({ color: '#ff8a2a', emissive: '#ff6a00', emissiveIntensity: 1.6, transparent: true, opacity: .85 }));
+    fire.position.y = 1.25; g.add(fire);
+    const embers = new T.Mesh(new T.SphereGeometry(.3, 8, 6), new T.MeshStandardMaterial({ color: '#c94a10', emissive: '#e85500', emissiveIntensity: 1.1 }));
+    embers.scale.y = .3; embers.position.y = .95; g.add(embers);
+    g.position.set(-HALF + 11.5, .25, pz); scene.add(g);
+    pyres.push({ fire, t: rand(0, TAU), x: -HALF + 11.5, z: pz });
+    steams.push({ x: -HALF + 11.5, y: 2.1, z: pz, r: .2 }); // smoke column
+    buildings.push({ x: -HALF + 11.5, z: pz, hw: 1.2, hd: 1.2 });
+  }
+  // the holy river is also a working river: offerings, trash and scum ride the current
+  for (let i = 0; i < 9; i++) { const scum = new T.Mesh(new T.CircleGeometry(rand(1, 2.6), 10),
+    new T.MeshStandardMaterial({ color: pick(['#6b7a52', '#7a8258', '#5c6a48']), transparent: true, opacity: .38, roughness: 1, depthWrite: false }));
+    scum.rotation.x = -Math.PI / 2; scum.position.set(rand(-HALF - 20, -HALF + 7), -.1, rand(z0 + 4, z1 - 4)); scene.add(scum); }
+  for (let i = 0; i < 46; i++) { // floating: marigolds, diyas, garlands, plastic bags, husks
+    const r = Math.random(); let m;
+    if (r < .38) m = new T.Mesh(new T.SphereGeometry(rand(.05, .08), 6, 5), mat(pick(['#ff9800', '#ffc107', '#ff7722']), .7));
+    else if (r < .55) { m = new T.Group(); const leaf = new T.Mesh(new T.CircleGeometry(.09, 8), new T.MeshStandardMaterial({ color: '#7a5c34', side: T.DoubleSide }));
+      leaf.rotation.x = -Math.PI / 2; m.add(leaf);
+      const fl = new T.Mesh(new T.ConeGeometry(.028, .07, 6), new T.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ff9a00', emissiveIntensity: 1.2 })); fl.position.y = .05; m.add(fl); }
+    else if (r < .72) { m = new T.Group(); for (let b2 = 0; b2 < 4; b2++) { const bead = new T.Mesh(new T.SphereGeometry(.045, 6, 5), mat(b2 % 2 ? '#ff9800' : '#e8b93c', .8));
+      bead.position.set(b2 * .09, 0, rand(-.02, .02)); m.add(bead); } }
+    else if (r < .88) { m = new T.Mesh(new T.PlaneGeometry(rand(.18, .3), rand(.14, .24)),
+      new T.MeshStandardMaterial({ color: pick(['#9fb8c9', '#c9d4e0', '#8a94a0']), side: T.DoubleSide, roughness: 1 }));
+      m.rotation.x = -Math.PI / 2 + rand(-.3, .3); }
+    else m = new T.Mesh(new T.SphereGeometry(rand(.07, .11), 7, 5), mat('#6d5426', .95));
+    m.position.set(rand(-HALF - 18, -HALF + 7.5), -.08, rand(z0 + 3, z1 - 3));
+    scene.add(m); ripples.push({ m, t: rand(0, TAU), drift: rand(.06, .22) });
+  }
+  // offerings and litter strewn down the steps themselves
+  for (let i = 0; i < 40; i++) { const sx = rand(-HALF + 8, -HALF + 15.8), sz = rand(z0 + 3, z1 - 3);
+    const it = Math.random() < .6
+      ? new T.Mesh(new T.SphereGeometry(rand(.04, .07), 6, 5), mat(pick(['#ff9800', '#ffc107', '#c94a10']), .8))
+      : new T.Mesh(new T.PlaneGeometry(.2, .26), new T.MeshStandardMaterial({ color: pick(['#e8e2d0', '#c9b8a0']), side: T.DoubleSide, roughness: 1 }));
+    if (it.geometry.type === 'PlaneGeometry') it.rotation.x = -Math.PI / 2 + rand(-.2, .2);
+    it.position.set(sx, ghatHeightAt(sx, sz) + .05, sz); scene.add(it); }
+  // temple umbrellas + tulsi pots along the promenade
+  for (let i = 0; i < 6; i++) { const pz = z0 + 8 + i * (len - 16) / 5;
+    const um = new T.Mesh(new T.ConeGeometry(1, .8, 8, 1, true), new T.MeshStandardMaterial({ color: pick(['#d98a2b', '#c0392b']), roughness: .9, side: T.DoubleSide }));
+    um.position.set(-HALF + 14.2, 2.2, pz); um.castShadow = true; scene.add(um);
+    const pole = new T.Mesh(new T.CylinderGeometry(.05, .05, 2.2, 6), mat('#8a6b3a')); pole.position.set(-HALF + 14.2, 1.1, pz); scene.add(pole); }
+}
+function spawnBathers() { // in the Ganga at dawn: some bare-chested in a dhoti, others fully dressed, women in saris
+  if (!HERO) return;
+  // at each handpump, an uncle mid-bucket-bath — bare torso, lungi, lota pot raised over his head
+  for (const spot of pumpsHand) {
+    const skin = pick(SKINS);
+    const g = makeHuman({ vary: true, skin, outfit: 'kurta', kurta: skin, dhoti: pick(['#7a8a99', '#d9c9a3']), beard: 'stubble', moustache: true, turban: false, hair: 'none', hairColor: '#3a3a3a' });
+    g.position.set(spot.x + .9, 0, spot.z + .6); g.rotation.y = rand(0, TAU);
+    const h = g.userData.human;
+    if (h && h.rHand) { const ws = h.rHand.getWorldScale(new T.Vector3()).x || 1; // the lota in his hand
+      const lota = new T.Mesh(new T.SphereGeometry(.07 / ws, 8, 6), new T.MeshStandardMaterial({ color: '#c9952a', metalness: .6, roughness: .35 }));
+      h.rHand.add(lota); lota.position.set(0, .05 / ws, 0); }
+    scene.add(g); bathers.push({ g, base: 0, t: rand(0, TAU), dip: 0, land: true, pour: true });
+  }
+  // white-clad mourners stand at the cremation platforms
+  for (const p of pyres) for (let i = 0; i < 2; i++) {
+    const o = { vary: true, skin: pick(SKINS), outfit: 'kurta', kurta: '#f2ede2', dhoti: '#f2ede2', beard: pick(['none', 'stubble']), moustache: Math.random() < .5, turban: false, hair: 'crop', hairColor: '#15100b' };
+    const g = makeHuman(o); const a = rand(0, TAU);
+    g.position.set(p.x + Math.cos(a) * 2.4, .5, p.z + Math.sin(a) * 2.4);
+    g.rotation.y = Math.atan2(p.x - g.position.x, p.z - g.position.z);
+    scene.add(g); bathers.push({ g, base: .5, t: rand(0, TAU), dip: 0, land: true });
+  }
+  const z0 = -HALF + CELL + 10, z1 = -HALF + 2 * CELL - 10;
+  for (let i = 0; i < 8; i++) {
+    const skin = pick(SKINS);
+    const bare = Math.random() < .55;
+    const o = bare
+      ? { vary: true, skin, outfit: 'kurta', kurta: skin, dhoti: '#efe6d0', beard: pick(BEARDS), moustache: Math.random() < .7, turban: false, hair: pick(['crop', 'none', 'jura']), hairColor: pick(HAIRCOLS) } // skin-toned torso reads bare-chested
+      : (Math.random() < .5
+        ? { vary: true, female: true, skin, outfit: 'silk', kurta: pick(['#c2185b', '#00695c', '#e65100']), dhoti: '#f9a825', beard: 'none', moustache: false, turban: false, hair: 'bun' }
+        : { vary: true, skin, outfit: 'kurta', kurta: pick(['#efe6d0', '#d9c9a3']), dhoti: '#d9c9a3', beard: pick(BEARDS), moustache: true, turban: false, hair: 'crop' });
+    const g = makeHuman(o);
+    const bx = rand(-HALF + 4.5, -HALF + 8.5), bz = rand(z0, z1);
+    g.position.set(bx, rand(-1.15, -.9), bz); g.rotation.y = rand(0, TAU); // waist-deep in the river
+    scene.add(g);
+    bathers.push({ g, base: g.position.y, t: rand(0, TAU), dip: 0 });
+  }
+}
+function updateBathers(dt) {
+  const now = performance.now() / 1000;
+  for (const b of bathers) {
+    if (b.g.position.distanceToSquared(player.pos) > 70 * 70) continue;
+    b.t += dt;
+    animateChar(b.g, false, dt, 0);
+    if (b.pour) { const h = b.g.userData.human; // pours the lota over his head, again and again
+      if (h) { const ph = (Math.sin(b.t * 1.6) + 1) / 2;
+        if (h.rArm) { h.rArm.rotation.x = -1.1 - ph * 1.1; h.rArm.rotation.z = -.5; }
+        if (h.rFore) h.rFore.rotation.x = -.9 + ph * .3;
+        if (h.spine) h.spine.rotation.x = .06;
+        if (ph > .93 && Math.random() < .3 && steamPuffs.length < 60) {
+          const m = new T.Mesh(new T.PlaneGeometry(.2, .34), new T.MeshBasicMaterial({ color: '#bcd4dc', transparent: true, opacity: .5, depthWrite: false }));
+          m.position.set(b.g.position.x, 1.7, b.g.position.z); scene.add(m); steamPuffs.push({ m, life: .5 }); } }
+      continue; }
+    if (b.land) continue; // mourners just stand with the fire
+    if (b.dip > 0) { b.dip -= dt; b.g.position.y = b.base - .5; } // full dunk under Ganga maiya
+    else { b.g.position.y = b.base + Math.sin(b.t * 1.3) * .06;
+      if (Math.random() < .002) { b.dip = rand(.8, 1.6);
+        if (steamPuffs.length < 60) { const m = new T.Mesh(new T.PlaneGeometry(.5, .25), new T.MeshBasicMaterial({ color: '#dce8e4', transparent: true, opacity: .5, depthWrite: false }));
+          m.position.set(b.g.position.x, .12, b.g.position.z); scene.add(m); steamPuffs.push({ m, life: .7 }); } } }
+  }
+  for (const p of pyres) { p.t += dt * 9; p.fire.scale.setScalar(1 + Math.sin(p.t) * .16); p.fire.rotation.y += dt * 2; }
+  // the flotsam bobs and drifts downstream, looping back at the reach's end
+  if (player.pos.x < -HALF + 90) for (const r of ripples) {
+    r.t += dt; r.m.position.y = -.08 + Math.sin(r.t * 1.4) * .025;
+    r.m.position.z += r.drift * dt; r.m.rotation.y += dt * .12;
+    if (r.m.position.z > -HALF + 2 * CELL - 3) r.m.position.z = -HALF + CELL + 3;
+  }
+}
 function buildCity() {
   const gt = makeGroundTexture(); if ('sRGBEncoding' in T) gt.encoding = T.sRGBEncoding;
   ground = new T.Mesh(new T.PlaneGeometry(WORLD, WORLD), new T.MeshStandardMaterial({ map: gt, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+  buildSea(); buildGanga();
   winTexPools = {};
   for (const nf of [2, 3, 5, 8]) winTexPools[nf] = [makeFacadeTexture(0, nf), makeFacadeTexture(1, nf), makeFacadeTexture(2, nf), makeFacadeTexture(3, nf)];
   // buildings on block cells (between roads)
@@ -893,6 +1089,7 @@ function buildCity() {
       const px2 = x0 + i * cw + cw / 2 + rand(-.7, .7), pz2 = z0 + j * cd + cd / 2 + rand(-.7, .7);
       const rot = rand(-.055, .055);
       if (Math.abs(px2) > HALF - 2 || Math.abs(pz2) > HALF - 2) continue;
+      if (inBeach(px2, pz2) || inGhats(px2, pz2)) continue; // sand and ghats stay open to the sky
       const di2 = districtAt(px2, pz2), D = DISTRICTS[di2];
       // studied city profiles: Kerala/Goa are LOW with pitched roofs, Mumbai towers high,
       // Jaipur is the Pink City, Varanasi/Delhi stay dense mid-rise
@@ -928,7 +1125,11 @@ function buildCity() {
   }
   buildLandmarks();
   scatterProps();
-  buildPetrolStations(); buildFilmSet();
+  buildPetrolStations(); buildFilmSet(); buildGalis(); buildGaliMarkets(); buildHandpumps(); buildStreetShrines(); buildHighway();
+  // real temples where they belong: by the Kashi ghats and in Purani Dilli's lanes
+  buildShikharaTemple(-HALF + 26, -HALF + CELL * 1.35, 1);
+  buildShikharaTemple(-HALF + CELL * .62, -HALF + CELL * .55, .8);
+  buildShikharaTemple(CELL * .4, HALF - CELL * .45, .9); // Chennai side, north-style shrine near the sea
   genDelhiWires();
   prerenderMap();
   buildRamps();
@@ -1109,7 +1310,7 @@ function scatterProps() {
     buildings.push({ x: p.x, z: p.z, hw: .9, hd: .7, parts: scene.children.slice(partsFrom) }); }
   // garbage piles (decorative, no collision)
   for (let i = 0; i < 90 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
-    const gb = new T.Mesh(new T.SphereGeometry(rand(.3, .6), 7, 6), mat(pick(['#7a6f4a', '#8a5a3a', '#556b4a']))); gb.position.set(p.x, .2, p.z); gb.scale.y = .5; gb.castShadow = true; scene.add(gb); }
+    const gb = new T.Mesh(new T.SphereGeometry(rand(.3, .6), 7, 6), mat(pick(['#7a6f4a', '#8a5a3a', '#556b4a']))); gb.position.set(p.x, .2, p.z); gb.scale.y = .5; scene.add(gb); }
   // trees (solid trunks) — palms near coastal/southern districts; canopies keep clear of walls
   for (let i = 0; i < 150 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
     if (!clearOf(p.x, p.z, 1.9)) continue;
@@ -1127,7 +1328,7 @@ function scatterProps() {
     const stain = new T.Mesh(new T.CircleGeometry(rand(1.2, 2), 10), new T.MeshStandardMaterial({ color: '#4a4234', roughness: 1 }));
     stain.rotation.x = -Math.PI / 2; stain.position.set(p.x, .015, p.z); scene.add(stain);
     for (let k = 0; k < 5; k++) { const bag = new T.Mesh(new T.SphereGeometry(rand(.2, .45), 7, 6), mat(pick(['#3a3f46', '#556b4a', '#7a6f4a', '#2a2e34']), 1));
-      bag.scale.y = .7; bag.position.set(p.x + rand(-.8, .8), .2, p.z + rand(-.8, .8)); bag.castShadow = true; scene.add(bag); } }
+      bag.scale.y = .7; bag.position.set(p.x + rand(-.8, .8), .2, p.z + rand(-.8, .8)); scene.add(bag); } }
   // vendor thela carts with produce pyramids
   for (let i = 0; i < 34 * area; i++) { const p = sidewalkSpot(); if (!p) continue;
     const cart = new T.Group();
@@ -1190,9 +1391,10 @@ const npcs = [];
 function spawnNPCs(n) {
   for (let i = 0; i < n; i++) {
     const p = sidewalkSpot() || roadSpot(); if (!p) continue;
-    const o = npcLook(districtAt(p.x, p.z)); // men, women in saris, sadhus, sardars — dressed like their district
+    const o = npcLook(districtAt(p.x, p.z)); // men, women in saris, sadhus, sardars, kids — dressed like their district
     const g = makeCharacter(o); g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
-    npcs.push({ g, wealth: o.wealth || 0, female: !!o.female, dir: rand(0, TAU), speed: rand(.7, 1.5), turn: 0, down: 0, t: rand(0, 10), pause: 0 });
+    if (o.kid) g.scale.multiplyScalar(rand(.56, .66)); // children, satchel-height
+    npcs.push({ g, wealth: o.wealth || 0, female: !!o.female, dir: rand(0, TAU), speed: o.kid ? rand(1.4, 2.2) : rand(.7, 1.5), turn: 0, down: 0, t: rand(0, 10), pause: 0 });
   }
 }
 // cows
@@ -1319,6 +1521,142 @@ function updateDogs(dt) {
       d.tail.rotation.z = Math.sin(d.phase * .9) * .25; }
   }
 }
+// ---------- galis: the old quarters' lanes are too narrow for cars — two- and three-wheelers only ----------
+const GALIS = [
+  { x: -HALF + 2 * STEP, z0: -HALF + 4, z1: -HALF + CELL - 4 },        // Purani Dilli gali
+  { x: -HALF + 3 * STEP, z0: -HALF + CELL + 4, z1: -HALF + 2 * CELL - 4 }, // Kashi gali down to the ghats
+];
+function inGali(x, z) {
+  for (const g of GALIS) { if (Math.abs(x - (g.x + ROADW / 2)) < ROADW / 2 + .3 && z > g.z0 && z < g.z1) return true; }
+  return false;
+}
+// North-Indian temple, studied from the real thing: raised plinth, sanctum, CURVILINEAR shikhara
+// tower (not a cone!), ribbed amalaka disc at the crown, gold kalasha pot finial, saffron flag.
+function buildShikharaTemple(x, z, sc) {
+  const g = new T.Group();
+  const stone = mat('#e0cfa8', .9), red = mat('#b3402a', .85);
+  const plinth = new T.Mesh(new T.BoxGeometry(7, 1, 7), stone); plinth.position.y = .5; g.add(plinth);
+  const sanctum = new T.Mesh(new T.BoxGeometry(4.2, 3, 4.2), stone); sanctum.position.y = 2.5; g.add(sanctum);
+  const door = new T.Mesh(new T.BoxGeometry(1.3, 2.1, .2), mat('#3a2415', .8)); door.position.set(0, 2, 2.15); g.add(door);
+  for (const sx of [-1.1, 1.1]) { const col = new T.Mesh(new T.CylinderGeometry(.16, .18, 2.4, 8), red); col.position.set(sx, 2.2, 2.9); g.add(col); }
+  const porch = new T.Mesh(new T.BoxGeometry(3.2, .3, 1.8), red); porch.position.set(0, 3.4, 2.9); g.add(porch);
+  // the shikhara: lathe profile with the classic inward curve
+  const prof = [];
+  for (let i = 0; i <= 8; i++) { const t = i / 8;
+    prof.push(new T.Vector2(2.05 * (1 - Math.pow(t, 1.7)) + .12, t * 5.2)); }
+  const tower = new T.Mesh(new T.LatheGeometry(prof, 4), stone);
+  tower.rotation.y = Math.PI / 4; tower.position.y = 4; g.add(tower);
+  // ribbed corner turrets echo the main curve
+  for (const [tx, tz] of [[-1.5, -1.5], [1.5, -1.5], [-1.5, 1.5], [1.5, 1.5]]) {
+    const mini = new T.Mesh(new T.LatheGeometry(prof.map(p => new T.Vector2(p.x * .32, p.y * .42)), 4), stone);
+    mini.rotation.y = Math.PI / 4; mini.position.set(tx, 4, tz); g.add(mini); }
+  const amalaka = new T.Mesh(new T.TorusGeometry(.55, .22, 8, 18), stone); amalaka.rotation.x = Math.PI / 2; amalaka.position.y = 9.35; g.add(amalaka);
+  const kalash = new T.Mesh(new T.SphereGeometry(.26, 10, 8), mat('#ffd700', .25)); kalash.position.y = 9.85; g.add(kalash);
+  const tip = new T.Mesh(new T.ConeGeometry(.1, .5, 8), mat('#ffd700', .25)); tip.position.y = 10.25; g.add(tip);
+  const pole = new T.Mesh(new T.CylinderGeometry(.03, .03, 2, 6), mat('#8a6b3a')); pole.position.set(.5, 10.6, 0); g.add(pole);
+  const flag = new T.Mesh(new T.ConeGeometry(.3, .9, 3), new T.MeshStandardMaterial({ color: '#ff7722', emissive: '#c84400', emissiveIntensity: .3, side: T.DoubleSide }));
+  flag.rotation.z = Math.PI / 2; flag.position.set(1.05, 11.3, 0); g.add(flag);
+  g.scale.setScalar(sc || 1); g.position.set(x, 0, z);
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(g);
+  buildings.push({ x, z, hw: 3.6 * (sc || 1), hd: 3.6 * (sc || 1) });
+}
+// streetside shrines: a tiny saffron mandir absorbed into the pavement, marigold and diyas
+const shrines = [];
+function buildStreetShrines() {
+  const area = (WORLD / 180) ** 2;
+  for (let i = 0; i < 22 * area; i++) { const p = sidewalkSpot(); if (!p || !clearOf(p.x, p.z, 1.4)) continue;
+    if (inBeach(p.x, p.z) || inGhats(p.x, p.z)) continue;
+    const g = new T.Group();
+    const base = new T.Mesh(new T.BoxGeometry(.9, .8, .8), mat(pick(['#e07020', '#e8e0cc', '#c0392b']), .85)); base.position.y = .4; g.add(base);
+    const niche = new T.Mesh(new T.BoxGeometry(.5, .45, .1), mat('#2a1a10', .9)); niche.position.set(0, .5, .38); g.add(niche);
+    const idol = new T.Mesh(new T.SphereGeometry(.13, 10, 8), new T.MeshStandardMaterial({ color: '#ff7722', emissive: '#a33c00', emissiveIntensity: .35, roughness: .5 })); idol.position.set(0, .5, .36); g.add(idol);
+    const dome = new T.Mesh(new T.SphereGeometry(.42, 10, 8, 0, TAU, 0, Math.PI / 2), mat('#e07020', .8)); dome.position.y = .8; g.add(dome);
+    const fin = new T.Mesh(new T.ConeGeometry(.09, .3, 8), mat('#ffd700', .3)); fin.position.y = 1.28; g.add(fin);
+    // marigold garland: little orange-yellow beads draped over the front
+    for (let m2 = 0; m2 < 9; m2++) { const a = m2 / 8 * Math.PI; // sags between the dome's shoulders
+      const bead = new T.Mesh(new T.SphereGeometry(.035, 6, 5), mat(m2 % 2 ? '#ff9800' : '#ffc107', .7));
+      bead.position.set(Math.cos(a) * .42, .95 - Math.sin(a) * .3, .42); g.add(bead); }
+    const flagP = new T.Mesh(new T.CylinderGeometry(.02, .02, 1.6, 5), mat('#8a6b3a')); flagP.position.set(.5, .8, -.2); g.add(flagP);
+    const fl = new T.Mesh(new T.ConeGeometry(.16, .5, 3), new T.MeshStandardMaterial({ color: '#ff7722', side: T.DoubleSide })); fl.rotation.z = Math.PI / 2; fl.position.set(.82, 1.5, -.2); g.add(fl);
+    const diya = new T.Mesh(new T.SphereGeometry(.05, 6, 5), new T.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ff9a00', emissiveIntensity: 1.6 })); diya.position.set(-.3, .82, .3); g.add(diya);
+    g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU);
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+    shrines.push({ x: p.x, z: p.z });
+    buildings.push({ x: p.x, z: p.z, hw: .55, hd: .5 });
+  }
+}
+// the gali opens onto a surprise: a whole bazaar of carts and produce spread on ground tarps
+function buildGaliMarkets() {
+  for (const ga of GALIS) {
+    const cx = ga.x + ROADW / 2, zm = (ga.z0 + ga.z1) / 2;
+    for (let i = 0; i < 3; i++) { // thela carts along the lane
+      const p = { x: cx + pick([-2.6, 2.6]), z: zm + (i - 1) * 7 + rand(-1.5, 1.5) };
+      const cart = new T.Group();
+      const bed = new T.Mesh(new T.BoxGeometry(1.6, .14, 1), mat('#1e6a5a', .9)); bed.position.y = .8; cart.add(bed);
+      for (const sx of [-.6, .6]) { const wl = new T.Mesh(new T.TorusGeometry(.32, .05, 8, 16), mat('#3a2f24', .8)); wl.rotation.y = Math.PI / 2; wl.position.set(sx, .34, 0); cart.add(wl); }
+      const fruit = pick(['#e67e22', '#c0392b', '#e0b93c', '#4f9e2b', '#8e44ad']);
+      for (let ring = 0; ring < 3; ring++) { const n = 5 - ring;
+        for (let q = 0; q < n * n; q++) { const fx = (q % n - (n - 1) / 2) * .18, fz = ((q / n | 0) - (n - 1) / 2) * .18;
+          const fr = new T.Mesh(new T.SphereGeometry(.085, 8, 7), mat(fruit, .55)); fr.position.set(fx, .95 + ring * .14, fz); cart.add(fr); } }
+      cart.position.set(p.x, 0, p.z); cart.rotation.y = rand(0, TAU);
+      cart.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(cart);
+      buildings.push({ x: p.x, z: p.z, hw: 1, hd: .8, parts: [cart] });
+    }
+    for (let i = 0; i < 4; i++) { // produce heaped straight on tarps at ground level
+      const p = { x: cx + pick([-2.9, 2.9]) + rand(-.4, .4), z: zm + rand(-12, 12) };
+      const tarp = new T.Mesh(new T.PlaneGeometry(1.7, 1.4), new T.MeshStandardMaterial({ color: pick(['#2a5ba8', '#a89468', '#7a8a5a']), roughness: 1 }));
+      tarp.rotation.x = -Math.PI / 2; tarp.rotation.z = rand(0, TAU); tarp.position.set(p.x, .025, p.z); scene.add(tarp);
+      const veg = pick(['#4f9e2b', '#c0392b', '#e0b93c', '#7a4a8a', '#e67e22', '#2e7a3a']);
+      for (let v2 = 0; v2 < 10; v2++) { const it = new T.Mesh(new T.SphereGeometry(rand(.055, .1), 7, 6), mat(veg, .6));
+        it.position.set(p.x + rand(-.55, .55), .1, p.z + rand(-.45, .45)); it.castShadow = true; scene.add(it); }
+    }
+    // festoon of little flags strung across the lane
+    for (const fz of [zm - 10, zm + 10]) {
+      for (let k = 0; k < 9; k++) { const t = k / 8;
+        const fl = new T.Mesh(new T.ConeGeometry(.11, .3, 3), new T.MeshStandardMaterial({ color: pick(['#e91e63', '#ffc107', '#00bcd4', '#8bc34a', '#ff5722']), side: T.DoubleSide }));
+        fl.rotation.x = Math.PI; fl.position.set(cx - 3.2 + t * 6.4, 3.4 - Math.sin(t * Math.PI) * .7, fz); scene.add(fl); }
+    }
+  }
+}
+// municipal handpumps where the street bathes: an old uncle soaping up with his lota pot
+const pumpsHand = [];
+function buildHandpumps() {
+  for (const spot of [{ x: -HALF + 3 * STEP + 9, z: -HALF + 30 }, { x: -HALF + 2 * STEP + 9, z: -HALF + CELL + 44 }]) {
+    const g = new T.Group();
+    const base = new T.Mesh(new T.BoxGeometry(1.6, .12, 1.6), mat('#9a978f', .9)); base.position.y = .06; g.add(base);
+    const body = new T.Mesh(new T.CylinderGeometry(.09, .12, 1.1, 8), mat('#2e7a3a', .6)); body.position.y = .6; g.add(body);
+    const lever = new T.Mesh(new T.BoxGeometry(.06, .06, 1), mat('#2e7a3a', .6)); lever.position.set(0, 1.18, -.35); lever.rotation.x = .35; g.add(lever);
+    const spout = new T.Mesh(new T.CylinderGeometry(.05, .05, .35, 8), mat('#2e7a3a', .6)); spout.rotation.x = Math.PI / 2; spout.position.set(0, .82, .3); g.add(spout);
+    const wet = new T.Mesh(new T.CircleGeometry(1.1, 12), new T.MeshStandardMaterial({ color: '#6a7a80', roughness: .3 })); wet.rotation.x = -Math.PI / 2; wet.position.y = .01; g.add(wet);
+    g.position.set(spot.x, 0, spot.z); g.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+    buildings.push({ x: spot.x, z: spot.z, hw: .5, hd: .5 });
+    pumpsHand.push(spot);
+  }
+}
+function buildGalis() {
+  const stoneM = mat('#7a7468', .95), postM = mat('#8a8478', .9);
+  for (const ga of GALIS) {
+    const cx = ga.x + ROADW / 2;
+    // worn cobble strip narrows the lane visually
+    const cob = document.createElement('canvas'); cob.width = 64; cob.height = 128; const cg = cob.getContext('2d');
+    cg.fillStyle = '#6e6a60'; cg.fillRect(0, 0, 64, 128);
+    for (let i = 0; i < 120; i++) { cg.fillStyle = pick(['#7c786c', '#5f5b52', '#87816f']);
+      cg.beginPath(); cg.ellipse(rand(0, 64), rand(0, 128), rand(3, 6), rand(2, 4), 0, 0, TAU); cg.fill(); }
+    const ct = new T.CanvasTexture(cob); ct.wrapS = ct.wrapT = T.RepeatWrapping; ct.repeat.set(1, (ga.z1 - ga.z0) / 6);
+    const strip = new T.Mesh(new T.PlaneGeometry(3.4, ga.z1 - ga.z0), new T.MeshStandardMaterial({ map: ct, roughness: 1 }));
+    strip.rotation.x = -Math.PI / 2; strip.position.set(cx, .03, (ga.z0 + ga.z1) / 2); strip.receiveShadow = true; scene.add(strip);
+    for (const gz of [ga.z0, (ga.z0 + ga.z1) / 2, ga.z1]) { // stone bollards at the mouths — a scooter slips through, a car cannot
+      for (const bx of [-1.15, 0, 1.15]) { const post = new T.Mesh(new T.CylinderGeometry(.14, .17, .85, 8), postM);
+        post.position.set(cx + bx, .42, gz); post.castShadow = true; scene.add(post); } }
+    // old arch over each entrance
+    for (const gz of [ga.z0, ga.z1]) {
+      for (const px3 of [-2.6, 2.6]) { const pil = new T.Mesh(new T.BoxGeometry(.7, 4.4, .7), stoneM); pil.position.set(cx + px3, 2.2, gz); pil.castShadow = true; scene.add(pil);
+        buildings.push({ x: cx + px3, z: gz, hw: .4, hd: .4 }); }
+      const lin = new T.Mesh(new T.BoxGeometry(6.4, .7, .9), stoneM); lin.position.set(cx, 4.6, gz); lin.castShadow = true; scene.add(lin);
+    }
+  }
+}
 // ---------- district looks: dress people the way that part of India dresses ----------
 function npcLook(di) {
   // clothes tell you who has money: threadbare khadi at the bottom, pressed silk and shades at the top
@@ -1329,6 +1667,11 @@ function npcLook(di) {
     hair: pick(['crop', 'crop', 'part', 'curly', 'jura']), hairColor: pick(HAIRCOLS) };
   if (wealth === 0) { o.kurta = pick(['#c9bfa8', '#b8ab90', '#a89f8a', '#8a8272', '#d9d0b8']); o.dhoti = pick(['#c9bfa8', '#8a8272']); }
   if (wealth === 2) { o.shades = Math.random() < .4; o.kurta = pick(['#f4efe2', '#1a1a2e', '#7b1fa2', '#00695c', '#d4af37', '#880e4f']); }
+  if (Math.random() < .11) { // school kids darting through the crowd
+    o.kid = true; o.beard = 'none'; o.moustache = false; o.turban = false; o.hair = pick(['crop', 'crop', 'curly']);
+    o.outfit = 'kurta'; o.kurta = pick(['#3a5a8a', '#e8e8e8', '#8a3a4a']); o.dhoti = pick(['#3a4a6a', '#5a4a3a']); // uniform-ish
+    o.wealth = 1; return o;
+  }
   if (Math.random() < .42) { // women — sari (regional weaves) or salwar-kameez
     o.female = true; o.beard = 'none'; o.moustache = false; o.turban = false;
     o.hair = pick(['bun', 'long', 'bun']); o.outfit = 'silk';
@@ -1369,7 +1712,8 @@ const CHAT = [
 function spawnVendors() {
   if (!HERO) return;
   let count = 0;
-  for (const s of vendorSpots) { if (count >= 16) break; if (Math.random() < .45) continue;
+  const capV = GFX === 'low' ? 10 : 16;
+  for (const s of vendorSpots) { if (count >= capV) break; if (Math.random() < .45) continue;
     const o = npcLook(districtAt(s.x, s.z));
     const g = makeHuman(o); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw;
     scene.add(g); vendors.push({ g, kind: s.kind, phase: rand(0, TAU), h: g.userData.human, called: 0 });
@@ -1457,6 +1801,108 @@ function updateFilmSet(dt) {
       player.cash += 300; cashSnd(); toast('🎬 CUT! Cachet d’acteur +₹300', '#8ef58e'); }
   } else if (d2 < 8 * 8 && FILM.cool <= 0 && !player.inVehicle && !player.riding) {
     hint('🎬 E — rejoindre la danse (cachet ₹300)');
+  }
+}
+// ---------- missions: culture-soaked jobs that pay in rupees AND in dharma ----------
+const MISSIONS = [
+  { id: 'ganpati', icon: '🐘', name: 'Ganpati Visarjan',
+    brief: 'Porte l’idole de Ganpati jusqu’à la mer pour l’immersion!',
+    carry: 'idol', cash: 250, dh: 6,
+    doneLine: '🐘 “Ganpati Bappa Morya!” — l’idole rejoint la mer' },
+  { id: 'dabba', icon: '🥡', name: 'Dabbawala Run',
+    brief: 'Livre les tiffins encore chauds — 3 bureaux de Bambai, dans l’ordre!',
+    carry: 'tiffin', cash: 180, dh: 4,
+    doneLine: '🥡 Tous les repas livrés à l’heure — respect, dabbawala!' },
+  { id: 'langar', icon: '🍲', name: 'Langar Seva',
+    brief: 'Porte la marmite du langar aux affamés — Kashi puis Purani Dilli. Seva, pas de paiement.',
+    carry: 'pot', cash: 0, dh: 14,
+    doneLine: '🍲 “Sab barabar.” Le langar a nourri tout le monde · seva accomplie' },
+];
+function buildMissions() {
+  // every point sits ON a road band (roads at x,z = k·20 … k·20+7) so nothing hides inside a block
+  MISSIONS[0].giver = { x: 3.5, z: -96.5 };
+  MISSIONS[0].stages = [{ x: -24, z: HALF - 6, label: 'la mer (visarjan)' }];
+  MISSIONS[1].giver = { x: -16.5, z: -116.5 };
+  MISSIONS[1].stages = [
+    { x: 23.5, z: -136.5, label: 'bureau 1' },
+    { x: -36.5, z: -96.5, label: 'bureau 2' },
+    { x: 3.5, z: -76.5, label: 'bureau 3' }];
+  MISSIONS[2].giver = { x: 3.5, z: 12 };
+  MISSIONS[2].stages = [
+    { x: -146, z: -13, label: 'les sadhus des ghats' },
+    { x: -116.5, z: -136.5, label: 'les ouvriers de Dilli' }];
+  // rotating gold markers over each giver
+  for (const M of MISSIONS) {
+    const mk = new T.Group();
+    const ring = new T.Mesh(new T.TorusGeometry(.7, .08, 8, 22), new T.MeshStandardMaterial({ color: '#ffd700', emissive: '#a88400', emissiveIntensity: .8 }));
+    ring.rotation.x = Math.PI / 2; ring.position.y = 2.6; mk.add(ring);
+    const cone = new T.Mesh(new T.ConeGeometry(.28, .55, 4), ring.material); cone.rotation.x = Math.PI; cone.position.y = 2.15; mk.add(cone);
+    mk.position.set(M.giver.x, 0, M.giver.z); scene.add(mk); M.marker = mk; M.cool = 0;
+  }
+  // one shared beacon for the active objective
+  const bc = new T.Mesh(new T.CylinderGeometry(.9, .9, 26, 12, 1, true),
+    new T.MeshBasicMaterial({ color: '#ffd700', transparent: true, opacity: .22, side: T.DoubleSide, depthWrite: false }));
+  bc.position.y = 13; bc.visible = false; scene.add(bc); buildMissions.beacon = bc;
+}
+function buildCarry(kind) {
+  const g = new T.Group();
+  if (kind === 'idol') { const bm = new T.MeshStandardMaterial({ color: '#ff8a2a', roughness: .5 });
+    const plate = new T.Mesh(new T.CylinderGeometry(.16, .18, .03, 12), mat('#c9a020', .4)); g.add(plate);
+    const body = new T.Mesh(new T.SphereGeometry(.11, 10, 8), bm); body.position.y = .12; g.add(body);
+    const head = new T.Mesh(new T.SphereGeometry(.075, 10, 8), bm); head.position.y = .27; g.add(head);
+    const trunk = new T.Mesh(new T.TorusGeometry(.045, .016, 6, 10, Math.PI * 1.3), bm); trunk.position.set(0, .25, .06); trunk.rotation.x = .4; g.add(trunk);
+    const crown = new T.Mesh(new T.ConeGeometry(.055, .09, 8), mat('#ffd700', .3)); crown.position.y = .35; g.add(crown);
+    for (const sx of [-1, 1]) { const ear = new T.Mesh(new T.CircleGeometry(.045, 8), new T.MeshStandardMaterial({ color: '#ff8a2a', side: T.DoubleSide })); ear.position.set(.085 * sx, .28, 0); g.add(ear); } }
+  else if (kind === 'tiffin') { const steel = new T.MeshStandardMaterial({ color: '#b9bec4', roughness: .3, metalness: .7 });
+    for (let i = 0; i < 3; i++) { const tin = new T.Mesh(new T.CylinderGeometry(.09, .09, .07, 12), steel); tin.position.y = .05 + i * .075; g.add(tin); }
+    const handle = new T.Mesh(new T.TorusGeometry(.055, .012, 6, 12, Math.PI), steel); handle.position.y = .3; g.add(handle); }
+  else { const brass = new T.MeshStandardMaterial({ color: '#c9952a', roughness: .35, metalness: .6 });
+    const pot = new T.Mesh(new T.SphereGeometry(.16, 12, 9), brass); pot.scale.y = .8; pot.position.y = .14; g.add(pot);
+    const rim = new T.Mesh(new T.TorusGeometry(.1, .022, 8, 14), brass); rim.rotation.x = Math.PI / 2; rim.position.y = .28; g.add(rim);
+    const lid = new T.Mesh(new T.CircleGeometry(.1, 12), mat('#8a6b3a', .8)); lid.rotation.x = -Math.PI / 2; lid.position.y = .285; g.add(lid); }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+let carryMesh = null;
+function attachCarry(kind) {
+  const h = player.g.userData.human; if (!h || !h.head) return;
+  const ws = h.head.getWorldScale(new T.Vector3()).x || 1;
+  carryMesh = buildCarry(kind);
+  carryMesh.scale.setScalar(1 / ws); carryMesh.position.set(0, .16 / ws, 0); // carried on the head, desi style
+  h.head.add(carryMesh);
+}
+function removeCarry() { if (carryMesh && carryMesh.parent) carryMesh.parent.remove(carryMesh); carryMesh = null; }
+function missionInteract() { // E near a giver or an objective
+  if (player.mission) return false; // objectives auto-complete on arrival
+  for (const M of MISSIONS) { if (M.cool > 0) continue;
+    if ((M.giver.x - player.pos.x) ** 2 + (M.giver.z - player.pos.z) ** 2 < 3.2 * 3.2) {
+      player.mission = { M, stage: 0 };
+      attachCarry(M.carry);
+      toast(M.icon + ' ' + M.brief, '#ffd24d');
+      return true; } }
+  return false;
+}
+function updateMissions(dt) {
+  const bc = buildMissions.beacon; if (!bc) return;
+  for (const M of MISSIONS) { if (M.cool > 0) M.cool -= dt;
+    M.marker.visible = M.cool <= 0 && (!player.mission || player.mission.M !== M);
+    if (M.marker.visible && M.marker.position.distanceToSquared(player.pos) < 90 * 90) M.marker.rotation.y += dt * 2; }
+  const ms = player.mission;
+  if (!ms) { bc.visible = false;
+    for (const M of MISSIONS) { if (M.cool <= 0 && (M.giver.x - player.pos.x) ** 2 + (M.giver.z - player.pos.z) ** 2 < 3.2 * 3.2) {
+      hint(M.icon + ' E — Mission: ' + M.name + (M.cash ? ' (₹' + M.cash + ')' : ' (seva)')); break; } }
+    return; }
+  const st = ms.M.stages[ms.stage];
+  bc.visible = true; bc.position.x = st.x; bc.position.z = st.z; bc.rotation.y += dt;
+  const d2 = (st.x - player.pos.x) ** 2 + (st.z - player.pos.z) ** 2;
+  if (!player.inVehicle && !player.riding) hint(ms.M.icon + ' ' + st.label + ' — ' + Math.round(Math.sqrt(d2)) + 'm');
+  if (d2 < 4 * 4) {
+    ms.stage++;
+    if (ms.stage >= ms.M.stages.length) {
+      removeCarry(); player.cash += ms.M.cash; karma(ms.M.dh); if (ms.M.cash) cashSnd();
+      toast(ms.M.doneLine + (ms.M.cash ? '  +₹' + ms.M.cash : '') + ' · +dharma', '#8ef58e');
+      ms.M.cool = 150; player.mission = null;
+    } else toast(ms.M.icon + ' ' + ms.M.stages[ms.stage - 1].label + ' ✓ — suivant: ' + ms.M.stages[ms.stage].label, '#8ef58e');
   }
 }
 // ---------- petrol: pumps in the city + the pricier jerrican man on call ----------
@@ -1743,6 +2189,31 @@ function buildBicycle() {
   return g;
 }
 // stunt ramps (tremplins) on paved roads — drive up, fly off
+// ---------- the flyover: an elevated highway crossing the city east-west, GTA bridge style ----------
+const HW_Z = CELL / 2, HW_H = 7, HW_W = 9, HW_SLOPE = 42;
+function highwayHeightAt(x, z) {
+  if (Math.abs(z - HW_Z) > HW_W / 2) return 0;
+  if (x < -HALF + 2 || x > HALF - 2) return 0;
+  if (x < -HALF + 2 + HW_SLOPE) return HW_H * (x - (-HALF + 2)) / HW_SLOPE;
+  if (x > HALF - 2 - HW_SLOPE) return HW_H * ((HALF - 2) - x) / HW_SLOPE;
+  return HW_H;
+}
+function buildHighway() {
+  const deckM = mat('#3a3a40', .95), railM = mat('#c9ccd2', .6), pillM = mat('#8a8a86', .9);
+  const segs = 24, x0 = -HALF + 2, x1 = HALF - 2, segL = (x1 - x0) / segs;
+  for (let i = 0; i < segs; i++) {
+    const xa = x0 + i * segL, xb = xa + segL, xm = (xa + xb) / 2;
+    const ya = highwayHeightAt(xa, HW_Z), yb = highwayHeightAt(xb, HW_Z), ym = (ya + yb) / 2;
+    const deck = new T.Mesh(new T.BoxGeometry(Math.hypot(segL, yb - ya) + .3, .5, HW_W), deckM);
+    deck.position.set(xm, ym - .25 + .25, HW_Z); deck.rotation.z = -Math.atan2(yb - ya, segL);
+    deck.castShadow = true; deck.receiveShadow = true; scene.add(deck);
+    for (const zs of [-1, 1]) { const rail = new T.Mesh(new T.BoxGeometry(Math.hypot(segL, yb - ya) + .3, .5, .16), railM);
+      rail.position.set(xm, ym + .5, HW_Z + zs * (HW_W / 2 - .1)); rail.rotation.z = deck.rotation.z; scene.add(rail); }
+    if (i % 2 === 0 && ym > 1.2) { const pil = new T.Mesh(new T.CylinderGeometry(.6, .7, ym, 10), pillM);
+      pil.position.set(xm, ym / 2 - .2, HW_Z); pil.castShadow = true; scene.add(pil);
+      buildings.push({ x: xm, z: HW_Z, hw: .8, hd: .8 }); }
+  }
+}
 const ramps = [];
 function buildRamps() {
   const rM = mat('#7a5a34', .95), sM = mat('#5c4326', .95); // weathered wood planks
@@ -1771,7 +2242,15 @@ function buildRamps() {
     placed++;
   }
 }
+function ghatHeightAt(x, z) { // the stone steps down to the Ganga
+  if (!inGhats(x, z)) return 0;
+  if (x > -HALF + 17.5) return 0;
+  if (x > -HALF + 15.2) return 1.1;                       // promenade top
+  return clamp((x + HALF - 7.7) / 6.8, 0, 1) * .95;       // steps easing into the water
+}
 function rampHeightAt(x, z) {
+  const hw = highwayHeightAt(x, z); if (hw > 0) return hw;
+  const gh = ghatHeightAt(x, z); if (gh > 0) return gh;
   for (const r of ramps) {
     const dx = x - r.x, dz = z - r.z;
     const c = Math.cos(-r.yaw), s = Math.sin(-r.yaw);
@@ -1781,6 +2260,50 @@ function rampHeightAt(x, z) {
     }
   }
   return 0;
+}
+// the impossible loads of the subcontinent: milk cans, gas cylinders, mattresses, sacks, ladders
+let wtfHumans = 0;
+function addWtfLoad(g, kind) {
+  const r = Math.random();
+  if (kind === 'cycle' && r < .45) {
+    if (r < .18) { for (const sx of [-1, 1]) for (const zz of [-.5, -.72]) { // dented aluminium milk cans
+      const can = new T.Mesh(new T.CylinderGeometry(.11, .13, .34, 8), new T.MeshStandardMaterial({ color: '#b9bec4', roughness: .35, metalness: .7 }));
+      can.position.set(sx * .26, .62, zz); g.add(can);
+      const lid = new T.Mesh(new T.SphereGeometry(.08, 8, 6), can.material); lid.position.set(sx * .26, .82, zz); g.add(lid); } }
+    else if (r < .3) { for (const sx of [-.16, .16]) { // LPG cylinders roped on
+      const cyl = new T.Mesh(new T.CylinderGeometry(.14, .14, .44, 10), mat('#b32418', .55)); cyl.position.set(sx, .68, -.6); g.add(cyl); } }
+    else { const sack = new T.Mesh(new T.SphereGeometry(.34, 9, 7), mat(pick(['#a89468', '#8a7a5a']), .95)); // monster jute sack
+      sack.scale.set(1.2, .9, 1.4); sack.position.set(0, .82, -.6); g.add(sack); }
+  }
+  else if ((kind === 'moto' || kind === 'enfield') && r < .35 && HERO && wtfHumans < 8) {
+    // the whole family on one scooter: pillion riding side-saddle + a kid up front
+    const seat = g.userData.seat || { x: 0, y: .5, z: -.1 };
+    const po = npcLook(4); po.turban = false;
+    const pass = makeHuman(Math.random() < .6 ? { ...po, female: true, beard: 'none', moustache: false, hair: 'bun', outfit: 'silk' } : po);
+    g.add(pass); pass.position.set(seat.x, seat.y, seat.z - .42); pass.rotation.y = Math.random() < .5 ? .8 : 0;
+    if (pass.userData.human) { pass.userData.human.seated = true; animateChar(pass, false, .03, 0); }
+    wtfHumans++;
+    if (Math.random() < .5 && wtfHumans < 8) { const kid = makeHuman({ vary: false, skin: pick(SKINS), outfit: 'kurta', kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: 'none', moustache: false, turban: false, hair: 'crop' });
+      kid.scale.multiplyScalar(.55); g.add(kid); kid.position.set(seat.x, seat.y + .08, seat.z + .38);
+      if (kid.userData.human) { kid.userData.human.seated = true; animateChar(kid, false, .03, 0); } wtfHumans++; }
+  }
+  else if (kind === 'auto' && r < .4) {
+    if (r < .18) { const mat2 = new T.Mesh(new T.CylinderGeometry(.34, .34, 1.9, 10), mat(pick(['#c0392b', '#5577bb', '#8a7a5a']), .95)); // rolled mattress across the roof
+      mat2.rotation.z = Math.PI / 2; mat2.position.set(0, 1.85, 0); g.add(mat2); }
+    else if (r < .3) { const lad = new T.Mesh(new T.BoxGeometry(.5, .08, 4.2), mat('#8a6b3a', .9)); // ladder way too long
+      lad.position.set(0, 1.8, -.4); g.add(lad);
+      const rag = new T.Mesh(new T.PlaneGeometry(.25, .3), new T.MeshStandardMaterial({ color: '#c0392b', side: T.DoubleSide })); rag.position.set(0, 1.7, -2.4); g.add(rag); }
+    else for (let i2 = 0; i2 < 4; i2++) { const sk = new T.Mesh(new T.SphereGeometry(rand(.2, .28), 8, 6), mat(pick(['#a89468', '#c9760b', '#8a7a5a']), .95));
+      sk.scale.y = .7; sk.position.set(rand(-.3, .3), 1.78, rand(-.5, .3)); g.add(sk); }
+  }
+  else if (kind === 'truck' && r < .6) { for (let i2 = 0; i2 < 7; i2++) { // grain sacks piled high
+    const sk = new T.Mesh(new T.SphereGeometry(rand(.3, .42), 8, 6), mat(pick(['#a89468', '#bfa87a', '#8a7a5a']), .95));
+    sk.scale.y = .72; sk.position.set(rand(-.6, .6), 1.7 + (i2 > 3 ? .5 : 0), rand(-1.8, .2)); g.add(sk); } }
+  else if (kind === 'bus' && r < .5) { // roof rack: trunks, bundles and someone's bicycle
+    const rack = new T.Mesh(new T.BoxGeometry(2, .08, 5.5), mat('#5a5f66', .6)); rack.position.set(0, 3.05, 0); g.add(rack);
+    for (let i2 = 0; i2 < 5; i2++) { const bx = new T.Mesh(new T.BoxGeometry(rand(.5, .9), rand(.3, .5), rand(.6, 1)), mat(pick(['#8a5a3a', '#4a6b8a', '#a89468', '#c0392b']), .9));
+      bx.position.set(rand(-.6, .6), 3.3, rand(-2.2, 2.2)); bx.rotation.y = rand(-.2, .2); g.add(bx); } }
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
 }
 const vehicles = [];
 function spawnVehicles(n) {
@@ -1806,6 +2329,7 @@ function spawnVehicles(n) {
             Math.random() < .22 ? 3 : (kind === 'moto' || kind === 'auto') ? 1 : 0 };
     if (kind === 'cycle') { v.cruise = rand(2, 3.5); }
     v.smoke = kind === 'auto' || kind === 'truck' || kind === 'bus' || Math.random() < .18; // old engines cough
+    addWtfLoad(g, kind); // India carries EVERYTHING on two wheels
     // riders are always visible on two-wheelers; autos often carry a hireable driver
     const isBike = kind === 'moto' || kind === 'enfield' || kind === 'cycle';
     if (HERO && isBike) {
@@ -1883,6 +2407,11 @@ const tHeld = {};
   for (const key of ['horns', 'amb', 'sfx']) { const el = $('snd_' + key); if (!el) continue;
     const paint = () => { el.classList.toggle('on', !!sndCfg[key]); };
     el.addEventListener('pointerdown', e => { e.preventDefault(); sndCfg[key] = !sndCfg[key]; saveSnd(); paint(); }); paint(); }
+  const gfxEl = $('snd_gfx');
+  if (gfxEl) { const paintG = () => { gfxEl.textContent = '🎛 Graphismes: ' + (GFX === 'low' ? 'Léger ⚡' : 'Beau ✨'); };
+    gfxEl.addEventListener('pointerdown', e => { e.preventDefault();
+      try { localStorage.setItem('sk_gfx', GFX === 'low' ? 'high' : 'low'); } catch (e2) {}
+      location.reload(); }); paintG(); }
 })();
 // analog thumbstick (touch + mouse)
 window.joy = { x: 0, z: 0, active: false };
@@ -2157,6 +2686,12 @@ let tour = null; // { d, i, next, guided }
 function tryVisit() {
   if (!started || player.riding || tour) return;
   if (player.inVehicle) { tryFuelPump(); return; } // at a pump, E fills the tank
+  if (missionInteract()) return;
+  // a quick prayer at a street shrine steadies the soul
+  for (const sh of shrines) { if ((sh.x - player.pos.x) ** 2 + (sh.z - player.pos.z) ** 2 < 2.4 * 2.4) {
+    if (!tryVisit._prayT || performance.now() > tryVisit._prayT) { tryVisit._prayT = performance.now() + 25000;
+      karma(1.5); toast('🙏 Om! · +dharma', '#8ef58e'); } else toast('🙏', '#8ef58e');
+    return; } }
   // on the Bambai film set, E puts you in the number
   if (FILM.x != null && !FILM.playerIn && FILM.cool <= 0 && (FILM.x - player.pos.x) ** 2 + (FILM.z - player.pos.z) ** 2 < 8 * 8) {
     FILM.playerIn = true; FILM.timer = 9; karma(2); toast('\ud83c\udfac ACTION! Suis la chor\u00e9!', '#ffd24d'); return; }
@@ -2277,7 +2812,32 @@ function pushOutOfVehicle(pos, v, pr) {
 
 // ---------- update ----------
 let curDistrict = -1, started = false;
+// ---------- day & night: a full cycle every ~7 minutes — and the city stays just as busy after dark ----------
+let dayT = .25, dayHemi = null, nightSkyTex = null, daySkyTex = null;
+function updateDayNight(dt) {
+  dayT = (dayT + dt / 420) % 1; // 0=midnight .25=morning .5=noon .75=evening
+  const sunUp = Math.sin(dayT * TAU - Math.PI / 2) * .5 + .5;   // 0 at midnight, 1 at noon
+  const day = clamp((sunUp - .18) / .5, 0, 1);
+  if (sun) { sun.intensity = .08 + day * 1.62;
+    sun.color.setHSL(.08, .75, .5 + day * .22); }
+  if (dayHemi) dayHemi.intensity = .1 + day * .34;
+  if (renderer) renderer.toneMappingExposure = .42 + day * .58;
+  const night = day < .32;
+  if (scene && nightSkyTex && daySkyTex && updateDayNight._night !== night) {
+    updateDayNight._night = night; scene.background = night ? nightSkyTex : daySkyTex; }
+}
+function makeNightSky() {
+  const S = 512, c = document.createElement('canvas'); c.width = S; c.height = S; const g = c.getContext('2d');
+  const gr = g.createLinearGradient(0, 0, 0, S); gr.addColorStop(0, '#060810'); gr.addColorStop(.7, '#141225'); gr.addColorStop(1, '#2a1e30');
+  g.fillStyle = gr; g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 240; i++) { g.fillStyle = `rgba(255,255,${randi(210, 255)},${rand(.25, .9)})`;
+    g.fillRect(rand(0, S), rand(0, S * .75), rand(.7, 1.8), rand(.7, 1.8)); }
+  g.fillStyle = '#e8e4d8'; g.beginPath(); g.arc(S * .72, S * .2, 26, 0, TAU); g.fill();
+  g.fillStyle = '#141225'; g.beginPath(); g.arc(S * .69, S * .185, 22, 0, TAU); g.fill(); // crescent
+  const t = new T.CanvasTexture(c); if ('sRGBEncoding' in T) t.encoding = T.sRGBEncoding; return t;
+}
 function update(dt) {
+  updateDayNight(dt);
   // input direction (camera-relative) — keyboard or analog thumbstick
   let f = (keys['w'] ? 1 : 0) - (keys['s'] ? 1 : 0);
   let s = (keys['d'] ? 1 : 0) - (keys['a'] ? 1 : 0);
@@ -2305,7 +2865,8 @@ function update(dt) {
 
   if (scandal) { scandal.t -= dt; if (scandal.t <= 0) scandal = null; }
   updateNPCs(dt); updateCows(dt); updateVehicles(dt); updateCops(dt); updateMonkeys(dt); updateDogs(dt); recycleLife(dt);
-  updateVendors(dt); updateFilmSet(dt); updatePetrolWala(dt);
+  updateVendors(dt); updateFilmSet(dt); updatePetrolWala(dt); updateMissions(dt); updateBathers(dt);
+  for (const m of seaMats) if (m.map) { m.map.offset.y += dt * .012; m.map.offset.x += dt * .004; } // the water breathes
   Radio.tick();
   updateParticles(dt);
 
@@ -2376,6 +2937,7 @@ function updateFoot(dt, f, s) {
     if (d2 < .8 * .8 && d2 > 1e-6) { const d = Math.sqrt(d2); // shoulder through the crowd — they give way
       const nx2 = player.pos.x + dx / d * .8, nz2 = player.pos.z + dz / d * .8;
       if (!blocked(nx2, nz2)) { n.g.position.x = nx2; n.g.position.z = nz2; } } }
+  player.pos.y = rampHeightAt(player.pos.x, player.pos.z); // ghat steps and the flyover are walkable
   player.g.position.copy(player.pos); player.g.rotation.y = player.yaw;
   animateChar(player.g, player.moving, dt, 3.4 * sprint);
 }
@@ -2393,8 +2955,13 @@ function updateDrive(dt, f, s) {
       smashProp(b, Math.sin(v.yaw) * Math.sign(v.speed), Math.cos(v.yaw) * Math.sign(v.speed), Math.abs(v.speed));
       v.speed *= .78; damage(3); spark(v.g.position); toast('💥 “Mera thela!!”', '#ff9f43'); break; } }
   const nx = v.g.position.x + Math.sin(v.yaw) * v.speed * dt, nz = v.g.position.z + Math.cos(v.yaw) * v.speed * dt;
-  if (!blocked(nx, v.g.position.z)) v.g.position.x = nx; else v.speed *= -.3;
-  if (!blocked(v.g.position.x, nz)) v.g.position.z = nz; else v.speed *= -.3;
+  // the old-quarter galis: too narrow for anything wider than an auto
+  if ((v.hw || .95) > .7 && inGali(nx, nz) && !inGali(v.g.position.x, v.g.position.z)) {
+    v.speed *= -.3; if (!updateDrive._galiT || performance.now() > updateDrive._galiT) { updateDrive._galiT = performance.now() + 2500;
+      toast('🛵 Gali trop étroite! Tuktuk, moto ou vélo seulement', '#ffd24d'); }
+  }
+  else { if (!blocked(nx, v.g.position.z)) v.g.position.x = nx; else v.speed *= -.3;
+  if (!blocked(v.g.position.x, nz)) v.g.position.z = nz; else v.speed *= -.3; }
   // metal on metal: you cannot drive through other vehicles
   for (const o of vehicles) { if (o === v) continue;
     const rr = (v.hl || 2) * .8 + (o.hl || 2) * .8;
@@ -2458,6 +3025,15 @@ function nearPlayerSpot(rmin, rmax, wantSidewalk) {
 let recycleT = 0;
 function recycleLife(dt) {
   recycleT -= dt; if (recycleT > 0) return; recycleT = .4;
+  // hard distance culling: skinned humans beyond the fog cost frames for nothing
+  const R2 = GFX === 'low' ? 115 * 115 : 175 * 175;
+  for (const n of npcs) n.g.visible = n.g.position.distanceToSquared(player.pos) < R2;
+  for (const v of vehicles) v.g.visible = v.g.position.distanceToSquared(player.pos) < R2;
+  for (const vd of vendors) vd.g.visible = vd.g.position.distanceToSquared(player.pos) < R2;
+  for (const bt of bathers) bt.g.visible = bt.g.position.distanceToSquared(player.pos) < R2;
+  for (const d of dogs) d.g.visible = d.g.position.distanceToSquared(player.pos) < R2;
+  for (const c of cows) c.g.visible = c.g.position.distanceToSquared(player.pos) < R2;
+  for (const m of monkeys) m.g.visible = m.g.position.distanceToSquared(player.pos) < R2;
   for (const n of npcs) { if (n.down > 0) continue;
     if (n.g.position.distanceToSquared(player.pos) > 130 * 130) { const p = nearPlayerSpot(35, 75, true);
       if (p) { n.g.position.set(p.x, 0, p.z); n.pause = 0; } } }
@@ -2560,7 +3136,7 @@ function updateVehicles(dt) {
     }
     const nx = v.g.position.x + Math.sin(v.aiDir) * v.speed * dt, nz = v.g.position.z + Math.cos(v.aiDir) * v.speed * dt;
     // traffic stays ON the road (not on sidewalks) and off obstacles
-    if (onRoad(nx, nz) && !blocked(nx, nz) && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { v.g.position.x = nx; v.g.position.z = nz; v.yaw = lerp(v.yaw, v.aiDir, .1); v.g.rotation.y = v.yaw; }
+    if (onRoad(nx, nz) && !blocked(nx, nz) && !((v.hw || .95) > .7 && inGali(nx, nz)) && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { v.g.position.x = nx; v.g.position.z = nz; v.yaw = lerp(v.yaw, v.aiDir, .1); v.g.rotation.y = v.yaw; }
     else { v.aiDir += (Math.random() < .5 ? 1 : -1) * Math.PI / 2; v.aiTimer = rand(1, 2.5); }
   }
 }
@@ -2682,8 +3258,9 @@ function startGame() {
   // build player from chosen opts
   player.pos.copy(findSpawn());
   player.g = makeCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
-  spawnNPCs(40); spawnCows(9); spawnVehicles(44); spawnMonkeys(12); spawnDogs(13);
-  spawnVendors(); spawnDancers(); // the rigged human is loaded by now — staff the stalls, roll camera
+  const N = GFX === 'low' ? .62 : 1; // the light tier thins the crowd, the fog hides the difference
+  spawnNPCs(Math.round(40 * N)); spawnCows(Math.round(9 * N)); spawnVehicles(Math.round(44 * N)); spawnMonkeys(Math.round(12 * N)); spawnDogs(Math.round(13 * N));
+  spawnVendors(); spawnDancers(); spawnBathers(); // the rigged human is loaded by now — staff the stalls, roll camera, fill the river
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
 }
@@ -2722,6 +3299,14 @@ function drawMinimap3d() {
     g.fillRect(px2 - 2.6, pz2 - 2.6, 5.2, 5.2); }
   if (FILM.x != null) { g.fillStyle = '#e85794'; const fx2 = (FILM.x + HALF) / WORLD * 1024, fz2 = (FILM.z + HALF) / WORLD * 1024;
     g.beginPath(); g.arc(fx2, fz2, 3, 0, TAU); g.fill(); }
+  // gold: mission givers, and the active objective pulsing
+  g.fillStyle = '#ffd700';
+  for (const M of MISSIONS) { if (M.cool > 0 || (player.mission && player.mission.M === M)) continue;
+    const gx = (M.giver.x + HALF) / WORLD * 1024, gz = (M.giver.z + HALF) / WORLD * 1024;
+    g.beginPath(); g.arc(gx, gz, 3, 0, TAU); g.fill(); }
+  if (player.mission) { const st = player.mission.M.stages[player.mission.stage];
+    const tx2 = (st.x + HALF) / WORLD * 1024, tz2 = (st.z + HALF) / WORLD * 1024;
+    g.beginPath(); g.arc(tx2, tz2, 3.4 + Math.sin(performance.now() / 180) * 1.4, 0, TAU); g.fill(); }
   g.restore();
   g.save(); g.translate(W / 2, H / 2 + 20);
   g.fillStyle = '#ffffff'; g.strokeStyle = 'rgba(0,0,0,.6)'; g.lineWidth = 2;
@@ -2753,9 +3338,9 @@ function toggleBigMap() { if (!started) return; const el = $('bigmap'); el.class
 // ---------- Boot ----------
 function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
-  initThree(); buildCity(); initPreview(); wireCreator(); applyHand();
+  initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 20'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 21'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -2787,6 +3372,8 @@ function boot() {
   window.__opts = opts;
   window.__pchar = () => pChar;
   window.__film = () => FILM.x == null ? null : [FILM.x, FILM.z, FILM.dancers.length];
+  window.__cam = (yaw) => { cam.yaw = yaw; cam.freeUntil = performance.now() + 60000; };
+  window.__time = (t) => { dayT = t; };
   window.__previewFemale = () => { previewSpin = false; if (pChar) pScene.remove(pChar);
     pChar = makeHuman({ female: true, kurta: '#c2185b', dhoti: '#f9a825', skin: pick(SKINS), hair: 'bun' });
     pChar.scale.setScalar(.62); pChar.rotation.y = 0; pScene.add(pChar); return !!HEROINE; };
