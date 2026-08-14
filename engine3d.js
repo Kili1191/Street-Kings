@@ -679,6 +679,7 @@ function animateHuman(g, moving, dt, speed) {
 const makeCharacter = o => HERO ? makeHuman(o) : buildCharacter(o);
 
 function animateChar(g, moving, dt, speed) {
+  if (!g.visible) return; // culled by distance: no skeleton work for someone nobody can see
   if (g.userData.human) return animateHuman(g, moving, dt, speed);
   const u = g.userData;
   // combat combo: jab (0), cross (1), kick (2) — with weight shift & guard
@@ -766,10 +767,44 @@ function makeSky() {
 const GFX = (() => { try { const saved = localStorage.getItem('sk_gfx'); if (saved) return saved; } catch (e) {}
   const mob = (matchMedia && matchMedia('(pointer:coarse)').matches) || innerWidth < 900 || (navigator.hardwareConcurrency || 8) <= 4;
   return mob ? 'low' : 'high'; })();
+// ---------- adaptive quality: the game watches its own framerate and sheds work until it's smooth ----------
+// Order of sacrifice, cheapest-looking first: resolution → bloom → shadows. It climbs back up when
+// the frames come easily again, so a heavy district costs you sharpness for a moment, not the session.
+const ADAPT = { base: 1, scale: 1, t0: 0, frames: 0, until: 0, bloomOff: false, shadowsOff: false, told: false };
+function adaptQuality() {
+  if (!renderer) return;
+  // WALL-CLOCK timing, not game time: game dt is capped at 50ms, so on a machine crawling at 3fps
+  // a dt-based counter would take twenty seconds to notice — exactly when help is needed fastest.
+  const now = performance.now();
+  if (!ADAPT.t0) { ADAPT.t0 = now; ADAPT.frames = 0; ADAPT.until = now + 2500; return; }
+  ADAPT.frames++;
+  const el = now - ADAPT.t0;
+  if (now < ADAPT.until) { if (el > 1200) { ADAPT.t0 = now; ADAPT.frames = 0; } return; }
+  if (el < 1200) return;                           // judge on a full second, never on one bad frame
+  const fps = ADAPT.frames * 1000 / el;
+  ADAPT.t0 = now; ADAPT.frames = 0;
+  if (fps < 45) {
+    if (ADAPT.scale > .62) { ADAPT.scale = Math.max(.62, ADAPT.scale - .14); renderer.setPixelRatio(ADAPT.base * ADAPT.scale); if (composer) composer.setSize(innerWidth, innerHeight); }
+    else if (composer && !ADAPT.bloomOff) { ADAPT.bloomOff = true; composer = null; }   // drop the bloom pass
+    else if (!ADAPT.shadowsOff && renderer.shadowMap.enabled) { ADAPT.shadowsOff = true; // and finally the shadows
+      renderer.shadowMap.enabled = false; if (sun) sun.castShadow = false;
+      scene.traverse(o => { if (o.isMesh) o.castShadow = false; }); }
+    else return;
+    ADAPT.until = now + 2000;
+    if (!ADAPT.told) { ADAPT.told = true; toast('⚙️ Qualité réduite pour rester fluide · 🔊 → Graphismes', '#8ec9f5'); }
+  } else if (fps > 58 && ADAPT.scale < 1 && !ADAPT.shadowsOff) {
+    ADAPT.scale = Math.min(1, ADAPT.scale + .1); renderer.setPixelRatio(ADAPT.base * ADAPT.scale);
+    if (composer) composer.setSize(innerWidth, innerHeight);
+    ADAPT.until = now + 4000;
+  }
+}
 function initThree() {
   const low = GFX === 'low';
   renderer = new T.WebGLRenderer({ canvas: $('game'), antialias: !low, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(low ? 1 : Math.min(devicePixelRatio || 1, 1.75));
+  // a Retina laptop reports devicePixelRatio 2 — that is FOUR times the pixels to shade every
+  // frame, and it is the single biggest cost in the whole engine. Cap it, then let ADAPT tune it.
+  ADAPT.base = low ? 1 : Math.min(devicePixelRatio || 1, 1.5);
+  renderer.setPixelRatio(ADAPT.base);
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = !low; renderer.shadowMap.type = T.PCFSoftShadowMap;
   if ('outputColorSpace' in renderer && T.SRGBColorSpace) renderer.outputColorSpace = T.SRGBColorSpace;
@@ -3819,11 +3854,27 @@ function nearPlayerSpot(rmin, rmax, wantSidewalk) {
   }
   return null;
 }
+// The city is built from thousands of hand-placed details — single fruits on a cart, marigolds on
+// the steps, bones in the ash. Each one is its own draw call, and a laptop chokes long before the
+// GPU does. None of them is legible past a few metres, so they switch off once you walk away.
+const tinyProps = [];
+function registerTinyProps() {
+  const TMP = new T.Vector3();
+  const inCharacter = o => { let p = o; while (p) { if (p.userData && (p.userData.human || p.userData.seat || p.userData.dyn)) return true; p = p.parent; } return false; };
+  scene.traverse(o => {
+    if (!o.isMesh || o.isSkinnedMesh || !o.geometry || inCharacter(o)) return;
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+    const bs = o.geometry.boundingSphere; if (!bs) return;
+    const s = Math.max(Math.abs(o.scale.x), Math.abs(o.scale.y), Math.abs(o.scale.z));
+    if (bs.radius * s < .5) { o.getWorldPosition(TMP); tinyProps.push({ o, x: TMP.x, z: TMP.z }); }
+  });
+}
 let recycleT = 0;
 function recycleLife(dt) {
   recycleT -= dt; if (recycleT > 0) return; recycleT = .4;
   // hard distance culling: skinned humans beyond the fog cost frames for nothing
-  const R2 = GFX === 'low' ? 115 * 115 : 175 * 175;
+  // fog swallows everything past ~150m anyway, so animating skinned crowds out there is pure waste
+  const R2 = GFX === 'low' ? 105 * 105 : 140 * 140;
   for (const n of npcs) n.g.visible = n.g.position.distanceToSquared(player.pos) < R2;
   for (const v of vehicles) v.g.visible = v.g.position.distanceToSquared(player.pos) < R2;
   for (const vd of vendors) vd.g.visible = vd.g.position.distanceToSquared(player.pos) < R2;
@@ -3833,6 +3884,9 @@ function recycleLife(dt) {
   for (const c of cows) c.g.visible = c.g.position.distanceToSquared(player.pos) < R2;
   for (const m of monkeys) m.g.visible = m.g.position.distanceToSquared(player.pos) < R2;
   for (const e of elephants) e.g.visible = e.g.position.distanceToSquared(player.pos) < R2;
+  const TR2 = GFX === 'low' ? 34 * 34 : 52 * 52;   // the little details: legible close up, noise beyond
+  for (const t of tinyProps) { const dx = t.x - player.pos.x, dz = t.z - player.pos.z;
+    t.o.visible = dx * dx + dz * dz < TR2; }
   for (const n of npcs) { if (n.down > 0) continue;
     if (n.g.position.distanceToSquared(player.pos) > 130 * 130) { const p = nearPlayerSpot(35, 75, true);
       if (p) { n.g.position.set(p.x, 0, p.z); n.pause = 0; } } }
@@ -4004,7 +4058,7 @@ function updateHUD() {
 // ---------- loop ----------
 function frame() { requestAnimationFrame(frame); if (!renderer) return; const dt = Math.min(.05, clock.getDelta());
   if (previewOn) { updatePreview(dt); if (pRenderer) pRenderer.render(pScene, pCam); }
-  else { if (started) update(dt); if (composer) composer.render(); else renderer.render(scene, camera); } }
+  else { if (started) { update(dt); adaptQuality(); } if (composer) composer.render(); else renderer.render(scene, camera); } }
 
 // ---------- Character creator preview ----------
 let pRenderer, pScene, pCam, pChar, previewOn = true, pClock;
@@ -4094,6 +4148,8 @@ function startGame() {
   const N = GFX === 'low' ? .5 : 1.2; // dense on the pretty tier; the light tier thins the crowd, the fog hides it
   spawnNPCs(Math.round(44 * N)); spawnCows(Math.round(9 * N)); spawnVehicles(Math.round(46 * N)); spawnMonkeys(Math.round(12 * N) + 8); spawnDogs(Math.round(13 * N)); spawnElephants(GFX === 'low' ? 2 : 3);
   spawnVendors(); spawnDancers(); spawnBathers(); // the rigged human is loaded by now — staff the stalls, roll camera, fill the river
+  for (const r of ripples) r.m.userData.dyn = true; // flotsam drifts downstream: never cull it on a stale position
+  registerTinyProps();
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
 }
@@ -4177,7 +4233,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 34'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 35'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -4190,6 +4246,11 @@ function boot() {
   window.__temples = () => TEMPLES;
   window.__swim = () => ({ swim: player.swim, dive: player.dive, breath: player.breath, x: player.pos.x, y: player.pos.y, z: player.pos.z });
   window.__ele = () => elephants.map(e => ({ x: +e.g.position.x.toFixed(1), z: +e.g.position.z.toFixed(1) }));
+  window.__perf = () => { let meshes = 0, skinned = 0, tris = 0;
+    scene.traverse(o => { if (o.isSkinnedMesh) skinned++; if (o.isMesh) { meshes++; const gg = o.geometry;
+      if (gg && gg.index) tris += gg.index.count / 3; else if (gg && gg.attributes.position) tris += gg.attributes.position.count / 3; } });
+    return { meshes, skinned, tris: Math.round(tris), calls: renderer.info.render.calls, buildings: buildings.length, npcs: npcs.length, vehicles: vehicles.length }; };
+  window.__adapt = () => ({ base: ADAPT.base, scale: +ADAPT.scale.toFixed(2), bloomOff: ADAPT.bloomOff, shadowsOff: ADAPT.shadowsOff, ratio: renderer.getPixelRatio() });
   window.__probe = (w) => { const hits = []; scene.traverse(o => { if (o.isMesh && o.geometry && o.geometry.parameters && Math.abs((o.geometry.parameters.width || 0) - w) < .01) {
     const wp = o.getWorldPosition(new T.Vector3()); hits.push([+wp.x.toFixed(1), +wp.y.toFixed(1), +wp.z.toFixed(1)]); } }); return hits.slice(0, 8); };
   window.__vend = () => ({ vendors: vendors.length, patrons: patrons.length, spots: vendorSpots.length,
