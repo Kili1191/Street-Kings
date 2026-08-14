@@ -604,6 +604,17 @@ function animateHuman(g, moving, dt, speed) {
   h.mixer.update(dt);
   if (h.seated) { // driving pose: hips/knees bent, hands reach FORWARD to the wheel — never up in the air
     const set = (b, x) => { if (b) b.rotation.x = x; };
+    if (h.pedal !== undefined) { // on a bicycle: legs drive the cranks in opposition, back bowed to the bars
+      const p = h.pedal;
+      set(h.rLeg, -.92 + Math.sin(p) * .4); set(h.lLeg, -.92 + Math.sin(p + Math.PI) * .4);
+      set(h.rCalf, .98 - Math.sin(p) * .3); set(h.lCalf, .98 - Math.sin(p + Math.PI) * .3);
+      if (h.rArm) { h.rArm.rotation.x -= .66; h.rArm.rotation.z -= .1; }
+      if (h.lArm) { h.lArm.rotation.x -= .66; h.lArm.rotation.z += .1; }
+      if (h.rFore) h.rFore.rotation.x -= .3;
+      if (h.lFore) h.lFore.rotation.x -= .3;
+      if (h.spine) h.spine.rotation.x += .3; // the roadster crouch
+      return;
+    }
     set(h.rLeg, -1.3); set(h.lLeg, -1.3); set(h.rCalf, 1.35); set(h.lCalf, 1.35);
     // arms: relative to the animated pose, so they fold down+forward from wherever idle left them
     if (h.rArm) { h.rArm.rotation.x -= .5; h.rArm.rotation.z -= .12; }
@@ -2325,16 +2336,42 @@ const CHAT = [
   ['“Susegad, friend. Why hurry?”', '“Feni? Careful, it looks like water. It is NOT water.”', '“Beach is that side. Everything else — also beach.”'],
 ];
 // ---------- street vendors: they stand at their stalls and actually cook ----------
+const patrons = [];
 function spawnVendors() {
   if (!HERO) return;
-  let count = 0;
-  const capV = GFX === 'low' ? 10 : 16;
-  for (const s of vendorSpots) { // the mala-walas at the temple gates always show up for work
-    if (s.kind !== 'phool' && (count >= capV || Math.random() < .45)) continue;
-    const o = npcLook(districtAt(s.x, s.z));
-    const g = makeHuman(o); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw;
-    scene.add(g); vendors.push({ g, kind: s.kind, phase: rand(0, TAU), h: g.userData.human, called: 0 });
-    count++; }
+  // a POOL of walas that follows the trade: far-off vendors quietly re-man the stalls around the
+  // player (see recycleLife), so every stall you walk past is staffed — without 176 live humans
+  const nV = Math.min(GFX === 'low' ? 14 : 26, vendorSpots.length), nP = GFX === 'low' ? 5 : 12;
+  for (let i = 0; i < nV; i++) {
+    const s = vendorSpots[i];
+    const g = makeHuman(npcLook(districtAt(s.x, s.z))); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw;
+    scene.add(g); s.staffed = true;
+    vendors.push({ g, kind: s.kind, spot: s, phase: rand(0, TAU), h: g.userData.human, called: 0 });
+  }
+  for (let c = 0; c < nP; c++) { // customers wait across the counter — sipping chai, arguing the price
+    const v = vendors[c % vendors.length]; if (!v) break;
+    const s = v.spot, fs2 = Math.sin(s.yaw), fc2 = Math.cos(s.yaw);
+    const cg = makeHuman(npcLook(districtAt(s.x, s.z)));
+    cg.position.set(s.x + fs2 * 2.2 + fc2 * rand(-.7, .7), 0, s.z + fc2 * 2.2 - fs2 * rand(-.7, .7));
+    cg.rotation.y = s.yaw + Math.PI + rand(-.35, .35);
+    const sip = Math.random() < .55, h2 = cg.userData.human;
+    if (sip && h2 && h2.rHand) { const ws2 = h2.rHand.getWorldScale(new T.Vector3()).x || 1; // the little chai glass
+      const glass = new T.Mesh(new T.CylinderGeometry(.028 / ws2, .022 / ws2, .07 / ws2, 8),
+        new T.MeshStandardMaterial({ color: '#d9b98a', roughness: .3, transparent: true, opacity: .85 }));
+      h2.rHand.add(glass); glass.position.set(0, .04 / ws2, 0); }
+    scene.add(cg); patrons.push({ g: cg, h: h2, t: rand(0, TAU), sip });
+  }
+}
+function updatePatrons(dt) {
+  for (const c of patrons) { if (c.g.position.distanceToSquared(player.pos) > 45 * 45) continue;
+    c.t += dt; animateChar(c.g, false, dt, 0);
+    const h = c.h; if (!h) continue;
+    if (c.sip) { const ph = (Math.sin(c.t * .9) + 1) / 2; // the glass rises, the glass falls
+      if (h.rArm) { h.rArm.rotation.x = -.4 - ph * 1.1; h.rArm.rotation.z = -.18; }
+      if (h.rFore) h.rFore.rotation.x = -.5 - ph * .55; }
+    else if (h.rArm) h.rArm.rotation.x = -.3 + Math.sin(c.t * 1.5) * .22; // haggling hands
+    if (h.spine) h.spine.rotation.y = Math.sin(c.t * .4) * .1;
+  }
 }
 const VENDOR_CRIES = { chai: '“Chaaai chai chai! Garam chai!”', fry: '“Garam jalebi! Samosa le lo!”', panipuri: '“Pani puri, ekdum fresh!”', phool: '“Mala le lo! Phool, prasad, nariyal — sab taaza!”' };
 function updateVendors(dt) {
@@ -2773,7 +2810,8 @@ function buildBicycle() {
     m.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), d.normalize());
     m.position.copy(a.clone().add(b).multiplyScalar(.5)); g.add(m); return m; };
   const V3 = (x, y, z) => new T.Vector3(x, y, z);
-  // spoked wheels
+  // spoked wheels — kept in userData so they actually TURN when ridden
+  g.userData.wheels = [];
   for (const sz of [.62, -.62]) {
     const wg = new T.Group();
     const tyre = new T.Mesh(new T.TorusGeometry(.42, .03, 10, 24), mat('#141416', .95)); wg.add(tyre);
@@ -2782,6 +2820,7 @@ function buildBicycle() {
       sp.rotation.z = i / 8 * Math.PI; wg.add(sp); }
     const hub = new T.Mesh(new T.CylinderGeometry(.03, .03, .07, 8), chrome); hub.rotation.x = Math.PI / 2; wg.add(hub);
     wg.rotation.y = Math.PI / 2; wg.position.set(0, .42, sz); g.add(wg);
+    g.userData.wheels.push(wg);
     // black roadster fender over the top
     const fen = new T.Mesh(new T.CylinderGeometry(.455, .455, .06, 14, 1, true, Math.PI * (sz > 0 ? 1.05 : 1.45), Math.PI * .55), black);
     fen.rotation.z = Math.PI / 2; fen.position.set(0, .42, sz); g.add(fen);
@@ -2792,8 +2831,15 @@ function buildBicycle() {
   // chainguard: full-cover disc, the desi signature
   const guard = new T.Mesh(new T.CylinderGeometry(.16, .16, .035, 14), mat('#24262c', .5));
   guard.rotation.z = Math.PI / 2; guard.position.set(.05, .46, .05); g.add(guard);
-  for (const px of [-.09, .09]) { const ped = new T.Mesh(new T.BoxGeometry(.05, .025, .1), mat('#3a3a40', .8));
-    ped.position.set(px, .46 + (px > 0 ? .1 : -.1), .05 + (px > 0 ? .06 : -.06)); g.add(ped); }
+  // a real crankset: arms opposed at 180°, revolving around the bottom bracket when pedalled
+  const crank = new T.Group(); crank.position.set(0, .46, .05);
+  for (const sx of [-.095, .095]) {
+    const arm = new T.Mesh(new T.BoxGeometry(.02, .19, .035), mat('#2a2c32', .6));
+    arm.position.set(sx, sx > 0 ? .09 : -.09, 0); crank.add(arm);
+    const ped = new T.Mesh(new T.BoxGeometry(.1, .022, .11), mat('#3a3a40', .8));
+    ped.position.set(sx * 1.7, sx > 0 ? .18 : -.18, 0); crank.add(ped);
+  }
+  g.add(crank); g.userData.crank = crank;
   // sprung leather saddle + rear carrier rack
   const seatp = new T.Mesh(new T.BoxGeometry(.17, .06, .28), mat('#4a3320', .7)); seatp.position.set(0, .97, -.3); g.add(seatp);
   const rack = new T.Mesh(new T.BoxGeometry(.15, .02, .34), chrome); rack.position.set(0, .8, -.6); g.add(rack);
@@ -3061,7 +3107,7 @@ function tryEnterExit() {
   if (player.inVehicle) { // step out at the door
     const v = player.inVehicle;
     Radio.setOn(false);
-    const u = player.g.userData; if (u.human) u.human.seated = false;
+    const u = player.g.userData; if (u.human) { u.human.seated = false; u.human.pedal = undefined; }
     scene.add(player.g);
     const door = doorWorld(v);
     player.pos.set(door.x, 0, door.z); player.g.position.copy(player.pos);
@@ -3530,7 +3576,7 @@ function update(dt) {
 
   if (scandal) { scandal.t -= dt; if (scandal.t <= 0) scandal = null; }
   updateNPCs(dt); updateCows(dt); updateElephants(dt); updateVehicles(dt); updateCops(dt); updateMonkeys(dt); updateDogs(dt); recycleLife(dt);
-  updateVendors(dt); updateFilmSet(dt); updatePetrolWala(dt); updateMissions(dt); updateBathers(dt);
+  updateVendors(dt); updatePatrons(dt); updateFilmSet(dt); updatePetrolWala(dt); updateMissions(dt); updateBathers(dt);
   for (const m of seaMats) if (m.map) { m.map.offset.y += dt * .012; m.map.offset.x += dt * .004; } // the water breathes
   Radio.tick();
   updateParticles(dt);
@@ -3679,6 +3725,13 @@ function updateDrive(dt, f, s) {
   }
   else { if (!blocked(nx, v.g.position.z)) v.g.position.x = nx; else v.speed *= -.3;
   if (!blocked(v.g.position.x, nz)) v.g.position.z = nz; else v.speed *= -.3; }
+  if (v.kind === 'cycle') { // the wheels turn, the cranks revolve, the legs pedal — all geared to real speed
+    const ud = v.g.userData, u2 = player.g.userData;
+    ud.spin = (ud.spin || 0) + v.speed * dt / .42;
+    if (ud.wheels) for (const wj of ud.wheels) wj.rotation.z = ud.spin;
+    if (ud.crank) ud.crank.rotation.x = ud.spin * .48;
+    if (u2.human) u2.human.pedal = ud.spin * .48;
+  }
   // metal on metal: you cannot drive through other vehicles
   for (const o of vehicles) { if (o === v) continue;
     const rr = (v.hl || 2) * .8 + (o.hl || 2) * .8;
@@ -3748,6 +3801,7 @@ function recycleLife(dt) {
   for (const n of npcs) n.g.visible = n.g.position.distanceToSquared(player.pos) < R2;
   for (const v of vehicles) v.g.visible = v.g.position.distanceToSquared(player.pos) < R2;
   for (const vd of vendors) vd.g.visible = vd.g.position.distanceToSquared(player.pos) < R2;
+  for (const pt of patrons) pt.g.visible = pt.g.position.distanceToSquared(player.pos) < R2;
   for (const bt of bathers) bt.g.visible = bt.g.position.distanceToSquared(player.pos) < R2;
   for (const d of dogs) d.g.visible = d.g.position.distanceToSquared(player.pos) < R2;
   for (const c of cows) c.g.visible = c.g.position.distanceToSquared(player.pos) < R2;
@@ -3760,6 +3814,24 @@ function recycleLife(dt) {
     if (v.g.position.distanceToSquared(player.pos) > 170 * 170) { const p = nearPlayerSpot(55, 110, false);
       if (p) { v.g.position.set(p.x, 0, p.z); } } }
   for (const d of dogs) { if (d.g.position.distanceToSquared(player.pos) > 140 * 140) { const p = nearPlayerSpot(30, 70, true); if (p) d.g.position.set(p.x, 0, p.z); } }
+  // the walas follow the trade: a vendor left far behind re-mans an empty stall near the player
+  for (const v of vendors) { if (v.g.position.distanceToSquared(player.pos) < 130 * 130) continue;
+    let best = null, bd = Infinity;
+    for (const s of vendorSpots) { if (s.staffed) continue;
+      const d2 = (s.x - player.pos.x) ** 2 + (s.z - player.pos.z) ** 2;
+      if (d2 > 45 * 45 && d2 < 110 * 110 && d2 < bd) { bd = d2; best = s; } }
+    if (!best) break;
+    if (v.spot) v.spot.staffed = false;
+    v.spot = best; best.staffed = true; v.kind = best.kind;
+    v.g.position.set(best.x, 0, best.z); v.g.rotation.y = best.yaw;
+  }
+  for (const c of patrons) { if (c.g.position.distanceToSquared(player.pos) < 130 * 130) continue;
+    const v = vendors[randi(0, vendors.length - 1)]; if (!v || !v.spot) continue;
+    if (v.g.position.distanceToSquared(player.pos) > 100 * 100) continue;
+    const s = v.spot, fs2 = Math.sin(s.yaw), fc2 = Math.cos(s.yaw);
+    c.g.position.set(s.x + fs2 * 2.2 + fc2 * rand(-.7, .7), 0, s.z + fc2 * 2.2 - fs2 * rand(-.7, .7));
+    c.g.rotation.y = s.yaw + Math.PI + rand(-.35, .35);
+  }
 }
 function updateNPCs(dt) {
   // corpses shrink away as the dogs and monkeys feed, then the person quietly respawns elsewhere
@@ -4075,7 +4147,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 31'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 32'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -4090,6 +4162,8 @@ function boot() {
   window.__ele = () => elephants.map(e => ({ x: +e.g.position.x.toFixed(1), z: +e.g.position.z.toFixed(1) }));
   window.__probe = (w) => { const hits = []; scene.traverse(o => { if (o.isMesh && o.geometry && o.geometry.parameters && Math.abs((o.geometry.parameters.width || 0) - w) < .01) {
     const wp = o.getWorldPosition(new T.Vector3()); hits.push([+wp.x.toFixed(1), +wp.y.toFixed(1), +wp.z.toFixed(1)]); } }); return hits.slice(0, 8); };
+  window.__vend = () => ({ vendors: vendors.length, patrons: patrons.length, spots: vendorSpots.length,
+    first: vendors.slice(0, 4).map(v => ({ x: +v.g.position.x.toFixed(1), z: +v.g.position.z.toFixed(1), yaw: +v.g.rotation.y.toFixed(2) })) });
   window.__spots = () => ({ taj: { x: (RIVER_X1 + FAR_X) / 2 - 1, z: -HALF + CELL + (CELL) * .24 }, aghori: AGHORI, adiyogi: { x: CELL, z: 0 }, hawa: { x: CELL, z: -CELL }, galtaji: { x: CELL + 37, z: -CELL + 37 } });
   window.__tpwoman = () => { const n = npcs.find(n2 => n2.female); if (!n) return false;
     player.pos.set(n.g.position.x + 2.2, 0, n.g.position.z); player.g.position.copy(player.pos);
