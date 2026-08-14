@@ -732,8 +732,8 @@ function makeSky() {
   glow.addColorStop(0, 'rgba(255,238,200,.95)'); glow.addColorStop(.18, 'rgba(255,205,130,.55)'); glow.addColorStop(1, 'rgba(255,190,110,0)');
   g.fillStyle = glow; g.fillRect(0, 0, W, H);
   // hazy streaked clouds
-  g.globalAlpha = .16; g.fillStyle = '#fbe6c8';
-  for (let i = 0; i < 9; i++) { const y = rand(H * .2, H * .62), w = rand(70, 190), h = rand(4, 10);
+  g.globalAlpha = .08; g.fillStyle = '#fbe6c8'; // barely-there haze streaks, never solid discs
+  for (let i = 0; i < 6; i++) { const y = rand(H * .18, H * .55), w = rand(110, 220), h = rand(2.5, 5);
     g.beginPath(); g.ellipse(rand(0, W), y, w, h, 0, 0, TAU); g.fill(); }
   g.globalAlpha = 1;
   const tex = new T.CanvasTexture(c); if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
@@ -1122,7 +1122,7 @@ function buildGanga() {
   for (let i = 0; i < 40; i++) { rg.strokeStyle = 'rgba(220,230,210,.14)'; rg.lineWidth = rand(1, 2);
     const y = rand(0, 128); rg.beginPath(); rg.moveTo(0, y); rg.bezierCurveTo(42, y + rand(-5, 5), 84, y + rand(-5, 5), 128, y); rg.stroke(); }
   const rt = new T.CanvasTexture(rc); rt.wrapS = rt.wrapT = T.RepeatWrapping; rt.repeat.set(6, 5);
-  const river = new T.Mesh(new T.PlaneGeometry(70, len), new T.MeshStandardMaterial({ map: rt, roughness: .3, metalness: .1, transparent: true, opacity: .94, side: T.DoubleSide }));
+  const river = new T.Mesh(new T.PlaneGeometry(70, len), new T.MeshStandardMaterial({ map: rt, color: '#b8c2ac', roughness: .5, metalness: .08, transparent: true, opacity: .96, side: T.DoubleSide })); // murky, not sun-bleached
   river.rotation.x = -Math.PI / 2; river.position.set(-HALF - 35 + 10, -.14, zm); scene.add(river);
   seaMats.push(river.material);
   // stone ghat steps, some painted in worship stripes
@@ -1212,8 +1212,8 @@ function buildGanga() {
     um.position.set(-HALF + 14.2, 2.2, pz); um.castShadow = true; scene.add(um);
     const pole = new T.Mesh(new T.CylinderGeometry(.05, .05, 2.2, 6), mat('#8a6b3a')); pole.position.set(-HALF + 14.2, 1.1, pz); scene.add(pole); }
   // ---- the FAR BANK: wild sand across the wide water ----
-  const bank = new T.Mesh(new T.PlaneGeometry(RIVER_X1 - FAR_X, len), new T.MeshStandardMaterial({ color: '#c9b287', roughness: 1 }));
-  bank.rotation.x = -Math.PI / 2; bank.position.set((RIVER_X1 + FAR_X) / 2, .04, zm); bank.receiveShadow = true; scene.add(bank);
+  const bank = new T.Mesh(new T.PlaneGeometry(RIVER_X1 - FAR_X + 3, len), new T.MeshStandardMaterial({ color: '#c9b287', roughness: 1 }));
+  bank.rotation.x = -Math.PI / 2; bank.position.set((RIVER_X1 + FAR_X) / 2 + 1.5, .02, zm); bank.receiveShadow = true; scene.add(bank); // runs a few metres into the water so you wade out onto sand
   for (let i = 0; i < 26; i++) { // reeds and river stones scattered along the shore
     const rx = rand(RIVER_X1 - 2, RIVER_X1 + 1), rz2 = rand(z0 + 3, z1 - 3);
     if (Math.random() < .55) { const reed = new T.Mesh(new T.CylinderGeometry(.02, .035, rand(.8, 1.6), 5), mat('#8a9a5a', .95));
@@ -3668,7 +3668,7 @@ function updateFoot(dt, f, s) {
   player.pos.y = rampHeightAt(player.pos.x, player.pos.z); // ghat steps and the flyover are walkable
   // ---- swimming, GTA-style: past the last step the bed drops away ----
   const nowMs = performance.now();
-  const deepWater = inRiverWater(player.pos.x, player.pos.z) && player.pos.x < RIVER_X0 - 2.2;
+  const deepWater = inRiverWater(player.pos.x, player.pos.z) && player.pos.x < RIVER_X0 - 2.2 && player.pos.x > RIVER_X1 + 2.4; // you WADE OUT near either shore — no crawling up the sand
   if (deepWater && !player.swim) { player.swim = true; player.dive = false; player.breath = 100;
     toast('🏊 Ganga mein! 👊/J — plonger · l\'autre rive est loin…', '#7ec3e8'); }
   if (!deepWater && player.swim) { player.swim = false; player.dive = false; player.g.rotation.x = 0; underwaterFx(false); }
@@ -3699,7 +3699,10 @@ function updateFoot(dt, f, s) {
   animateChar(player.g, player.moving, dt, player.swim ? 2.7 : 3.4 * sprint);
   if (player.swim) { const h = player.g.userData.human, tk = nowMs / 1000 * (player.moving ? 4.2 : 1.5);
     if (h) { if (h.rArm) { h.rArm.rotation.x = -1 + Math.sin(tk) * 1.35; h.rArm.rotation.z = -.25; } // freestyle strokes
-      if (h.lArm) { h.lArm.rotation.x = -1 + Math.sin(tk + Math.PI) * 1.35; h.lArm.rotation.z = .25; } } }
+      if (h.lArm) { h.lArm.rotation.x = -1 + Math.sin(tk + Math.PI) * 1.35; h.lArm.rotation.z = .25; }
+      if (h.rLeg) h.rLeg.rotation.x = -.15 + Math.sin(tk * 1.8) * .38; // flutter kick, always churning
+      if (h.lLeg) h.lLeg.rotation.x = -.15 + Math.sin(tk * 1.8 + Math.PI) * .38;
+      if (h.rCalf) h.rCalf.rotation.x = .3; if (h.lCalf) h.lCalf.rotation.x = .3; } }
 }
 function updateDrive(dt, f, s) {
   const v = player.inVehicle;
@@ -4096,6 +4099,10 @@ function drawMinimap3d() {
   g.fillStyle = '#101014'; g.fillRect(0, 0, W, H);
   const scale = 2.1, mx = (player.pos.x + HALF) / WORLD * 1024, mz = (player.pos.z + HALF) / WORLD * 1024;
   g.translate(W / 2, H / 2 + 20); g.rotate(cam.yaw + Math.PI); g.scale(scale, scale); g.translate(-mx, -mz);
+  // the river and the far bank live beyond the city map's edge — paint them so the minimap never goes black
+  const u2m = v => (v + HALF) / WORLD * 1024, mzTop = u2m(-HALF + CELL), mzH = CELL / WORLD * 1024;
+  g.fillStyle = '#5a7a5e'; g.fillRect(u2m(RIVER_X1) - 4, mzTop, u2m(RIVER_X0) - u2m(RIVER_X1) + 4, mzH);
+  g.fillStyle = '#c9b287'; g.fillRect(u2m(FAR_X), mzTop, u2m(RIVER_X1) - u2m(FAR_X), mzH);
   g.drawImage(mapCanvas, 0, 0);
   g.fillStyle = '#4a86ff';
   for (const c of cops) { const cx2 = (c.g.position.x + HALF) / WORLD * 1024, cz2 = (c.g.position.z + HALF) / WORLD * 1024;
@@ -4147,7 +4154,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 32'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 33'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
