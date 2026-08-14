@@ -27,6 +27,7 @@ function applyHand() { document.body.classList.toggle('righty', settings.hand ==
 const opts = { name:'Raja Bahadur', skin:'#c68642', turban:true, turbanColor:'#ff9933', shades:false, scarf:'#c0392b', outfit:'sherwani',
   kurta:'#ff9933', dhoti:'#ffffff', beard:'full', moustache:true, hair:'crop', hairColor:'#15100b' };
 const HAIRS = [['crop','Court'],['part','Raie'],['jura','Jura (chignon)'],['long','Long'],['curly','Bouclé']];
+const HAIRS_F = [['bun','Chignon'],['long','Long'],['braid','Natte'],['curly','Bouclé']];
 const HAIRCOLS = ['#0d0a08','#15100b','#2b1a10','#4a2f18','#6a6a6a'];
 // comfort first, GTA-style: horns, city ambience and SFX each have their own switch
 let ambGain = null;
@@ -223,6 +224,14 @@ function loadHero(cb) {
   try {
     const L = new window.GLTFLoader();
     L.parse(dec(B.raja), '', av => {
+      // surgery: flatten the tuxedo's MODELLED bow tie into the chest so no outfit ever shows neckwear
+      av.scene.traverse(n => { if (!(n.isMesh || n.isSkinnedMesh)) return;
+        if (!/Outfit_Top/i.test((n.material && n.material.name) || '')) return;
+        const pos = n.geometry.attributes.position;
+        for (let vi = 0; vi < pos.count; vi++) { const x = pos.getX(vi), y = pos.getY(vi), z = pos.getZ(vi);
+          if (y > 1.4 && y < 1.68 && Math.abs(x) < .1 && z > .045) pos.setZ(vi, .042);          // bow tie
+          else if (y > 1.05 && y <= 1.45 && Math.abs(x) < .075 && z > .1) pos.setZ(vi, .098); } // open lapels → closed placket
+        pos.needsUpdate = true; n.geometry.computeVertexNormals(); });
       const clips = {}; let left = 3;
       const done = () => { if (--left > 0) return;
         const box = new T.Box3().setFromObject(av.scene);
@@ -263,15 +272,32 @@ function makeBrocadeTexture(baseHex) {
   const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(3, 3);
   if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
 }
+const embCache = {};
+function makeEmbroideredKurta(baseHex) { // the poster look: plain rich cloth, gold-embroidered placket and collar
+  if (embCache[baseHex]) return embCache[baseHex];
+  const S = 256, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  g.fillStyle = baseHex; g.fillRect(0, 0, S, S);
+  g.globalAlpha = .05; // cloth grain — darken ONLY; light lines read as pinstripes on dark cloth
+  for (let y = 0; y < S; y += 3) { g.fillStyle = '#000'; g.fillRect(0, y, S, 1); }
+  g.globalAlpha = 1;
+  // NO bright bands — unknown UVs would paint them onto the collar like neckwear.
+  // Just fine allover gold motifs on the dark cloth, poster-style.
+  for (let i = 0; i < 70; i++) { const x = rand(0, S), y = rand(0, S);
+    g.strokeStyle = 'rgba(201,162,39,.55)'; g.lineWidth = 1;
+    g.beginPath(); g.arc(x, y, rand(1.2, 2.8), 0, TAU); g.stroke();
+    if (Math.random() < .4) { g.beginPath(); g.moveTo(x - 3, y + 4); g.quadraticCurveTo(x, y + 7, x + 3, y + 4); g.stroke(); } }
+  const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping;
+  embCache[baseHex] = tex; return tex;
+}
 const fabricCache = {};
 function makeFabricTexture(baseHex) { // woven cloth: weave grain + soft vertical fall-folds, so clothes stop looking like plastic
   if (fabricCache[baseHex]) return fabricCache[baseHex];
   const S = 128, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
   g.fillStyle = baseHex; g.fillRect(0, 0, S, S);
-  g.globalAlpha = .07;
-  for (let y = 0; y < S; y += 2) { g.fillStyle = y % 4 ? '#000' : '#fff'; g.fillRect(0, y, S, 1); }
-  g.globalAlpha = .05;
-  for (let x = 0; x < S; x += 3) { g.fillStyle = x % 6 ? '#000' : '#fff'; g.fillRect(x, 0, 1, S); }
+  g.globalAlpha = .05; // darkening grain only — light lines striped every kurta and sari like pinstriped suits
+  for (let y = 0; y < S; y += 3) { g.fillStyle = '#000'; g.fillRect(0, y, S, 1); }
+  g.globalAlpha = .04;
+  for (let x = 0; x < S; x += 4) { g.fillStyle = '#000'; g.fillRect(x, 0, 1, S); }
   g.globalAlpha = .12; // fall of the cloth: broad soft vertical folds
   for (let f = 0; f < 7; f++) { const x = (f + .5) * S / 7 + rand(-4, 4);
     const gr = g.createLinearGradient(x - 9, 0, x + 9, 0);
@@ -330,6 +356,11 @@ function buildHeadgear(o) {
     } else if (o.hair === 'bun') { // low bun at the nape, parted on top
       const bun = new T.Mesh(new T.SphereGeometry(0.05, 12, 10), hM);
       bun.position.set(0, ACC.turbY - 0.1, -0.095); g.add(bun);
+    } else if (o.hair === 'braid') { // long plait swinging down the back
+      for (let i = 0; i < 8; i++) { const bead = new T.Mesh(new T.SphereGeometry(.034 - i * .0022, 8, 6), hM);
+        bead.position.set(Math.sin(i * .9) * .012, ACC.turbY - 0.09 - i * .052, -0.095 - i * .012); g.add(bead); }
+      const tass = new T.Mesh(new T.ConeGeometry(.016, .05, 6), mat('#c0392b', .6));
+      tass.rotation.x = Math.PI; tass.position.set(0, ACC.turbY - 0.09 - 8 * .052, -0.19); g.add(tass);
     } else if (o.hair === 'long') { // shoulder-length, swept back
       const back = new T.Mesh(new T.SphereGeometry(0.085, 14, 12), hM);
       back.scale.set(1.02, 1.9, .62); back.position.set(0, ACC.turbY - 0.145, -0.062); g.add(back);
@@ -358,6 +389,10 @@ function buildHeadgear(o) {
     m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, ACC.mouY, ACC.mouZ); g.add(m); }
   if (o.bindi) { const b = new T.Mesh(new T.CircleGeometry(0.011, 10), new T.MeshBasicMaterial({ color: '#c0182b' }));
     b.position.set(0, 0.028, 0.102); g.add(b); } // the red bindi on the forehead
+  if (o.earrings) { const gm = new T.MeshStandardMaterial({ color: '#e8c85a', metalness: .7, roughness: .25 });
+    for (const sx of [-1, 1]) { const ring = new T.Mesh(new T.TorusGeometry(.017, .005, 6, 12), gm);
+      ring.position.set(.096 * sx, -.035, .012); g.add(ring);
+      const drop = new T.Mesh(new T.SphereGeometry(.008, 6, 5), gm); drop.position.set(.096 * sx, -.058, .012); g.add(drop); } }
   g.traverse(x => { if (x.isMesh) x.castShadow = true; });
   return g;
 }
@@ -375,15 +410,17 @@ function makeHuman(o) {
     n.castShadow = true; n.frustumCulled = false;
     const mn = (n.material && n.material.name) || '';
     n.material = n.material.clone();
-    if (/Outfit_Top/i.test(mn)) { // the SKINNED garment mesh follows the body perfectly (no holes, no clipping);
-      // re-finished per outfit — with the drape skirt over it, the cut reads sherwani/kurta, not tailcoat
+    if (/Outfit_Top/i.test(mn)) { // the SKINNED garment mesh follows the body perfectly (no holes, no clipping)
       n.material = n.material.clone();
+      // CRUCIAL: strip the baked-in suit detailing — lapels, pocket seams, button rows live in these maps
+      n.material.normalMap = null; n.material.roughnessMap = null; n.material.metalnessMap = null; n.material.aoMap = null;
       if (o.female) { n.material.map = makeFabricTexture(o.dhoti || '#c2185b'); n.material.color = new T.Color('#ffffff'); n.material.roughness = .5; } // sari blouse
       else if (o.outfit === 'kurta') { n.material.map = makeFabricTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .85; }
       else if (o.outfit === 'silk') { n.material.map = makeFabricTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .3; n.material.metalness = .15; }
       else if (o.outfit === 'khadi') { n.material.map = makeTurbanTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = 1; }
       else if (o.outfit === 'bandhgala') { n.material.map = makeFabricTexture(shadeHex(o.kurta, -80)); n.material.color = new T.Color('#ffffff'); n.material.roughness = .5; }
-      else { n.material.map = makeBrocadeTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .72; } }
+      else { n.material.map = makeEmbroideredKurta(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .62; }
+      n.material.needsUpdate = true; }
     else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // churidar / pyjama
     else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#4a3626');        // leather juttis
     else if (/Skin|Body/i.test(mn) && !/Ch03/i.test(mn)) n.material.color = skinTint; // face + body skin tone (Michelle keeps her own painted texture)
@@ -408,7 +445,8 @@ function makeHuman(o) {
   // ---- the real outfit: a bone-draped kurta (the avatar's western tailcoat stays hidden) ----
   {
     const kc = o.kurta || '#ffffff';
-    const outfitM =
+    const outfitM = o.female
+      ? new T.MeshStandardMaterial({ color: '#ffffff', map: makeFabricTexture(kc), roughness: .32, metalness: .1, side: T.DoubleSide }) :
       o.outfit === 'kurta' ? new T.MeshStandardMaterial({ color: '#ffffff', map: makeFabricTexture(kc), roughness: .85, side: T.DoubleSide }) :
       o.outfit === 'silk' ? new T.MeshStandardMaterial({ color: '#ffffff', map: makeFabricTexture(kc), roughness: .32, metalness: .12, side: T.DoubleSide }) :
       o.outfit === 'khadi' ? new T.MeshStandardMaterial({ color: '#ffffff', map: makeTurbanTexture(kc), roughness: 1, side: T.DoubleSide }) :
@@ -433,12 +471,13 @@ function makeHuman(o) {
         ring.rotation.x = Math.PI / 2; ring.scale.y = sq2 || 1;
         ring.position.copy(bone.worldToLocal(at.clone())); bone.add(ring); };
       // the skinned jacket handles the torso and sleeves; only the FALL of the garment is draped
-      if (o.female) { // sari: ankle-length pleated fall + pallu thrown over the left shoulder
+      if (o.female) { // sari: waist wrap over the blouse hem, ankle-length fall, wide pallu over the left shoulder
         const hem = hW.clone().add(new T.Vector3(0, -.82, 0));
-        drape(hips, hW.clone().add(new T.Vector3(0, .06, 0)), hem, .142, .21, .84, true);
-        zari(hips, hem.clone().add(new T.Vector3(0, .015, 0)), .205, .84);
+        drape(hips, hW.clone().add(new T.Vector3(0, .13, 0)), hW.clone().add(new T.Vector3(0, -.05, 0)), .152, .148, .8, true); // the wrap at the waist
+        drape(hips, hW.clone().add(new T.Vector3(0, .06, 0)), hem, .142, .205, .84, true);
+        zari(hips, hem.clone().add(new T.Vector3(0, .015, 0)), .2, .84);
         if (lArm) { const shW = worldOf(lArm);
-          drape(spine, hW.clone().add(new T.Vector3(.12, 0, .1)), shW.clone().add(new T.Vector3(0, .03, .04)), .08, .045, .38, false); }
+          drape(spine, hW.clone().add(new T.Vector3(.13, 0, .1)), shW.clone().add(new T.Vector3(0, .04, .05)), .1, .05, .5, false); }
       } else {
         const hemLen = o.outfit === 'bandhgala' ? .26 : (o.salwar ? .34 : .38);        // the kurta's fall, knee-length, over the jacket's own hip line
         drape(hips, hW.clone().add(new T.Vector3(0, .08, 0)), hW.clone().add(new T.Vector3(0, -hemLen, 0)), .152, .188, .76, true);
@@ -450,11 +489,22 @@ function makeHuman(o) {
     // every face its own: vary the skull's proportions per person (accessories inherit the same stretch)
     if (o.vary) head.scale.set(head.scale.x * rand(.93, 1.09), head.scale.y * rand(.94, 1.1), head.scale.z * rand(.96, 1.06));
     // the avatar has a real beard mesh, so only the pagdi is attached here
-    const acc = buildHeadgear({ turban: F ? false : o.turban, turbanColor: o.turbanColor, beard: F ? 'none' : o.beard, shades: o.shades, hair: F ? 'none' : o.hair, hairColor: o.hairColor, bindi: o.female }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
-  if (neck && !F && (o.scarf || o.kurta)) { const ws = neck.getWorldScale(V).x || 1;
-    const scarf = new T.Group(); const sM = mat(o.scarf || o.kurta, .8);
-    const loop = new T.Mesh(new T.TorusGeometry(0.085, 0.028, 8, 18), sM); loop.rotation.x = Math.PI / 2; loop.position.y = -0.02; scarf.add(loop);
-    for (const sx of [-0.05, 0.05]) { const strip = new T.Mesh(new T.BoxGeometry(0.07, 0.34, 0.015), sM); strip.position.set(sx, -0.2, 0.1); strip.rotation.x = 0.12; scarf.add(strip); }
+    const acc = buildHeadgear({ turban: F ? false : o.turban, turbanColor: o.turbanColor, beard: F ? 'none' : o.beard, shades: o.shades, hair: F ? 'none' : o.hair, hairColor: o.hairColor, bindi: o.female, earrings: o.female }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
+  if (false && neck && !F) { // (retired — the bow tie is now flattened at load time)
+    const wsN = neck.getWorldScale(V).x || 1;
+    const colM = new T.MeshStandardMaterial({ color: '#ffffff', map: o.female ? makeFabricTexture(o.dhoti || '#c2185b') : makeFabricTexture(shadeHex(o.kurta || '#c68642', -20)), roughness: .7 });
+    const col = new T.Mesh(new T.CylinderGeometry(.088, .108, .15, 14, 1, true), colM);
+    col.material.side = T.DoubleSide;
+    col.scale.set(1 / wsN, 1 / wsN, .8 / wsN);
+    col.position.set(0, -.055 / wsN, .02 / wsN);
+    neck.add(col);
+  }
+  if (false && neck && !F && !o.female && (o.scarf || o.kurta)) { const ws = neck.getWorldScale(V).x || 1; // retired: anything at the throat reads as neckwear from a suit
+    // angavastram: one cloth over the RIGHT shoulder, falling front and back — never a bow at the throat
+    const scarf = new T.Group(); const sM = new T.MeshStandardMaterial({ color: '#ffffff', map: makeFabricTexture(o.scarf || o.kurta), roughness: .75, side: T.DoubleSide });
+    const pad = new T.Mesh(new T.SphereGeometry(0.055, 10, 8), sM); pad.scale.set(1.3, .5, 1.1); pad.position.set(0.085, -0.035, 0); scarf.add(pad);
+    const front = new T.Mesh(new T.BoxGeometry(0.085, 0.44, 0.014), sM); front.position.set(0.085, -0.26, 0.085); front.rotation.x = 0.14; scarf.add(front);
+    const back = new T.Mesh(new T.BoxGeometry(0.085, 0.4, 0.014), sM); back.position.set(0.085, -0.24, -0.075); back.rotation.x = -0.12; scarf.add(back);
     scarf.traverse(x => { if (x.isMesh) x.castShadow = true; });
     scarf.scale.setScalar(1 / ws); scarf.position.set(0, 0.02 / ws, 0); neck.add(scarf); }
   const mixer = new T.AnimationMixer(model);
@@ -1692,7 +1742,7 @@ function npcLook(di) {
   }
   if (Math.random() < .46) { // women — sari (regional weaves) or salwar-kameez
     o.female = true; o.beard = 'none'; o.moustache = false; o.turban = false;
-    o.hair = pick(['bun', 'long', 'bun']); o.outfit = 'silk';
+    o.hair = pick(['bun', 'long', 'braid', 'bun']); o.outfit = 'silk';
     o.kurta = pick(['#c2185b', '#7b1fa2', '#00695c', '#e65100', '#1a237e', '#b71c1c', '#f9a825', '#00838f']);
     if (di === 5) { o.kurta = '#f2ecd9'; }                                              // Kerala kasavu: cream & gold
     else if (di === 6) { o.kurta = pick(['#f2ede2', '#efe6d8']); }                       // Bengal: white with red border
@@ -3265,6 +3315,17 @@ function chipRow(container, items, current, onPick) {
     d.onclick = () => { onPick(it.v); [...el.children].forEach(x => x.classList.remove('on')); d.classList.add('on'); rebuildPreview(); }; el.appendChild(d); });
 }
 function wireCreator() {
+  chipRow('chGender', [{ t: '👳 Raja (homme)', v: false }, { t: '👰 Rani (femme)', v: true }], () => !!opts.female, v => {
+    opts.female = v;
+    if (v) { opts.beard = 'none'; opts.moustache = false; opts.turban = false;
+      if (!['bun', 'long', 'braid', 'curly'].includes(opts.hair)) opts.hair = 'bun'; }
+    else { opts.beard = 'full'; opts.moustache = true; opts.turban = true; if (opts.hair === 'bun' || opts.hair === 'braid') opts.hair = 'crop'; }
+    const fem = v;
+    const set = (id, txt) => { const el = document.querySelector('#' + id); if (el) el.textContent = txt; };
+    set('lblKurta', fem ? 'Sari' : 'Kurta'); set('lblDhoti', fem ? 'Corsage (choli)' : 'Dhoti / Pyjama');
+    for (const id of ['rowTurban', 'rowBeard', 'rowMoustache']) { const el = $(id); if (el) el.style.display = fem ? 'none' : ''; }
+    rebuildHairRow();
+  });
   swatchRow('swSkin', SKINS, () => opts.skin, v => opts.skin = v);
   swatchRow('swTurban', TURBANS, () => opts.turbanColor, v => { opts.turbanColor = v; opts.turban = true; });
   swatchRow('swKurta', KURTAS, () => opts.kurta, v => opts.kurta = v);
@@ -3275,7 +3336,11 @@ function wireCreator() {
   swatchRow('swScarf', KURTAS, () => opts.scarf, v => opts.scarf = v);
   chipRow('chShades', [{ t: '\ud83d\udd76 Shades on', v: true }, { t: 'No shades', v: false }], () => opts.shades, v => opts.shades = v);
   chipRow('chOutfit', [{ t: 'Sherwani (brocade)', v: 'sherwani' }, { t: 'Kurta', v: 'kurta' }, { t: 'Silk kurta', v: 'silk' }, { t: 'Khadi', v: 'khadi' }, { t: 'Bandhgala', v: 'bandhgala' }], () => opts.outfit, v => opts.outfit = v);
-  chipRow('chHair', HAIRS.map(([v, t]) => ({ t, v })), () => opts.hair, v => { opts.hair = v; opts.turban = false; });
+  function rebuildHairRow() {
+    const el = $('chHair'); if (el) el.innerHTML = '';
+    chipRow('chHair', (opts.female ? HAIRS_F : HAIRS).map(([v, t]) => ({ t, v })), () => opts.hair, v => { opts.hair = v; if (!opts.female) opts.turban = false; });
+  }
+  rebuildHairRow();
   swatchRow('swHair', HAIRCOLS, () => opts.hairColor, v => opts.hairColor = v);
   chipRow('chHand', [{ t: '\ud83d\udd90 Right-handed \u2014 stick right', v: 'right' }, { t: 'Left-handed \u2014 stick left', v: 'left' }], () => settings.hand, v => { settings.hand = v; applyHand(); });
   $('nameIn').addEventListener('input', e => opts.name = e.target.value || 'Raja');
@@ -3378,7 +3443,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 23'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 24'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';

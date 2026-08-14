@@ -203,20 +203,21 @@
       <div id="opts">
         <div class="grp"><div class="lbl">Your Raja's Name</div>
           <input id="nameIn" maxlength="18" placeholder="Raja Bahadur" value="Raja Bahadur"></div>
+        <div class="grp"><div class="lbl">Genre</div><div class="chips" id="chGender"></div></div>
         <div class="grp"><div class="lbl">Controls Layout</div><div class="chips" id="chHand"></div></div>
         <div class="grp"><div class="lbl">Skin Tone</div><div class="swatches" id="swSkin"></div></div>
-        <div class="rowsplit">
+        <div class="rowsplit" id="rowTurban">
           <div class="grp"><div class="lbl">Turban (Raja style)</div>
             <div class="chips" id="chTurban"></div>
             <div class="swatches" id="swTurban" style="margin-top:8px"></div></div>
         </div>
         <div class="rowsplit">
-          <div class="grp"><div class="lbl">Beard</div><div class="chips" id="chBeard"></div></div>
-          <div class="grp"><div class="lbl">Moustache</div><div class="chips" id="chMoustache"></div></div>
+          <div class="grp" id="rowBeard"><div class="lbl">Beard</div><div class="chips" id="chBeard"></div></div>
+          <div class="grp" id="rowMoustache"><div class="lbl">Moustache</div><div class="chips" id="chMoustache"></div></div>
         </div>
         <div class="rowsplit">
-          <div class="grp"><div class="lbl">Kurta</div><div class="swatches" id="swKurta"></div></div>
-          <div class="grp"><div class="lbl">Dhoti / Pyjama</div><div class="swatches" id="swDhoti"></div></div>
+          <div class="grp"><div class="lbl" id="lblKurta">Kurta</div><div class="swatches" id="swKurta"></div></div>
+          <div class="grp"><div class="lbl" id="lblDhoti">Dhoti / Pyjama</div><div class="swatches" id="swDhoti"></div></div>
         </div>
         <div class="grp"><div class="lbl">Outfit</div><div class="chips" id="chOutfit"></div></div>
         <div class="rowsplit">
