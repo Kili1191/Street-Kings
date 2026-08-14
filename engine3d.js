@@ -289,6 +289,20 @@ function makeEmbroideredKurta(baseHex) { // the poster look: plain rich cloth, g
   const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping;
   embCache[baseHex] = tex; return tex;
 }
+const plaidCache = {};
+function makePlaidTexture(c1, c2) { // the checked lungi cloth of every Indian street
+  const key = c1 + c2; if (plaidCache[key]) return plaidCache[key];
+  const S = 128, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
+  g.fillStyle = c1; g.fillRect(0, 0, S, S);
+  g.globalAlpha = .55; g.fillStyle = c2;
+  for (let x = 0; x < S; x += 22) g.fillRect(x, 0, 9, S);
+  for (let y = 0; y < S; y += 22) g.fillRect(0, y, 9, S);
+  g.globalAlpha = 1; g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1.2;
+  for (let x = 16; x < S; x += 22) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, S); g.stroke(); }
+  for (let y = 16; y < S; y += 22) { g.beginPath(); g.moveTo(0, y); g.lineTo(S, y); g.stroke(); }
+  const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(3, 3);
+  plaidCache[key] = tex; return tex;
+}
 const fabricCache = {};
 function makeFabricTexture(baseHex) { // woven cloth: weave grain + soft vertical fall-folds, so clothes stop looking like plastic
   if (fabricCache[baseHex]) return fabricCache[baseHex];
@@ -492,6 +506,14 @@ function makeHuman(o) {
         zari(hips, hem.clone().add(new T.Vector3(0, .015, 0)), .2, .84);
         if (lArm) { const shW = worldOf(lArm);
           drape(spine, hW.clone().add(new T.Vector3(.13, 0, .1)), shW.clone().add(new T.Vector3(0, .04, .05)), .1, .05, .5, false); }
+      } else if (o.lungi) { // the checked lungi: a straight ankle-length wrap under an untucked light kurta
+        const lM = new T.MeshStandardMaterial({ color: '#ffffff', map: makePlaidTexture(o.lungi[0], o.lungi[1]), roughness: .95, side: T.DoubleSide });
+        const hem = hW.clone().add(new T.Vector3(0, -.8, 0));
+        const lg = new T.Mesh(new T.CylinderGeometry(.152 / (hips.getWorldScale(WP).x || 1), .165 / (hips.getWorldScale(WP).x || 1),
+          .8 / (hips.getWorldScale(WP).x || 1), 16, 1, true), lM);
+        lg.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), hips.worldToLocal(hem.clone()).sub(hips.worldToLocal(hW.clone())).normalize());
+        lg.scale.z *= .8; lg.position.copy(hips.worldToLocal(hW.clone().add(hem).multiplyScalar(.5))); lg.castShadow = true; hips.add(lg);
+        drape(hips, hW.clone().add(new T.Vector3(0, .08, 0)), hW.clone().add(new T.Vector3(0, -.22, 0)), .152, .175, .76, true); // short untucked shirt-fall
       } else {
         const hemLen = o.outfit === 'bandhgala' ? .26 : (o.salwar ? .34 : .38);        // the kurta's fall, knee-length, over the jacket's own hip line
         drape(hips, hW.clone().add(new T.Vector3(0, .08, 0)), hW.clone().add(new T.Vector3(0, -hemLen, 0)), .152, .188, .76, true);
@@ -1766,10 +1788,16 @@ function npcLook(di) {
       o.hair = 'long'; o.outfit = 'kurta'; o.kurta = pick(['#c2185b', '#00838f', '#7b1fa2']); o.dhoti = '#ffffff'; } // Punjabi salwar-kameez
     return o;
   }
+  // street truth: men wear LIGHT loose kurtas and shirts, not dark tailored jackets
+  if (o.wealth < 2) o.kurta = pick(['#f2ede2', '#e8e0cc', '#ffffff', '#d9e8f2', '#e8d9c9', '#c9d9e8', '#e0d0b0', '#d9c9e0']);
+  // and a big share of them wear the checked lungi — the definitive anti-suit
+  const lungiOdds = [5, 7, 8].includes(di) ? .45 : [0, 3].includes(di) ? .3 : .15;
+  if (o.wealth < 2 && Math.random() < lungiOdds) { o.lungi = pick([['#1e3a5c', '#3a6b8a'], ['#2e5d3a', '#5c8a4a'], ['#5c2430', '#8a4a3a'], ['#3a3a44', '#6a6a7a']]);
+    o.outfit = 'kurta'; }
   if (di === 4) { o.turban = Math.random() < .75; } // Punjab: sardars everywhere
-  else if (di === 3 && Math.random() < .4) { o.outfit = 'khadi'; o.kurta = '#ff8c1a'; o.dhoti = '#ff8c1a'; o.beard = 'long'; o.hair = 'long'; o.turban = false; } // Kashi: saffron sadhus
+  else if (di === 3 && Math.random() < .4) { o.outfit = 'khadi'; o.kurta = '#ff8c1a'; o.dhoti = '#ff8c1a'; o.beard = 'long'; o.hair = 'long'; o.turban = false; o.lungi = null; } // Kashi: saffron sadhus
   else if (di === 2) { o.turban = Math.random() < .6; o.turbanColor = pick(['#e91e63', '#ff5722', '#ffc107', '#d81b60', '#ff9933']); } // Marwar: blazing pagris
-  else if (di === 5 && Math.random() < .5) { o.outfit = 'kurta'; o.kurta = '#ffffff'; o.dhoti = '#ffffff'; o.turban = false; } // Kerala: white mundu
+  else if (di === 5 && Math.random() < .5 && !o.lungi) { o.outfit = 'kurta'; o.kurta = '#ffffff'; o.dhoti = '#ffffff'; o.turban = false; } // Kerala: white mundu
   else if (di === 8 && Math.random() < .4) { o.outfit = 'kurta'; o.kurta = pick(['#f4e6c8', '#e8e8e8', '#b3d9e8']); o.shades = Math.random() < .5; o.turban = false; } // Goa: susegad
   return o;
 }
@@ -3458,7 +3486,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 26'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 27'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
