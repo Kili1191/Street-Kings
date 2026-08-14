@@ -234,6 +234,9 @@ function loadHero(cb) {
           clips[name] = new T.AnimationClip(name, c.duration, tracks); }
         done(); }, done);
       grab(B.idle, 'Idle'); grab(B.walk, 'Walk'); grab(B.run, 'Run');
+      // official FEMININE idle & walk — same skeleton, a woman's gait for the women of the city
+      const F = window.FEM_ANIMS;
+      if (F) { left += 2; grab(F.idle, 'FIdle'); grab(F.walk, 'FWalk'); }
     }, () => cb(null));
   } catch (e) { cb(null); }
 }
@@ -372,7 +375,15 @@ function makeHuman(o) {
     n.castShadow = true; n.frustumCulled = false;
     const mn = (n.material && n.material.name) || '';
     n.material = n.material.clone();
-    if (/Outfit_Top/i.test(mn)) n.visible = false; // the avatar's western tailcoat is gone for good — we dress him in a real kurta below
+    if (/Outfit_Top/i.test(mn)) { // the SKINNED garment mesh follows the body perfectly (no holes, no clipping);
+      // re-finished per outfit — with the drape skirt over it, the cut reads sherwani/kurta, not tailcoat
+      n.material = n.material.clone();
+      if (o.female) { n.material.map = makeFabricTexture(o.dhoti || '#c2185b'); n.material.color = new T.Color('#ffffff'); n.material.roughness = .5; } // sari blouse
+      else if (o.outfit === 'kurta') { n.material.map = makeFabricTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .85; }
+      else if (o.outfit === 'silk') { n.material.map = makeFabricTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .3; n.material.metalness = .15; }
+      else if (o.outfit === 'khadi') { n.material.map = makeTurbanTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = 1; }
+      else if (o.outfit === 'bandhgala') { n.material.map = makeFabricTexture(shadeHex(o.kurta, -80)); n.material.color = new T.Color('#ffffff'); n.material.roughness = .5; }
+      else { n.material.map = makeBrocadeTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .72; } }
     else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // churidar / pyjama
     else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#4a3626');        // leather juttis
     else if (/Skin|Body/i.test(mn) && !/Ch03/i.test(mn)) n.material.color = skinTint; // face + body skin tone (Michelle keeps her own painted texture)
@@ -416,38 +427,23 @@ function makeHuman(o) {
     };
     if (spine && neck && hips) {
       const nW = worldOf(neck), hW = worldOf(hips);
-      const top = nW.clone().lerp(hW, .09); // collar sits just below the neck, scarf stays visible
-      if (!F) drape(spine, top, hW, .128, .162, .72, false);                          // fitted trunk (Michelle's blouse is her own)
       const goldM = new T.MeshStandardMaterial({ color: '#d4af37', metalness: .6, roughness: .35 });
       const zari = (bone, at, r, sq2) => { const wz = bone.getWorldScale(WP).x || 1;   // gold zari border at the hem
         const ring = new T.Mesh(new T.TorusGeometry(r / wz, .013 / wz, 6, 24), goldM);
         ring.rotation.x = Math.PI / 2; ring.scale.y = sq2 || 1;
         ring.position.copy(bone.worldToLocal(at.clone())); bone.add(ring); };
+      // the skinned jacket handles the torso and sleeves; only the FALL of the garment is draped
       if (o.female) { // sari: ankle-length pleated fall + pallu thrown over the left shoulder
         const hem = hW.clone().add(new T.Vector3(0, -.82, 0));
-        drape(hips, hW, hem, F ? .148 : .162, F ? .25 : .27, .86, true);
-        zari(hips, hem.clone().add(new T.Vector3(0, .015, 0)), F ? .245 : .265, .86);
+        drape(hips, hW.clone().add(new T.Vector3(0, .06, 0)), hem, .142, .21, .84, true);
+        zari(hips, hem.clone().add(new T.Vector3(0, .015, 0)), .205, .84);
         if (lArm) { const shW = worldOf(lArm);
           drape(spine, hW.clone().add(new T.Vector3(.12, 0, .1)), shW.clone().add(new T.Vector3(0, .03, .04)), .08, .045, .38, false); }
       } else {
-        const hemLen = o.outfit === 'bandhgala' ? .28 : (o.salwar ? .34 : .4);         // bandhgala stops at the hip, kurtas fall to the knee
-        drape(hips, hW, hW.clone().add(new T.Vector3(0, -hemLen, 0)), .162, .205, .78, true); // flared kurta skirt
-        if (o.outfit === 'sherwani' || o.outfit === 'silk') zari(hips, hW.clone().add(new T.Vector3(0, -hemLen + .015, 0)), .2, .78);
-        // front placket with buttons
-        const btnM = new T.MeshStandardMaterial({ color: (o.outfit === 'sherwani' || o.outfit === 'bandhgala') ? '#d4af37' : '#f2ead6', roughness: .3, metalness: .5 });
-        const ws2 = spine.getWorldScale(WP).x || 1;
-        for (let i = 0; i < 5; i++) { const f = .12 + i * .15;
-          const p = top.clone().lerp(hW, f); p.z += lerp(.128, .162, f) * .72 * .97;
-          const b2 = new T.Mesh(new T.SphereGeometry(.011 / ws2, 8, 6), btnM);
-          b2.position.copy(spine.worldToLocal(p)); spine.add(b2); }
+        const hemLen = o.outfit === 'bandhgala' ? .26 : (o.salwar ? .34 : .38);        // the kurta's fall, knee-length, over the jacket's own hip line
+        drape(hips, hW.clone().add(new T.Vector3(0, .08, 0)), hW.clone().add(new T.Vector3(0, -hemLen, 0)), .152, .188, .76, true);
+        if (o.outfit === 'sherwani' || o.outfit === 'silk') zari(hips, hW.clone().add(new T.Vector3(0, -hemLen + .015, 0)), .183, .76);
       }
-    }
-    for (const [a1, a2, a3] of F ? [] : [[rArm, rFore, rHand], [lArm, lFore, lHand]]) { // Michelle's bare arms are her own — sari blouses are short-sleeved
-      if (!a1) continue;
-      const sh = new T.Mesh(new T.SphereGeometry(.058 / (a1.getWorldScale(WP).x || 1), 12, 10), outfitM);
-      sh.scale.set(1, .85, 1); sh.castShadow = true; a1.add(sh); // small shoulder seam, not a football pad
-      if (a2) drape(a1, worldOf(a1), worldOf(a2), .052, .045, 1, false);              // upper sleeve
-      if (a2 && a3) drape(a2, worldOf(a2), worldOf(a3), .043, .036, 1, false);        // forearm sleeve, moves with the elbow
     }
   }
   if (head) { const ws = head.getWorldScale(V).x || 1;
@@ -463,7 +459,11 @@ function makeHuman(o) {
     scarf.scale.setScalar(1 / ws); scarf.position.set(0, 0.02 / ws, 0); neck.add(scarf); }
   const mixer = new T.AnimationMixer(model);
   const actions = {};
-  for (const nm of ['Idle', 'Walk', 'Run']) { const c = SRC.clips[nm]; if (c) { const a = mixer.clipAction(c); a.enabled = true; a.setEffectiveWeight(nm === 'Idle' ? 1 : 0); a.play(); actions[nm.toLowerCase()] = a; } }
+  // women move with the official feminine gait when it's loaded
+  const wants = o.female && SRC.clips.FIdle && SRC.clips.FWalk
+    ? [['FIdle', 'idle'], ['FWalk', 'walk'], ['Run', 'run']]
+    : [['Idle', 'idle'], ['Walk', 'walk'], ['Run', 'run']];
+  for (const [nm, key] of wants) { const c = SRC.clips[nm]; if (c) { const a = mixer.clipAction(c); a.enabled = true; a.setEffectiveWeight(key === 'idle' ? 1 : 0); a.play(); actions[key] = a; } }
   grp.userData = { human: { mixer, actions, w: { idle: 1, walk: 0, run: 0 }, gait: rand(.82, 1.18), head, neck, spine, rArm, lArm, rFore, lFore, rLeg, lLeg, rCalf, lCalf, seated: false }, attack: null };
   return grp;
 }
@@ -1690,7 +1690,7 @@ function npcLook(di) {
     o.outfit = 'kurta'; o.kurta = pick(['#3a5a8a', '#e8e8e8', '#8a3a4a']); o.dhoti = pick(['#3a4a6a', '#5a4a3a']); // uniform-ish
     o.wealth = 1; return o;
   }
-  if (Math.random() < .42) { // women — sari (regional weaves) or salwar-kameez
+  if (Math.random() < .46) { // women — sari (regional weaves) or salwar-kameez
     o.female = true; o.beard = 'none'; o.moustache = false; o.turban = false;
     o.hair = pick(['bun', 'long', 'bun']); o.outfit = 'silk';
     o.kurta = pick(['#c2185b', '#7b1fa2', '#00695c', '#e65100', '#1a237e', '#b71c1c', '#f9a825', '#00838f']);
@@ -2058,12 +2058,12 @@ const VEH_SPECS = {
 };
 // street-plausible Indian paint jobs, light enough to keep the kits' texture detail
 const VEH_PAINTS = {
-  sedan: ['#ffffff', '#e8e8e8', '#d9c9a8', '#b8c9e8', '#c9a8a8', '#8a8f96'],
-  hatch: ['#ffffff', '#e8d9b0', '#c94040', '#5577bb', '#99b9d9', '#e8e8e8'],
-  suv:   ['#ffffff', '#3a3f46', '#6a7078', '#8a3030', '#e8e8e8'],
-  van:   ['#ffffff', '#e8e8e8', '#d9d0b8', '#7a9ab8'],
+  sedan: ['#e8e0cc', '#d9c9a8', '#b8c9e8', '#c98a8a', '#8a8f96', '#5a7ab0', '#b03030'],
+  hatch: ['#e8d9b0', '#c94040', '#5577bb', '#99b9d9', '#d0d0c8', '#c9760b'],
+  suv:   ['#3a3f46', '#6a7078', '#8a3030', '#d9d0b8', '#2e5d3a'],
+  van:   ['#d9d0b8', '#7a9ab8', '#c9a030', '#b0b0a8'],
   truck: ['#e88a2a', '#d9a030', '#c96040', '#7aa050'],   // hand-painted Tata oranges
-  bus:   ['#c94040', '#d98a30', '#4a7a50', '#ffffff'],
+  bus:   ['#c94040', '#d98a30', '#4a7a50', '#c9b030'],
 };
 function loadVehModels(cb) {
   const B = window.VEH_ASSETS;
@@ -2105,7 +2105,10 @@ function buildVehModel(k) {
   m.position.y = -M.minY * M.scale; // sit on the road
   const paint = (VEH_PAINTS[k] && k !== 'taxi' && k !== 'police') ? pick(VEH_PAINTS[k]) : null;
   m.traverse(o => { if (o.isMesh) { o.castShadow = true;
-    if (paint && /body/i.test(o.name)) { o.material = o.material.clone(); o.material.color = new T.Color(paint); } } });
+    o.material = o.material.clone();
+    // never pure white: if the kit texture ever fails to decode, the car still shows a real colour
+    o.material.color = new T.Color('#cfcfcf');
+    if (paint && /body/i.test(o.name)) o.material.color = new T.Color(paint); } });
   g.add(m);
   g.userData.seat = M.seat; g.userData.dim = M.dim;
   g.userData.maxSpd = M.spd; g.userData.acc = M.acc;
@@ -2529,6 +2532,9 @@ function updateTransition(dt) {
     player.inVehicle = v; player.transition = null;
     v.g.add(player.g); player.g.position.set(seat.x, seat.y, seat.z); player.g.rotation.set(0, 0, 0);
     const u = player.g.userData; if (u.human) u.human.seated = true;
+    // closed cabins have opaque glass: GTA-style, the car becomes your avatar (open vehicles keep you visible)
+    const open = ['auto', 'moto', 'enfield', 'cycle'].includes(v.kind);
+    player.g.visible = open;
     player.yaw = v.yaw;
     Radio.setOn(true); toast('📻 ' + Radio.stations[Radio.idx].name, '#8ef58e');
   }
@@ -3290,8 +3296,8 @@ function startGame() {
   // build player from chosen opts
   player.pos.copy(findSpawn());
   player.g = makeCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
-  const N = GFX === 'low' ? .62 : 1; // the light tier thins the crowd, the fog hides the difference
-  spawnNPCs(Math.round(40 * N)); spawnCows(Math.round(9 * N)); spawnVehicles(Math.round(44 * N)); spawnMonkeys(Math.round(12 * N)); spawnDogs(Math.round(13 * N));
+  const N = GFX === 'low' ? .5 : 1.2; // dense on the pretty tier; the light tier thins the crowd, the fog hides it
+  spawnNPCs(Math.round(44 * N)); spawnCows(Math.round(9 * N)); spawnVehicles(Math.round(46 * N)); spawnMonkeys(Math.round(12 * N)); spawnDogs(Math.round(13 * N));
   spawnVendors(); spawnDancers(); spawnBathers(); // the rigged human is loaded by now — staff the stalls, roll camera, fill the river
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
@@ -3372,7 +3378,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 22'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 23'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
