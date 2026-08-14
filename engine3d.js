@@ -449,10 +449,16 @@ function makeHuman(o) {
   grp.add(model);
   const skinTint = new T.Color(o.skin); { const hsl = { h: 0, s: 0, l: 0 }; skinTint.getHSL(hsl);
     skinTint.setHSL(hsl.h, Math.min(1, hsl.s * 1.32), Math.min(.9, hsl.l * 1.12)); } // warm without going neon-orange on the hands
+  // the RPM Outfit_Top is cut like a SUIT JACKET — no recolour ever hides that. So for bare
+  // chests (naga, aghori, bathers) and true kurtas we DROP the jacket mesh entirely and build
+  // the torso and arms ourselves on the bones (RPM deletes the body faces under clothes).
+  const bareTorso = !o.female && !!o.naga;
+  const kurtaCut = !o.female && !bareTorso && (o.outfit === 'kurta' || o.outfit === 'khadi' || !!o.lungi);
   model.traverse(n => { if (!(n.isMesh || n.isSkinnedMesh)) return;
     n.castShadow = true; n.frustumCulled = false;
     const mn = (n.material && n.material.name) || '';
     n.material = n.material.clone();
+    if (/Outfit_Top/i.test(mn) && (bareTorso || kurtaCut)) { n.visible = false; return; }
     if (/Outfit_Top/i.test(mn)) { // the SKINNED garment mesh follows the body perfectly (no holes, no clipping)
       n.material = n.material.clone();
       // CRUCIAL: strip the baked-in suit detailing — lapels, pocket seams, button rows live in these maps
@@ -513,6 +519,23 @@ function makeHuman(o) {
       m2.position.copy(la.add(lb).multiplyScalar(.5)); m2.castShadow = true; bone.add(m2);
     };
     if (spine && neck && hips) {
+      if (bareTorso || kurtaCut) { // the hand-built body: neck, chest, belly, shoulders and arms on the bones
+        const skinM2 = new T.MeshStandardMaterial({ color: skinTint.clone().multiplyScalar(.9), roughness: .62 }); // matched to the face's shaded tone
+        const clothM2 = bareTorso ? skinM2 : new T.MeshStandardMaterial({ map: makeFabricTexture(o.kurta), roughness: .9 });
+        const att = (bone, geo, m2, y, z2, sq) => { if (!bone) return null;
+          const ws3 = bone.getWorldScale(WP).x || 1;
+          const mm = new T.Mesh(geo, m2); mm.scale.setScalar(1 / ws3); if (sq) mm.scale.z *= sq;
+          mm.position.set(0, (y || 0) / ws3, (z2 || 0) / ws3); mm.castShadow = true; bone.add(mm); return mm; };
+        att(neck, new T.CylinderGeometry(.055, .075, .18, 10), skinM2, -.05, .008);
+        att(spine, new T.CylinderGeometry(.15, .163, .42, 14), clothM2, -.07, .01, .78);  // chest stops below the collarbones
+        att(hips, new T.SphereGeometry(.132, 12, 10), clothM2, .11, .01, .82);            // belly tucked into the tube's foot
+        for (const [arm2, fore2] of [[rArm, rFore], [lArm, lFore]]) {
+          att(arm2, new T.SphereGeometry(.054, 10, 8), clothM2, .04, 0);                  // shoulder, sunk into the chest line
+          att(arm2, new T.CylinderGeometry(.05, .044, .26, 8), clothM2, .14, 0);          // upper arm — the kurta's sleeve
+          att(fore2, new T.CylinderGeometry(.042, .035, .24, 8), skinM2, .12, 0);         // forearm bare: sleeves rolled, always
+        }
+        if (kurtaCut) att(neck, new T.CylinderGeometry(.072, .078, .055, 10, 1, true), clothM2, -.1, .006); // band collar, never a lapel
+      }
       const nW = worldOf(neck), hW = worldOf(hips);
       const goldM = new T.MeshStandardMaterial({ color: '#d4af37', metalness: .6, roughness: .35 });
       const zari = (bone, at, r, sq2) => { const wz = bone.getWorldScale(WP).x || 1;   // gold zari border at the hem
@@ -4154,7 +4177,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 33'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 34'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
