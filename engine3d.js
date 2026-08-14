@@ -1106,10 +1106,10 @@ function buildGanga() {
     buildings.push({ x: -HALF + 11.5, z: pz, hw: 1.2, hd: 1.2 });
   }
   // the holy river is also a working river: offerings, trash and scum ride the current
-  for (let i = 0; i < 9; i++) { const scum = new T.Mesh(new T.CircleGeometry(rand(1, 2.6), 10),
+  for (let i = 0; i < 14; i++) { const scum = new T.Mesh(new T.CircleGeometry(rand(1, 2.6), 10),
     new T.MeshStandardMaterial({ color: pick(['#6b7a52', '#7a8258', '#5c6a48']), transparent: true, opacity: .38, roughness: 1, depthWrite: false }));
     scum.rotation.x = -Math.PI / 2; scum.position.set(rand(-HALF - 20, -HALF + 7), -.1, rand(z0 + 4, z1 - 4)); scene.add(scum); }
-  for (let i = 0; i < 46; i++) { // floating: marigolds, diyas, garlands, plastic bags, husks
+  for (let i = 0; i < 64; i++) { // floating: marigolds, diyas, garlands, plastic bags, husks
     const r = Math.random(); let m;
     if (r < .38) m = new T.Mesh(new T.SphereGeometry(rand(.05, .08), 6, 5), mat(pick(['#ff9800', '#ffc107', '#ff7722']), .7));
     else if (r < .55) { m = new T.Group(); const leaf = new T.Mesh(new T.CircleGeometry(.09, 8), new T.MeshStandardMaterial({ color: '#7a5c34', side: T.DoubleSide }));
@@ -1170,7 +1170,10 @@ function spawnBathers() { // in the Ganga at dawn: some bare-chested in a dhoti,
     scene.add(g); bathers.push({ g, base: .5, t: rand(0, TAU), dip: 0, land: true });
   }
   const z0 = -HALF + CELL + 10, z1 = -HALF + 2 * CELL - 10;
-  for (let i = 0; i < 8; i++) {
+  // families and neighbours bathe TOGETHER — tight knots of people, not lone swimmers
+  const clusters = [rand(z0 + 8, z0 + 30), (z0 + z1) / 2 + rand(-8, 8), rand(z1 - 30, z1 - 8)];
+  const nB = GFX === 'low' ? 12 : 20;
+  for (let i = 0; i < nB; i++) {
     const skin = pick(SKINS);
     const bare = Math.random() < .55;
     const o = bare
@@ -1179,10 +1182,23 @@ function spawnBathers() { // in the Ganga at dawn: some bare-chested in a dhoti,
         ? { vary: true, female: true, skin, outfit: 'silk', kurta: pick(['#c2185b', '#00695c', '#e65100']), dhoti: '#f9a825', beard: 'none', moustache: false, turban: false, hair: 'bun' }
         : { vary: true, skin, outfit: 'kurta', kurta: pick(['#efe6d0', '#d9c9a3']), dhoti: '#d9c9a3', beard: pick(BEARDS), moustache: true, turban: false, hair: 'crop' });
     const g = makeHuman(o);
-    const bx = rand(-HALF + 4.5, -HALF + 8.5), bz = rand(z0, z1);
+    const bx = rand(-HALF + 4.5, -HALF + 8.5), bz = clusters[i % clusters.length] + rand(-3.5, 3.5);
     g.position.set(bx, rand(-1.15, -.9), bz); g.rotation.y = rand(0, TAU); // waist-deep in the river
+    const shower = bare && Math.random() < .4; // mid-snan: the lota raised and tipped over the head
+    if (shower) { const h = g.userData.human;
+      if (h && h.rHand) { const ws = h.rHand.getWorldScale(new T.Vector3()).x || 1;
+        const lota = new T.Mesh(new T.SphereGeometry(.07 / ws, 8, 6), new T.MeshStandardMaterial({ color: '#c9952a', metalness: .6, roughness: .35 }));
+        h.rHand.add(lota); lota.position.set(0, .05 / ws, 0); } }
     scene.add(g);
-    bathers.push({ g, base: g.position.y, t: rand(0, TAU), dip: 0 });
+    bathers.push({ g, base: g.position.y, t: rand(0, TAU), dip: 0, pour: shower });
+  }
+  // and the steps themselves stay busy — drying off, gossiping, watching the river
+  const nS = GFX === 'low' ? 5 : 9;
+  for (let i = 0; i < nS; i++) {
+    const sx = rand(-HALF + 9.5, -HALF + 15), sz = rand(z0 + 4, z1 - 4);
+    const g = makeHuman(npcLook(3));
+    g.position.set(sx, ghatHeightAt(sx, sz), sz); g.rotation.y = -Math.PI / 2 + rand(-.7, .7); // mostly facing the water
+    scene.add(g); bathers.push({ g, base: g.position.y, t: rand(0, TAU), dip: 0, land: true });
   }
 }
 function updateBathers(dt) {
@@ -1198,7 +1214,7 @@ function updateBathers(dt) {
         if (h.spine) h.spine.rotation.x = .06;
         if (ph > .93 && Math.random() < .3 && steamPuffs.length < 60) {
           const m = new T.Mesh(new T.PlaneGeometry(.2, .34), new T.MeshBasicMaterial({ color: '#bcd4dc', transparent: true, opacity: .5, depthWrite: false }));
-          m.position.set(b.g.position.x, 1.7, b.g.position.z); scene.add(m); steamPuffs.push({ m, life: .5 }); } }
+          m.position.set(b.g.position.x, b.g.position.y + 1.7, b.g.position.z); scene.add(m); steamPuffs.push({ m, life: .5 }); } }
       continue; }
     if (b.land) continue; // mourners just stand with the fire
     if (b.dip > 0) { b.dip -= dt; b.g.position.y = b.base - .5; } // full dunk under Ganga maiya
@@ -1279,6 +1295,7 @@ function buildCity() {
   buildShikharaTemple(-HALF + 26, -HALF + CELL * 1.35, 1);
   buildShikharaTemple(-HALF + CELL * .62, -HALF + CELL * .55, .8);
   buildShikharaTemple(CELL * .4, HALF - CELL * .45, .9); // Chennai side, north-style shrine near the sea
+  buildOfferingStalls(); // and their mala-walas at every temple gate
   genDelhiWires();
   prerenderMap();
   buildRamps();
@@ -1716,6 +1733,46 @@ function buildShikharaTemple(x, z, sc) {
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   scene.add(g);
   buildings.push({ x, z, hw: 3.6 * (sc || 1), hd: 3.6 * (sc || 1) });
+  TEMPLES.push({ x, z, sc: sc || 1 });
+}
+// outside every mandir, the same little economy: mala-walas with marigold garlands,
+// baskets of loose flowers, diyas, agarbatti and coconuts for the puja thali
+const TEMPLES = [];
+function buildOfferingStalls() {
+  for (const tp of TEMPLES) for (let s = 0; s < 2; s++) {
+    const side = s ? 1 : -1;
+    const x = tp.x + side * (3.6 * tp.sc + 2), z = tp.z + 2.6 * tp.sc + 1.4;
+    if (onRoad(x, z)) continue;
+    const g = new T.Group();
+    const wood = mat('#6b4a2a', .9);
+    const top = new T.Mesh(new T.BoxGeometry(1.8, .1, .9), mat('#8a6b3a', .9)); top.position.y = .74; g.add(top);
+    for (const [lx, lz] of [[-.8, -.35], [.8, -.35], [-.8, .35], [.8, .35]]) {
+      const leg = new T.Mesh(new T.CylinderGeometry(.035, .035, .72, 6), wood); leg.position.set(lx, .36, lz); g.add(leg); }
+    // two posts and a bar, and the garlands hang from it like a curtain
+    for (const px of [-.85, .85]) { const post = new T.Mesh(new T.CylinderGeometry(.03, .035, 1.9, 6), wood); post.position.set(px, .95, -.35); g.add(post); }
+    const bar = new T.Mesh(new T.CylinderGeometry(.022, .022, 1.75, 6), wood); bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.86, -.35); g.add(bar);
+    for (let gi = 0; gi < 7; gi++) { const gx = -.75 + gi * .25;
+      const rose = gi % 3 === 2; // every third string is red roses, the rest genda phool
+      for (let b2 = 0; b2 < 6; b2++) { const bead = new T.Mesh(new T.SphereGeometry(.038, 6, 5),
+        mat(rose ? (b2 % 2 ? '#c0392b' : '#8e2438') : (b2 % 2 ? '#ff9800' : '#ffc107'), .7));
+        bead.position.set(gx, 1.78 - b2 * .085, -.35); g.add(bead); } }
+    // on the table: baskets of loose flowers, a stack of diyas, agarbatti, coconuts
+    for (const [bx2, bcol] of [[-.55, '#ff9800'], [.05, '#c0392b']]) {
+      const rim = new T.Mesh(new T.CylinderGeometry(.2, .16, .12, 10, 1, true), mat('#a3814a', .95)); rim.material.side = T.DoubleSide; rim.position.set(bx2, .85, .1); g.add(rim);
+      for (let f2 = 0; f2 < 6; f2++) { const fl = new T.Mesh(new T.SphereGeometry(.045, 6, 5), mat(f2 % 2 ? bcol : '#ffc107', .7));
+        fl.position.set(bx2 + Math.cos(f2) * .09, .92, .1 + Math.sin(f2 * 2) * .07); g.add(fl); } }
+    for (let d2 = 0; d2 < 3; d2++) { const diya = new T.Mesh(new T.SphereGeometry(.05, 6, 5), new T.MeshStandardMaterial({ color: '#c9673a', roughness: .9 }));
+      diya.scale.y = .5; diya.position.set(.55, .82 + d2 * .05, .05); g.add(diya); }
+    const pot = new T.Mesh(new T.CylinderGeometry(.05, .04, .12, 8), mat('#b3402a', .9)); pot.position.set(.72, .86, .28); g.add(pot);
+    for (let a2 = 0; a2 < 4; a2++) { const stick = new T.Mesh(new T.CylinderGeometry(.006, .006, .34, 4), mat('#5c452e', .9));
+      stick.rotation.z = rand(-.18, .18); stick.rotation.x = rand(-.14, .14); stick.position.set(.72, 1.04, .28); g.add(stick); }
+    for (let c2 = 0; c2 < 3; c2++) { const coco = new T.Mesh(new T.SphereGeometry(.09, 8, 6), mat('#6d4a26', .95));
+      coco.position.set(-.15 + c2 * .17, .84, .32); g.add(coco); }
+    g.position.set(x, 0, z); g.rotation.y = -side * Math.PI / 2; // the garland curtain faces the temple path
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+    buildings.push({ x, z, hw: 1, hd: 1, parts: [g] });
+    vendorSpots.push({ x: x - Math.sin(-side * Math.PI / 2) * .95, z: z - Math.cos(-side * Math.PI / 2) * .95, yaw: -side * Math.PI / 2, kind: 'phool' });
+  }
 }
 // streetside shrines: a tiny saffron mandir absorbed into the pavement, marigold and diyas
 const shrines = [];
@@ -1883,13 +1940,14 @@ function spawnVendors() {
   if (!HERO) return;
   let count = 0;
   const capV = GFX === 'low' ? 10 : 16;
-  for (const s of vendorSpots) { if (count >= capV) break; if (Math.random() < .45) continue;
+  for (const s of vendorSpots) { // the mala-walas at the temple gates always show up for work
+    if (s.kind !== 'phool' && (count >= capV || Math.random() < .45)) continue;
     const o = npcLook(districtAt(s.x, s.z));
     const g = makeHuman(o); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw;
     scene.add(g); vendors.push({ g, kind: s.kind, phase: rand(0, TAU), h: g.userData.human, called: 0 });
     count++; }
 }
-const VENDOR_CRIES = { chai: '“Chaaai chai chai! Garam chai!”', fry: '“Garam jalebi! Samosa le lo!”', panipuri: '“Pani puri, ekdum fresh!”' };
+const VENDOR_CRIES = { chai: '“Chaaai chai chai! Garam chai!”', fry: '“Garam jalebi! Samosa le lo!”', panipuri: '“Pani puri, ekdum fresh!”', phool: '“Mala le lo! Phool, prasad, nariyal — sab taaza!”' };
 function updateVendors(dt) {
   for (const v of vendors) { const d2 = v.g.position.distanceToSquared(player.pos); if (d2 > 45 * 45) continue;
     v.phase += dt * 2.6;
@@ -3208,6 +3266,7 @@ function nearPlayerSpot(rmin, rmax, wantSidewalk) {
     const a = rand(0, TAU), r = rand(rmin, rmax);
     const x = clamp(player.pos.x + Math.sin(a) * r, -HALF + 4, HALF - 4);
     const z = clamp(player.pos.z + Math.cos(a) * r, -HALF + 4, HALF - 4);
+    if (inGhats(x, z) || inBeach(x, z)) continue; // the road grid's modulo bands run on into the river — never recycle life there
     if (wantSidewalk ? (onSidewalk(x, z) && !blocked(x, z)) : onRoad(x, z)) return { x, z };
   }
   return null;
@@ -3546,7 +3605,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 28'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 29'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -3556,6 +3615,7 @@ function boot() {
     loadHeroine(hh => { HEROINE = hh; window.__heroineOk = !!hh;
       loadVehModels(() => { clearTimeout(failsafe); enable(); rebuildPreview(); }); }); });
   window.__tp = (x, z) => { player.pos.set(x, 0, z); if (player.inVehicle) { player.inVehicle.g.position.set(x, 0, z); } };
+  window.__temples = () => TEMPLES;
   window.__tpwoman = () => { const n = npcs.find(n2 => n2.female); if (!n) return false;
     player.pos.set(n.g.position.x + 2.2, 0, n.g.position.z); player.g.position.copy(player.pos);
     cam.yaw = Math.atan2(n.g.position.x - player.pos.x, n.g.position.z - player.pos.z); return n.g.position.toArray(); };
