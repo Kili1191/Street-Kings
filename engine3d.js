@@ -947,6 +947,45 @@ function makeFacadeTexture(style, floors) {
 }
 function makeWindowTexture() { return makeFacadeTexture(0); }
 // district-specific architecture, from studying each city's real streetscape
+// the war on the box: no building leaves here as a plain cube. Chhajja ledges cut every facade
+// with shadow lines, rooflines break into vaults, chhatris and stair-huts, corners go round.
+function decubeBuilding(x, z, w, h, d, rot, boxGeo, lowRise) {
+  if (GFX !== 'low' && !lowRise) { // overhanging chhajja ledges at the floor lines
+    const ledgeM = mat(pick(['#8a7a66', '#96846c', '#7c6e5c']), .92);
+    const nL = clamp(Math.round(h / 5.5), 1, 3);
+    for (let k = 1; k <= nL; k++) { const le = new T.Mesh(boxGeo, ledgeM);
+      le.scale.set(w + .55, .16, d + .55); le.position.set(x, h * k / (nL + 1) + .6, z); le.rotation.y = rot; le.castShadow = true; scene.add(le); }
+  }
+  if (!lowRise) { const r = Math.random(); // the flat roof is over — every skyline breaks differently
+    if (r < .26) { // plastered barrel vault riding the roof
+      const v = new T.Mesh(new T.CylinderGeometry(1, 1, 1, 14), mat(pick(['#b8a88a', '#a89478', '#9a8a72']), .92));
+      v.rotation.z = Math.PI / 2; v.rotation.y = rot; v.scale.set(1.9, w * .46, Math.min(3.4, d * .38));
+      v.position.set(x, h + .15, z); v.castShadow = true; scene.add(v);
+    } else if (r < .46) { // domed chhatri pavilion
+      const g = new T.Group(); const cM = mat(pick(['#e8dcc4', '#d9c9a3', '#cfc0a8']), .8);
+      for (const [sx, sz] of [[-.5, -.5], [.5, -.5], [-.5, .5], [.5, .5]]) { const p = new T.Mesh(new T.CylinderGeometry(.07, .07, 1, 8), cM); p.position.set(sx, .5, sz); g.add(p); }
+      const dome = new T.Mesh(new T.SphereGeometry(.78, 12, 8, 0, TAU, 0, Math.PI / 2), cM); dome.position.y = 1; dome.scale.y = .8; g.add(dome);
+      g.position.set(x + rand(-w * .2, w * .2), h + .3, z + rand(-d * .2, d * .2));
+      g.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(g);
+    } else if (r < .66) { // stair-head hut capped with a little dome
+      const hut = new T.Mesh(boxGeo, mat(pick(['#c9b896', '#b8a88a']), .9)); hut.scale.set(1.7, 1.5, 1.7);
+      hut.position.set(x + w * .22, h + .95, z - d * .18); hut.rotation.y = rot; hut.castShadow = true; scene.add(hut);
+      const hd2 = new T.Mesh(new T.SphereGeometry(.95, 10, 8, 0, TAU, 0, Math.PI / 2), mat('#a89478', .85));
+      hd2.scale.set(1, .6, 1); hd2.position.set(x + w * .22, h + 1.7, z - d * .18); hd2.castShadow = true; scene.add(hd2);
+    } else if (r < .78) { // weathered tin lean-to pitched over one end, kept small and light
+      const tin = new T.Mesh(boxGeo, mat(pick(['#9a8a72', '#8a7a66', '#a08e74']), .7));
+      tin.scale.set(w * .55, .1, d * .4); tin.rotation.set(.22, rot, 0);
+      tin.position.set(x + w * .12, h + .55, z + d * .1); tin.castShadow = true; scene.add(tin);
+    }
+  }
+  if (GFX !== 'low' && h > 8 && Math.random() < .3) { // rounded corner balcony tower, half-buried in the corner
+    const sx = pick([-1, 1]), sz2 = pick([-1, 1]);
+    const bT = new T.Mesh(new T.CylinderGeometry(1, 1, h * .55, 12), mat(pick(['#cfc0a8', '#c0ae94', '#b8a88a']), .88));
+    bT.position.set(x + sx * w / 2, h * .5, z + sz2 * d / 2); bT.castShadow = true; scene.add(bT);
+    const bCap = new T.Mesh(new T.SphereGeometry(1, 10, 8, 0, TAU, 0, Math.PI / 2), mat('#a24a30', .85));
+    bCap.scale.y = .6; bCap.position.set(x + sx * w / 2, h * .5 + h * .275, z + sz2 * d / 2); bCap.castShadow = true; scene.add(bCap);
+  }
+}
 function addDistrictArchitecture(di, x, z, w, h, d, boxGeo) {
   const front = z + d / 2;
   switch (di) {
@@ -1191,7 +1230,9 @@ function buildTajMahal(x, z) {
     arch.rotation.z = Math.PI / 2; arch.rotation.y = Math.PI / 2; arch.position.set(0, 6.4, 5.6); face.add(arch);
     const door = new T.Mesh(new T.BoxGeometry(3.4, 4.4, .56), dark); door.position.set(0, 4.2, 5.6); face.add(door);
     for (const sx of [-3.9, 3.9]) for (const yy of [3.2, 6.6]) {
-      const nich = new T.Mesh(new T.BoxGeometry(1.5, 2.3, .4), dark); nich.position.set(sx, yy, 5.52); face.add(nich); }
+      const nich = new T.Mesh(new T.BoxGeometry(1.5, 2.3, .4), dark); nich.position.set(sx, yy, 5.52); face.add(nich);
+      const nArch = new T.Mesh(new T.CylinderGeometry(.75, .75, .4, 12, 1, false, 0, Math.PI), dark); // every niche closes in an arch, never a flat lintel
+      nArch.rotation.z = Math.PI / 2; nArch.rotation.y = Math.PI / 2; nArch.position.set(sx, yy + 1.15, 5.52); face.add(nArch); }
     face.rotation.y = ry; g.add(face);
   }
   // drum + the great onion dome, lathe-profiled with the classic swell and point
@@ -1229,8 +1270,9 @@ function buildTajMahal(x, z) {
 const AGHORI = { x: 0, z: 0 };
 function buildAghoriCamp(x, z) {
   AGHORI.x = x; AGHORI.z = z;
-  const ashG = new T.Mesh(new T.CircleGeometry(7, 16), new T.MeshStandardMaterial({ color: '#4e4a44', roughness: 1 }));
-  ashG.rotation.x = -Math.PI / 2; ashG.position.set(x, .06, z); scene.add(ashG);
+  for (const [ox, oz, rr, op] of [[0, 0, 7, 1], [3.2, 2.1, 4.4, .6], [-2.8, -2.6, 3.6, .55], [1.8, -3.4, 3, .5]]) {
+    const ashG = new T.Mesh(new T.CircleGeometry(rr, 14), new T.MeshStandardMaterial({ color: '#4e4a44', roughness: 1, transparent: op < 1, opacity: op, depthWrite: op === 1 }));
+    ashG.rotation.x = -Math.PI / 2; ashG.rotation.z = rand(0, TAU); ashG.position.set(x + ox, .06 + (op < 1 ? .005 : 0), z + oz); scene.add(ashG); } // ragged spill, not a perfect disc
   // the smoldering pyre they tend
   const embers = new T.Mesh(new T.SphereGeometry(.6, 8, 6), new T.MeshStandardMaterial({ color: '#6a2408', emissive: '#c43a00', emissiveIntensity: 1.1 }));
   embers.scale.y = .3; embers.position.set(x, .18, z); scene.add(embers);
@@ -1425,6 +1467,7 @@ function buildCity() {
       } else {
         const roof = new T.Mesh(boxGeo, mat('#2b2b32')); roof.scale.set(w + .25, .5, d + .25); roof.position.set(px2, h + .1, pz2); roof.rotation.y = rot; roof.castShadow = true; scene.add(roof);
       }
+      decubeBuilding(px2, pz2, w, h, d, rot, boxGeo, lowRise);
       addDistrictArchitecture(di2, px2, pz2, w, h, d, boxGeo);
       // water tank + rooftop clutter
       if (Math.random() < .55) { const tk = new T.Mesh(new T.CylinderGeometry(.35, .35, .7, 10), mat('#3a3a3a')); tk.position.set(px2 + w * .2, h + .55, pz2 + d * .2); tk.castShadow = true; scene.add(tk); }
@@ -1484,6 +1527,8 @@ function buildLandmarks() {
       for (let tier = 0; tier < 5; tier++) { const w = 16 - tier * 2.6, h2 = 2.6;
         const t2 = new T.Mesh(new T.BoxGeometry(w, h2, 2.2 + (4 - tier) * .35), pinkM);
         t2.position.set(0, 1.3 + tier * h2, 0); g.add(t2);
+        const chj = new T.Mesh(new T.BoxGeometry(w + .7, .16, 2.9 + (4 - tier) * .35), mat('#ffffff', .8)); // white chhajja shading each tier
+        chj.position.set(0, 2.62 + tier * h2, 0); g.add(chj);
         if (tier > 1) for (const sx of [-w / 2 + .6, w / 2 - .6]) { // domed kiosks stepping up the sides
           const k = new T.Mesh(new T.SphereGeometry(.55, 8, 6, 0, TAU, 0, Math.PI / 2), mat('#e8cfc0', .8));
           k.position.set(sx, 1.3 + tier * h2 + 1.35, 0); g.add(k); } }
@@ -1494,7 +1539,9 @@ function buildLandmarks() {
       const cream = mat('#f2dfc0', .9), pkTrim = mat('#d1766a', .85);
       for (let tier = 0; tier < 5; tier++) { const w = 9 - tier * 1.4;
         const t3 = new T.Mesh(new T.BoxGeometry(w, 2.2, w * .8), tier % 2 ? pkTrim : cream);
-        t3.position.y = 1.1 + tier * 2.2; cp.add(t3); }
+        t3.position.y = 1.1 + tier * 2.2; cp.add(t3);
+        const cchj = new T.Mesh(new T.BoxGeometry(w + .6, .14, w * .8 + .6), mat('#ffffff', .8));
+        cchj.position.y = 2.2 + tier * 2.2; cp.add(cchj); }
       const bangla = new T.Mesh(new T.CylinderGeometry(1.6, 1.6, 3.4, 12, 1, false, 0, Math.PI), cream);
       bangla.rotation.z = Math.PI / 2; bangla.position.y = 11.9; cp.add(bangla); // curved bangla roof
       const cpFlag = new T.Mesh(new T.ConeGeometry(.3, 1, 3), new T.MeshStandardMaterial({ color: '#e8483a', side: T.DoubleSide }));
@@ -1524,21 +1571,23 @@ function buildLandmarks() {
         rock.scale.y = .6; rock.position.set(rx[0], .3, rx[1]); gj.add(rock); }
       buildings.push({ x: cx + 37, z: cz + 37 - 2.5, hw: 2.2, hd: 1.8 });
     } else if (i === 5) { // ---- the ADIYOGI: the great iron face of the first yogi, still and immense ----
-      const iron = new T.MeshStandardMaterial({ color: '#3d4148', metalness: .55, roughness: .55 });
+      const iron = new T.MeshStandardMaterial({ color: '#5a6068', metalness: .62, roughness: .4 }); // light enough to catch the sun and read as a FACE, not a shadow
       const ad = new T.Group(); ad.position.set(0, 0, 0); g.add(ad);
       const plinth2 = new T.Mesh(new T.BoxGeometry(16, 1.2, 9), mat('#5a5148', .95)); plinth2.position.y = .6; ad.add(plinth2);
       const chest = new T.Mesh(new T.SphereGeometry(4.6, 16, 12), iron); chest.scale.set(1.5, .85, .62); chest.position.y = 3.4; ad.add(chest);
       const neck2 = new T.Mesh(new T.CylinderGeometry(1.7, 2.1, 1.8, 12), iron); neck2.position.y = 6.6; ad.add(neck2);
       const face2 = new T.Mesh(new T.SphereGeometry(2.6, 18, 14), iron); face2.scale.set(1, 1.22, .92); face2.position.y = 9.8; ad.add(face2);
       const nose2 = new T.Mesh(new T.BoxGeometry(.55, 1.3, .5), iron); nose2.position.set(0, 9.5, 2.25); ad.add(nose2);
-      for (const sx of [-1, 1]) { // the long closed eyes of deep meditation
-        const eye = new T.Mesh(new T.BoxGeometry(1.25, .14, .2), mat('#c9c2b2', .5)); eye.rotation.z = -.08 * sx;
-        eye.position.set(1.05 * sx, 10.15, 2.28); ad.add(eye); }
-      for (let st3 = 0; st3 < 3; st3++) { const strip = new T.Mesh(new T.BoxGeometry(2.5, .22, .16), mat('#e8e2d2', .5));
-        strip.position.set(0, 11.15 + st3 * .38, 2.1); ad.add(strip); } // the wide tripundra across the brow
-      // matted jata swept back in a crest, and the crescent moon riding it
-      for (let j2 = 0; j2 < 4; j2++) { const coil2 = new T.Mesh(new T.TorusGeometry(1.9 - j2 * .3, .5, 8, 14), iron);
-        coil2.rotation.x = Math.PI / 2.4; coil2.position.set(0, 11.8 + j2 * .78, -.7 - j2 * .35); ad.add(coil2); }
+      for (const sx of [-1, 1]) { // the long closed eyes of deep meditation — big enough to read from the street
+        const eye = new T.Mesh(new T.BoxGeometry(1.4, .2, .24), mat('#ded6c2', .45)); eye.rotation.z = -.08 * sx;
+        eye.position.set(1.05 * sx, 10.15, 2.32); ad.add(eye); }
+      for (let st3 = 0; st3 < 3; st3++) { const strip = new T.Mesh(new T.BoxGeometry(3, .3, .2), mat('#f0ead8', .45));
+        strip.position.set(0, 11.1 + st3 * .44, 2.16); ad.add(strip); } // the wide tripundra across the brow
+      // matted jata swept back as ONE smooth crest, the coils only hinted at its base
+      const crest = new T.Mesh(new T.SphereGeometry(2.2, 14, 10), iron);
+      crest.scale.set(1.05, .78, 1.55); crest.position.set(0, 12.35, -1); ad.add(crest);
+      for (let j2 = 0; j2 < 2; j2++) { const coil2 = new T.Mesh(new T.TorusGeometry(1.5 - j2 * .35, .32, 8, 14), iron);
+        coil2.rotation.x = Math.PI / 2.2; coil2.position.set(0, 12.9 + j2 * .6, -1.2 - j2 * .3); ad.add(coil2); }
       const moon = new T.Mesh(new T.TorusGeometry(.65, .12, 6, 14, Math.PI * 1.2), new T.MeshStandardMaterial({ color: '#d4af37', metalness: .6, roughness: .3 }));
       moon.position.set(1.9, 12.9, .4); moon.rotation.z = .6; ad.add(moon);
       // the meditation ground: dark stone circle ringed with butter lamps
@@ -1851,23 +1900,24 @@ function spawnElephants(n) {
     brow.rotation.x = Math.PI / 2.6; brow.position.set(0, 2.62, 1.86); g.add(brow);
     for (let d3 = 0; d3 < 5; d3++) { const dot = new T.Mesh(new T.SphereGeometry(.045, 6, 5), dM2);
       dot.position.set(-.24 + d3 * .12, 2.86, 2.02); g.add(dot); }
-    // the trunk curls down in painted rings
-    let tx = 0, ty = 2.2, tz = 2.14;
-    for (let s5 = 0; s5 < 5; s5++) { const r5 = .19 - s5 * .028;
-      const seg = new T.Mesh(new T.CylinderGeometry(r5, r5 - .022, .42, 8), s5 % 2 ? dM : hide);
-      seg.position.set(tx, ty, tz); seg.rotation.x = .5 - s5 * .3;
-      g.add(seg); ty -= .38; tz += .12 - s5 * .05; }
+    // the trunk: one continuous chain of segments, each carrying on from the last, curling in
+    let ta = .38, tpx = 0, tpy = 2.26, tpz = 2.02;
+    for (let s5 = 0; s5 < 6; s5++) { const r5 = .17 - s5 * .021, ln = .34;
+      const seg = new T.Mesh(new T.CylinderGeometry(r5, Math.max(.055, r5 - .019), ln + .06, 8), s5 % 2 ? dM : hide);
+      const dy = -Math.cos(ta) * ln, dz = Math.sin(ta) * ln;
+      seg.position.set(tpx, tpy + dy / 2, tpz + dz / 2); seg.rotation.x = ta;
+      g.add(seg); tpy += dy; tpz += dz; ta -= .21; } // eases from forward-hang to a curled tip
     // white tusks curving up
     for (const sx of [-1, 1]) { const tusk = new T.Mesh(new T.ConeGeometry(.07, .85, 8), mat('#e8e2d2', .4));
       tusk.position.set(.3 * sx, 1.95, 2.05); tusk.rotation.x = -1.9; tusk.rotation.z = -.25 * sx; g.add(tusk); }
-    // great painted ears, swinging slow
+    // great ears fanning out from the head, angled like sails
     for (const sx of [-1, 1]) { const ear = new T.Mesh(new T.SphereGeometry(.55, 10, 8), hide2);
-      ear.scale.set(.16, 1.05, .8); ear.position.set(.66 * sx, 2.55, 1.45); ear.rotation.z = .25 * sx;
-      const earIn = new T.Mesh(new T.SphereGeometry(.4, 8, 6), dM); earIn.scale.set(.1, .95, .7); earIn.position.set(.6 * sx, 2.55, 1.45); earIn.rotation.z = .25 * sx;
+      ear.scale.set(.2, .95, .68); ear.position.set(.58 * sx, 2.5, 1.5); ear.rotation.z = .3 * sx; ear.rotation.y = .55 * sx;
+      const earIn = new T.Mesh(new T.SphereGeometry(.42, 8, 6), dM); earIn.scale.set(.12, .85, .58); earIn.position.set(.56 * sx, 2.5, 1.52); earIn.rotation.z = .3 * sx; earIn.rotation.y = .55 * sx;
       g.add(ear); g.add(earIn); g.userData['ear' + (sx > 0 ? 'R' : 'L')] = ear; }
-    // the caparison: fringed cloth over the back, gold-bordered
-    const cloth = new T.Mesh(new T.BoxGeometry(1.9, .1, 2.5), dM); cloth.position.y = 2.95; g.add(cloth);
-    const border = new T.Mesh(new T.BoxGeometry(2, .06, 2.6), dM2); border.position.y = 2.9; g.add(border);
+    // the caparison: fringed cloth settled INTO the back, gold-bordered
+    const cloth = new T.Mesh(new T.BoxGeometry(1.9, .1, 2.5), dM); cloth.position.y = 2.86; g.add(cloth);
+    const border = new T.Mesh(new T.BoxGeometry(2, .06, 2.6), dM2); border.position.y = 2.82; g.add(border);
     for (let f3 = 0; f3 < 6; f3++) for (const sx of [-1.02, 1.02]) { const tassel = new T.Mesh(new T.SphereGeometry(.05, 6, 5), dM2);
       tassel.position.set(sx, 2.78, -1 + f3 * .42); g.add(tassel); }
     // pillar legs with painted anklets, and toenails
@@ -3590,6 +3640,8 @@ function updateFoot(dt, f, s) {
   }
   breathUI(player.swim && (player.dive || player.breath < 100), player.breath ?? 100);
   underwaterFx(!!player.dive);
+  if (player.dive && !player._uwFog) { player._uwFog = scene.fog || 'none'; scene.fog = new T.Fog('#1e4c48', 2, 30); } // the Ganga closes over you, murky green
+  else if (!player.dive && player._uwFog) { scene.fog = player._uwFog === 'none' ? null : player._uwFog; player._uwFog = null; }
   // the far shore has its own keepers — and its own warnings
   if (onFarBank(player.pos.x, player.pos.z) && nowMs > (updateFoot._farT || 0)) {
     updateFoot._farT = nowMs + 9000;
@@ -4023,7 +4075,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 30'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 31'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
