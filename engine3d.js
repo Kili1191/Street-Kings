@@ -373,6 +373,12 @@ function buildHeadgear(o) {
     } else if (o.hair === 'jura') { // top-knot bun
       const bun = new T.Mesh(new T.SphereGeometry(0.042, 12, 10), hM);
       bun.position.set(0, ACC.turbY + 0.045, -0.02); g.add(bun);
+    } else if (o.hair === 'jata') { // matted locks piled into a jata-mukuta crown
+      for (let i = 0; i < 3; i++) { const coil = new T.Mesh(new T.TorusGeometry(.052 - i * .013, .021, 8, 14), hM);
+        coil.rotation.x = Math.PI / 2; coil.position.set(0, ACC.turbY + .012 + i * .031, -.012); g.add(coil); }
+      const top = new T.Mesh(new T.SphereGeometry(.025, 8, 6), hM); top.position.set(0, ACC.turbY + .105, -.012); g.add(top);
+      for (const sx of [-1, 1]) { const lock = new T.Mesh(new T.CylinderGeometry(.012, .008, .3, 6), hM);
+        lock.position.set(.084 * sx, ACC.turbY - .17, -.05); lock.rotation.z = .1 * sx; g.add(lock); }
     } else if (o.hair === 'bun') { // low bun at the nape, parted on top
       const bun = new T.Mesh(new T.SphereGeometry(0.05, 12, 10), hM);
       bun.position.set(0, ACC.turbY - 0.1, -0.095); g.add(bun);
@@ -414,6 +420,18 @@ function buildHeadgear(o) {
     m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, ACC.mouY, ACC.mouZ); g.add(m); }
   if (o.bindi) { const b = new T.Mesh(new T.CircleGeometry(0.0062, 10), new T.MeshBasicMaterial({ color: '#a01020' }));
     b.position.set(0, 0.03, 0.1035); g.add(b); } // the bindi: a small dot, not a sticker
+  if (o.tilak === 'shaiva') { // tripundra: three pale ash stripes across the forehead
+    for (let i = 0; i < 3; i++) { // a dark underlay keeps the stripes readable even on ash-pale naga skin
+      const u = new T.Mesh(new T.PlaneGeometry(.056, .009), new T.MeshBasicMaterial({ color: '#57503f' }));
+      u.position.set(0, 0.045 - i * .012, 0.1030); g.add(u);
+      const s = new T.Mesh(new T.PlaneGeometry(.052, .0065), new T.MeshBasicMaterial({ color: '#f2ecd9' }));
+      s.position.set(0, 0.045 - i * .012, 0.1032); g.add(s); }
+    const dot = new T.Mesh(new T.CircleGeometry(.006, 8), new T.MeshBasicMaterial({ color: '#c0392b' })); dot.position.set(0, 0.033, 0.1036); g.add(dot);
+  } else if (o.tilak === 'vaishnav') { // the U-shaped urdhva pundra
+    for (const sx of [-1, 1]) { const s = new T.Mesh(new T.PlaneGeometry(.006, .045), new T.MeshBasicMaterial({ color: '#f2ecd9' }));
+      s.position.set(.011 * sx, 0.038, 0.1032); s.rotation.z = -.12 * sx; g.add(s); }
+    const c2 = new T.Mesh(new T.PlaneGeometry(.006, .04), new T.MeshBasicMaterial({ color: '#c94a10' })); c2.position.set(0, 0.036, 0.1034); g.add(c2);
+  }
   if (o.earrings) { const gm = new T.MeshStandardMaterial({ color: '#e8c85a', metalness: .7, roughness: .25 });
     for (const sx of [-1, 1]) { const ring = new T.Mesh(new T.TorusGeometry(.014, .004, 6, 12), gm);
       ring.position.set(.086 * sx, -.048, .008); g.add(ring);
@@ -449,7 +467,10 @@ function makeHuman(o) {
     else if (/Outfit_Bottom/i.test(mn)) { n.material = n.material.clone();           // churidar / pyjama in REAL cloth
       n.material.normalMap = null; n.material.roughnessMap = null;
       n.material.map = makeFabricTexture(o.dhoti || '#efe6d0'); n.material.color = new T.Color('#ffffff'); n.material.roughness = .9; }
-    else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#4a3626');        // leather juttis
+    else if (/Footwear/i.test(mn)) { n.material = n.material.clone();                // leather juttis — or bare feet
+      if (o.barefoot) { n.material.map = null; n.material.normalMap = null; n.material.roughnessMap = null;
+        n.material.color = skinTint.clone(); n.material.roughness = .85; }
+      else n.material.color = new T.Color('#4a3626'); }
     else if (/Skin|Body/i.test(mn) && !/Ch03/i.test(mn)) n.material.color = skinTint; // face + body skin tone (Michelle keeps her own painted texture)
     else if (/Headwear/i.test(mn)) n.visible = false;                                // replaced by our pagdi
     else if (/Beard/i.test(mn)) { n.visible = o.moustache !== false;               // this mesh is actually the moustache
@@ -514,7 +535,7 @@ function makeHuman(o) {
         lg.quaternion.setFromUnitVectors(new T.Vector3(0, 1, 0), hips.worldToLocal(hem.clone()).sub(hips.worldToLocal(hW.clone())).normalize());
         lg.scale.z *= .8; lg.position.copy(hips.worldToLocal(hW.clone().add(hem).multiplyScalar(.5))); lg.castShadow = true; hips.add(lg);
         drape(hips, hW.clone().add(new T.Vector3(0, .08, 0)), hW.clone().add(new T.Vector3(0, -.22, 0)), .152, .175, .76, true); // short untucked shirt-fall
-      } else {
+      } else if (!o.naga) {                                                            // a naga wears no kurta — no fall to drape
         const hemLen = o.outfit === 'bandhgala' ? .26 : (o.salwar ? .34 : .38);        // the kurta's fall, knee-length, over the jacket's own hip line
         drape(hips, hW.clone().add(new T.Vector3(0, .08, 0)), hW.clone().add(new T.Vector3(0, -hemLen, 0)), .152, .188, .76, true);
         if (o.outfit === 'sherwani' || o.outfit === 'silk') zari(hips, hW.clone().add(new T.Vector3(0, -hemLen + .015, 0)), .183, .76);
@@ -525,7 +546,27 @@ function makeHuman(o) {
     // every face its own: vary the skull's proportions per person (accessories inherit the same stretch)
     if (o.vary) head.scale.set(head.scale.x * rand(.93, 1.09), head.scale.y * rand(.94, 1.1), head.scale.z * rand(.96, 1.06));
     // the avatar has a real beard mesh, so only the pagdi is attached here
-    const acc = buildHeadgear({ turban: F ? false : o.turban, turbanColor: o.turbanColor, beard: F ? 'none' : o.beard, shades: o.shades, hair: F ? 'none' : o.hair, hairColor: o.hairColor, bindi: o.female, earrings: o.female }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
+    const acc = buildHeadgear({ turban: F ? false : o.turban, turbanColor: o.turbanColor, beard: F ? 'none' : o.beard, shades: o.shades, hair: F ? 'none' : o.hair, hairColor: o.hairColor, bindi: o.female, earrings: o.female, tilak: o.tilak }); acc.scale.setScalar(1 / ws); acc.position.set(0, 0.062 / ws, 0.004 / ws); head.add(acc); }
+  if (o.mala && neck) { // rudraksha bead mala around the neck
+    const wsM = neck.getWorldScale(V).x || 1;
+    const mala = new T.Group(); const bM2 = mat('#5c3a24', .7);
+    for (let i = 0; i < 18; i++) { const a = i / 18 * TAU;
+      const bead = new T.Mesh(new T.SphereGeometry(.011, 6, 5), bM2);
+      bead.position.set(Math.cos(a) * .085, -.06 - Math.sin(Math.max(0, Math.sin(a / 2))) * .06, Math.sin(a) * .062 + .01); mala.add(bead); }
+    const pend = new T.Mesh(new T.SphereGeometry(.018, 8, 6), bM2); pend.position.set(0, -.145, .075); mala.add(pend);
+    mala.scale.setScalar(1 / wsM); neck.add(mala);
+  }
+  if (o.trident && rHand) { // the sadhu's trishul
+    const wsT = rHand.getWorldScale(V).x || 1;
+    const tri = new T.Group(); const tm = new T.MeshStandardMaterial({ color: '#b9bec4', roughness: .35, metalness: .7 });
+    const staff = new T.Mesh(new T.CylinderGeometry(.012, .014, 1.7, 8), mat('#6b4a2a', .85)); tri.add(staff);
+    for (const sx of [-.05, 0, .05]) { const prong = new T.Mesh(new T.CylinderGeometry(.008, .003, .3, 6), tm);
+      prong.position.set(sx, .95, 0); if (sx !== 0) prong.rotation.z = -sx * 2.2; tri.add(prong); }
+    const bar = new T.Mesh(new T.CylinderGeometry(.008, .008, .14, 6), tm); bar.rotation.z = Math.PI / 2; bar.position.y = .84; tri.add(bar);
+    // the hand bone's +Y points down the fingers (toward the ground with arms at rest),
+    // so flip the whole trishul 180° about Z to send the prongs skyward
+    tri.scale.setScalar(1 / wsT); tri.position.set(0, .02 / wsT, .02 / wsT); tri.rotation.set(.15, 0, Math.PI); rHand.add(tri);
+  }
   if (false && neck && !F) { // (retired — the bow tie is now flattened at load time)
     const wsN = neck.getWorldScale(V).x || 1;
     const colM = new T.MeshStandardMaterial({ color: '#ffffff', map: o.female ? makeFabricTexture(o.dhoti || '#c2185b') : makeFabricTexture(shadeHex(o.kurta || '#c68642', -20)), roughness: .7 });
@@ -1108,6 +1149,17 @@ function spawnBathers() { // in the Ganga at dawn: some bare-chested in a dhoti,
       const lota = new T.Mesh(new T.SphereGeometry(.07 / ws, 8, 6), new T.MeshStandardMaterial({ color: '#c9952a', metalness: .6, roughness: .35 }));
       h.rHand.add(lota); lota.position.set(0, .05 / ws, 0); }
     scene.add(g); bathers.push({ g, base: 0, t: rand(0, TAU), dip: 0, land: true, pour: true });
+  }
+  // sadhus hold the ghats: ash-grey and saffron figures in meditation along the promenade
+  for (let i = 0; i < 4; i++) {
+    const ash = i % 2 === 0;
+    const o = ash
+      ? { vary: true, naga: true, skin: '#8f8b81', outfit: 'kurta', kurta: '#8f8b81', dhoti: '#8f8b81', beard: 'long', hair: 'jata', hairColor: '#6a6156', turban: false, moustache: true, barefoot: true, mala: true, tilak: 'shaiva', trident: i === 0 }
+      : { vary: true, skin: pick(SKINS), outfit: 'khadi', kurta: '#ff8c1a', dhoti: '#ff8c1a', beard: 'long', hair: 'long', turban: false, moustache: true, mala: true, tilak: 'vaishnav' };
+    const g = makeHuman(o);
+    const gz = -HALF + CELL + 14 + i * 22;
+    g.position.set(-HALF + 14.2, 1.1, gz + rand(-3, 3)); g.rotation.y = -Math.PI / 2; // facing the river
+    scene.add(g); bathers.push({ g, base: 1.1, t: rand(0, TAU), dip: 0, land: true });
   }
   // white-clad mourners stand at the cremation platforms
   for (const p of pyres) for (let i = 0; i < 2; i++) {
@@ -1795,7 +1847,15 @@ function npcLook(di) {
   if (o.wealth < 2 && Math.random() < lungiOdds) { o.lungi = pick([['#1e3a5c', '#3a6b8a'], ['#2e5d3a', '#5c8a4a'], ['#5c2430', '#8a4a3a'], ['#3a3a44', '#6a6a7a']]);
     o.outfit = 'kurta'; }
   if (di === 4) { o.turban = Math.random() < .75; } // Punjab: sardars everywhere
-  else if (di === 3 && Math.random() < .4) { o.outfit = 'khadi'; o.kurta = '#ff8c1a'; o.dhoti = '#ff8c1a'; o.beard = 'long'; o.hair = 'long'; o.turban = false; o.lungi = null; } // Kashi: saffron sadhus
+  else if (di === 3) { const r2 = Math.random(); // Kashi: the city of the spiritual
+    if (r2 < .22) { // NAGA SADHU: body smeared in sacred ash, bare-chested, matted jata locks
+      o.naga = true; o.skin = pick(['#8f8b81', '#84807a', '#9a968c']); o.outfit = 'kurta'; o.kurta = o.skin; o.dhoti = o.skin;
+      o.lungi = null; o.beard = 'long'; o.hair = 'jata'; o.hairColor = '#6a6156'; o.turban = false; o.barefoot = true;
+      o.mala = true; o.tilak = 'shaiva'; o.trident = Math.random() < .4; }
+    else if (r2 < .55) { // saffron sadhu with rudraksha mala and tilak
+      o.outfit = 'khadi'; o.kurta = '#ff8c1a'; o.dhoti = '#ff8c1a'; o.beard = 'long'; o.hair = 'long'; o.turban = false; o.lungi = null;
+      o.barefoot = true; o.mala = true; o.tilak = pick(['shaiva', 'vaishnav']); }
+    else if (r2 < .7 && !o.female) { o.tilak = 'vaishnav'; o.mala = Math.random() < .4; } } // even lay pilgrims wear the mark
   else if (di === 2) { o.turban = Math.random() < .6; o.turbanColor = pick(['#e91e63', '#ff5722', '#ffc107', '#d81b60', '#ff9933']); } // Marwar: blazing pagris
   else if (di === 5 && Math.random() < .5 && !o.lungi) { o.outfit = 'kurta'; o.kurta = '#ffffff'; o.dhoti = '#ffffff'; o.turban = false; } // Kerala: white mundu
   else if (di === 8 && Math.random() < .4) { o.outfit = 'kurta'; o.kurta = pick(['#f4e6c8', '#e8e8e8', '#b3d9e8']); o.shades = Math.random() < .5; o.turban = false; } // Goa: susegad
@@ -3486,7 +3546,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 27'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 28'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -3517,6 +3577,11 @@ function boot() {
   window.__facefront = () => { previewSpin = false; if (pChar) pChar.rotation.y = 0; };
   window.__opts = opts;
   window.__pchar = () => pChar;
+  window.__previewSadhu = (ash) => { previewSpin = false; if (pChar) pScene.remove(pChar);
+    pChar = makeHuman(ash
+      ? { naga: true, skin: '#8f8b81', outfit: 'kurta', kurta: '#8f8b81', dhoti: '#8f8b81', beard: 'long', hair: 'jata', hairColor: '#6a6156', turban: false, moustache: true, barefoot: true, mala: true, tilak: 'shaiva', trident: true }
+      : { skin: '#8d5524', outfit: 'khadi', kurta: '#ff8c1a', dhoti: '#ff8c1a', beard: 'long', hair: 'long', turban: false, moustache: true, mala: true, tilak: 'vaishnav' });
+    pChar.scale.setScalar(.62); pChar.rotation.y = 0; pScene.add(pChar); return true; };
   window.__film = () => FILM.x == null ? null : [FILM.x, FILM.z, FILM.dancers.length];
   window.__cam = (yaw) => { cam.yaw = yaw; cam.freeUntil = performance.now() + 60000; };
   window.__time = (t) => { dayT = t; };
