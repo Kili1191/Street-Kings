@@ -229,8 +229,8 @@ function loadHero(cb) {
         if (!/Outfit_Top/i.test((n.material && n.material.name) || '')) return;
         const pos = n.geometry.attributes.position;
         for (let vi = 0; vi < pos.count; vi++) { const x = pos.getX(vi), y = pos.getY(vi), z = pos.getZ(vi);
-          if (y > 1.4 && y < 1.68 && Math.abs(x) < .1 && z > .045) pos.setZ(vi, .042);          // bow tie
-          else if (y > 1.05 && y <= 1.45 && Math.abs(x) < .075 && z > .1) pos.setZ(vi, .098); } // open lapels → closed placket
+          if (y > 1.4 && y < 1.68 && Math.abs(x) < .1 && z > .045) pos.setZ(vi, .042);            // bow tie
+          else if (y > 1.02 && y <= 1.5 && Math.abs(x) < .16 && z > .088) pos.setZ(vi, .086); }   // lapel ridges → one smooth closed front
         pos.needsUpdate = true; n.geometry.computeVertexNormals(); });
       const clips = {}; let left = 3;
       const done = () => { if (--left > 0) return;
@@ -282,10 +282,10 @@ function makeEmbroideredKurta(baseHex) { // the poster look: plain rich cloth, g
   g.globalAlpha = 1;
   // NO bright bands — unknown UVs would paint them onto the collar like neckwear.
   // Just fine allover gold motifs on the dark cloth, poster-style.
-  for (let i = 0; i < 70; i++) { const x = rand(0, S), y = rand(0, S);
-    g.strokeStyle = 'rgba(201,162,39,.55)'; g.lineWidth = 1;
-    g.beginPath(); g.arc(x, y, rand(1.2, 2.8), 0, TAU); g.stroke();
-    if (Math.random() < .4) { g.beginPath(); g.moveTo(x - 3, y + 4); g.quadraticCurveTo(x, y + 7, x + 3, y + 4); g.stroke(); } }
+  for (let i = 0; i < 120; i++) { const x = rand(0, S), y = rand(0, S);
+    g.strokeStyle = 'rgba(201,162,39,.32)'; g.lineWidth = .8;
+    g.beginPath(); g.arc(x, y, rand(.8, 1.7), 0, TAU); g.stroke();
+    if (Math.random() < .4) { g.beginPath(); g.moveTo(x - 2, y + 3); g.quadraticCurveTo(x, y + 5, x + 2, y + 3); g.stroke(); } }
   const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping;
   embCache[baseHex] = tex; return tex;
 }
@@ -329,21 +329,21 @@ function buildHeadgear(o) {
   if (o.turban) {
     // a REAL pagdi is wound cloth: stacked visible wraps, matte, each ring slightly askew — never a smooth dome
     const tM = new T.MeshStandardMaterial({ color: '#ffffff', map: makeTurbanTexture(o.turbanColor), roughness: .96, metalness: 0 });
-    // under-wrap dome seals the scalp
-    const cap = new T.Mesh(new T.SphereGeometry(0.102, 20, 16), tM);
-    cap.scale.set(1.03, .9, 1.05); cap.position.y = ACC.turbY - 0.055; g.add(cap);
+    // under-wrap dome seals the scalp — sits HIGH, the brow and eyes stay fully clear
+    const cap = new T.Mesh(new T.SphereGeometry(0.099, 20, 16), tM);
+    cap.scale.set(1.02, .78, 1.03); cap.position.y = ACC.turbY - 0.028; g.add(cap);
     const wraps = [
-      [0.113, 0.021, -0.046, 0, .02],
-      [0.112, 0.022, -0.018, .05, -.03],
-      [0.098, 0.021, 0.008, -.04, .04],
-      [0.075, 0.019, 0.03, .05, -.02],
+      [0.110, 0.016, -0.026, 0, .02],
+      [0.108, 0.017, -0.004, .05, -.03],
+      [0.094, 0.016, 0.016, -.04, .04],
+      [0.072, 0.015, 0.034, .05, -.02],
     ];
     for (const [r, tube, y, rx, rz] of wraps) {
       const ring = new T.Mesh(new T.TorusGeometry(r, tube, 10, 26), tM);
       ring.rotation.x = Math.PI / 2 + rx; ring.rotation.z = rz;
-      ring.scale.set(1, 1, 1.04); ring.position.y = ACC.turbY + y; g.add(ring);
+      ring.scale.set(1, 1.02, .72); ring.position.y = ACC.turbY + y; g.add(ring); // squashed: bands of cloth, not donuts
     }
-    const peak = new T.Mesh(new T.SphereGeometry(0.05, 12, 10), tM); peak.scale.y = .7; peak.position.y = ACC.turbY + 0.042; g.add(peak);
+    const peak = new T.Mesh(new T.SphereGeometry(0.046, 12, 10), tM); peak.scale.y = .62; peak.position.y = ACC.turbY + 0.046; g.add(peak);
     // the larh: the wrap's tail hanging at the back of the neck
     const tail = new T.Mesh(new T.BoxGeometry(0.05, 0.14, 0.014), tM);
     tail.position.set(0.02, ACC.turbY - 0.13, -0.1); tail.rotation.x = .2; tail.rotation.z = .1; g.add(tail);
@@ -384,14 +384,19 @@ function buildHeadgear(o) {
     for (const sx of [-1, 1]) { const arm = new T.Mesh(new T.BoxGeometry(.012, .012, .1), dark); arm.position.set(.1 * sx, .015, .05); g.add(arm); }
   }
   if (o.beard && o.beard !== 'none') {
-    const bM = mat('#171310', .85);
-    const b = new T.Mesh(new T.SphereGeometry(0.082, 16, 14), bM);
-    if (o.beard === 'stubble') b.scale.set(.98, .5, .6);
-    else if (o.beard === 'full') b.scale.set(1.0, .8, .66);
-    else b.scale.set(.98, 1.45, .66);
-    b.position.set(0, ACC.beardY - (o.beard === 'long' ? 0.05 : 0), ACC.beardZ - .01); g.add(b);
+    // a beard hugs the JAW — flattened against the face, never a floating ball
+    const bc = o.hairColor || '#1a120c';
+    const bM = mat(bc, .92);
+    const b = new T.Mesh(new T.SphereGeometry(0.08, 16, 14), bM);
+    if (o.beard === 'stubble') { b.scale.set(.95, .48, .42); b.position.set(0, ACC.beardY + .01, ACC.beardZ - .018); }
+    else if (o.beard === 'full') { b.scale.set(.95, .72, .46); b.position.set(0, ACC.beardY, ACC.beardZ - .014); }
+    else { b.scale.set(.9, 1.25, .44); b.position.set(0, ACC.beardY - .045, ACC.beardZ - .012); }
+    g.add(b);
+    for (const sx of [-1, 1]) { // sideburns tie the beard into the hairline
+      const sb = new T.Mesh(new T.SphereGeometry(.032, 8, 6), bM);
+      sb.scale.set(.7, 1.7, .8); sb.position.set(.078 * sx, -.02, .028); g.add(sb); }
   }
-  if (o.moustache) { const m = new T.Mesh(new T.TorusGeometry(0.035, 0.012, 8, 14, Math.PI), mat('#171310', .85));
+  if (o.moustache) { const m = new T.Mesh(new T.TorusGeometry(0.035, 0.012, 8, 14, Math.PI), mat(o.hairColor || '#1a120c', .9));
     m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, ACC.mouY, ACC.mouZ); g.add(m); }
   if (o.bindi) { const b = new T.Mesh(new T.CircleGeometry(0.0062, 10), new T.MeshBasicMaterial({ color: '#a01020' }));
     b.position.set(0, 0.03, 0.1035); g.add(b); } // the bindi: a small dot, not a sticker
@@ -425,7 +430,7 @@ function makeHuman(o) {
       else if (o.outfit === 'silk') { n.material.map = makeFabricTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .3; n.material.metalness = .15; }
       else if (o.outfit === 'khadi') { n.material.map = makeTurbanTexture(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = 1; }
       else if (o.outfit === 'bandhgala') { n.material.map = makeFabricTexture(shadeHex(o.kurta, -80)); n.material.color = new T.Color('#ffffff'); n.material.roughness = .5; }
-      else { n.material.map = makeEmbroideredKurta(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .62; }
+      else { n.material.map = makeEmbroideredKurta(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .88; }
       n.material.needsUpdate = true; }
     else if (/Outfit_Bottom/i.test(mn)) { n.material = n.material.clone();           // churidar / pyjama in REAL cloth
       n.material.normalMap = null; n.material.roughnessMap = null;
@@ -433,7 +438,8 @@ function makeHuman(o) {
     else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#4a3626');        // leather juttis
     else if (/Skin|Body/i.test(mn) && !/Ch03/i.test(mn)) n.material.color = skinTint; // face + body skin tone (Michelle keeps her own painted texture)
     else if (/Headwear/i.test(mn)) n.visible = false;                                // replaced by our pagdi
-    else if (/Beard/i.test(mn)) n.visible = o.moustache !== false;                  // this mesh is actually the moustache
+    else if (/Beard/i.test(mn)) { n.visible = o.moustache !== false;               // this mesh is actually the moustache
+      n.material = n.material.clone(); n.material.color = new T.Color(o.hairColor || '#1a120c'); } // matched to the beard, never grey-vs-black
     else if (/visor/i.test(n.name) || /visor/i.test(mn)) { n.visible = !!o.shades; if (o.shades) { n.material.color = new T.Color('#101014'); n.material.roughness = .15; } } });
   grp.updateMatrixWorld(true);
   let head = null, neck = null, spine = null, rArm = null, lArm = null, rLeg = null, lLeg = null, rCalf = null, lCalf = null, rFore = null, lFore = null, hips = null, rHand = null, lHand = null;
@@ -3452,7 +3458,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 25'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 26'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
