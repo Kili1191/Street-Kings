@@ -310,12 +310,15 @@ function makeFabricTexture(baseHex) { // woven cloth: weave grain + soft vertica
 function makeTurbanTexture(baseHex) {
   const S = 128, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d');
   g.fillStyle = baseHex; g.fillRect(0, 0, S, S);
-  // wrapped-cloth folds: soft diagonal bands
-  for (let i = -S; i < S * 2; i += 14) {
-    const grd = g.createLinearGradient(i, 0, i + 14, S);
-    grd.addColorStop(0, 'rgba(0,0,0,.16)'); grd.addColorStop(.5, 'rgba(255,255,255,.10)'); grd.addColorStop(1, 'rgba(0,0,0,.12)');
-    g.fillStyle = grd; g.save(); g.translate(i, 0); g.rotate(0.5); g.fillRect(0, -S, 12, S * 3); g.restore();
+  // wrapped-cloth folds: STRONG diagonal bands with crisp shadow edges — cloth, not plastic
+  for (let i = -S; i < S * 2; i += 11) {
+    const grd = g.createLinearGradient(i, 0, i + 11, S);
+    grd.addColorStop(0, 'rgba(0,0,0,.34)'); grd.addColorStop(.45, 'rgba(255,255,255,.13)'); grd.addColorStop(.55, 'rgba(255,255,255,.05)'); grd.addColorStop(1, 'rgba(0,0,0,.3)');
+    g.fillStyle = grd; g.save(); g.translate(i, 0); g.rotate(0.5); g.fillRect(0, -S, 10, S * 3); g.restore();
   }
+  g.globalAlpha = .1; // thread grain along the wrap
+  for (let y = 0; y < S; y += 2) { g.fillStyle = '#000'; g.save(); g.translate(0, y); g.rotate(.5); g.fillRect(-S, 0, S * 3, 1); g.restore(); }
+  g.globalAlpha = 1;
   const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; tex.repeat.set(4, 2);
   if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; return tex;
 }
@@ -324,29 +327,32 @@ const ACC = { turbY: 0.10, turbZ: 0.0, beardY: -0.085, beardZ: 0.055, mouY: -0.0
 function buildHeadgear(o) {
   const g = new T.Group();
   if (o.turban) {
-    // smooth wrapped pagdi: lathe profile + cloth-fold texture, matching the avatar's realism
-    const tM = new T.MeshStandardMaterial({ color: '#ffffff', map: makeTurbanTexture(o.turbanColor), roughness: .78, metalness: 0 });
-    const prof = [];
-    prof.push(new T.Vector2(0.001, 0.150));
-    prof.push(new T.Vector2(0.065, 0.145));
-    prof.push(new T.Vector2(0.118, 0.112));
-    prof.push(new T.Vector2(0.142, 0.066));
-    prof.push(new T.Vector2(0.140, 0.020));
-    prof.push(new T.Vector2(0.128, -0.024));
-    prof.push(new T.Vector2(0.108, -0.062));
-    const pag = new T.Mesh(new T.LatheGeometry(prof, 28), tM); pag.position.y = ACC.turbY - 0.035; g.add(pag);
-    // under-wrap dome: fills every gap between the lathe folds and the scalp — no skull peeking through
-    const cap = new T.Mesh(new T.SphereGeometry(0.104, 20, 16), tM);
-    cap.scale.set(1.04, .92, 1.06); cap.position.y = ACC.turbY - 0.052; g.add(cap);
-    // front band across the brow
-    const band = new T.Mesh(new T.TorusGeometry(0.103, 0.02, 10, 26), tM); band.rotation.x = Math.PI / 2;
-    band.position.y = ACC.turbY - 0.062; band.scale.set(1, 1, 1.05); g.add(band);
-    const jewel = new T.Mesh(new T.SphereGeometry(0.018, 12, 12), mat('#ffd700', .2)); jewel.position.set(0, ACC.turbY + 0.015, 0.125); g.add(jewel);
+    // a REAL pagdi is wound cloth: stacked visible wraps, matte, each ring slightly askew — never a smooth dome
+    const tM = new T.MeshStandardMaterial({ color: '#ffffff', map: makeTurbanTexture(o.turbanColor), roughness: .96, metalness: 0 });
+    // under-wrap dome seals the scalp
+    const cap = new T.Mesh(new T.SphereGeometry(0.102, 20, 16), tM);
+    cap.scale.set(1.03, .9, 1.05); cap.position.y = ACC.turbY - 0.055; g.add(cap);
+    const wraps = [
+      [0.113, 0.021, -0.046, 0, .02],
+      [0.112, 0.022, -0.018, .05, -.03],
+      [0.098, 0.021, 0.008, -.04, .04],
+      [0.075, 0.019, 0.03, .05, -.02],
+    ];
+    for (const [r, tube, y, rx, rz] of wraps) {
+      const ring = new T.Mesh(new T.TorusGeometry(r, tube, 10, 26), tM);
+      ring.rotation.x = Math.PI / 2 + rx; ring.rotation.z = rz;
+      ring.scale.set(1, 1, 1.04); ring.position.y = ACC.turbY + y; g.add(ring);
+    }
+    const peak = new T.Mesh(new T.SphereGeometry(0.05, 12, 10), tM); peak.scale.y = .7; peak.position.y = ACC.turbY + 0.042; g.add(peak);
+    // the larh: the wrap's tail hanging at the back of the neck
+    const tail = new T.Mesh(new T.BoxGeometry(0.05, 0.14, 0.014), tM);
+    tail.position.set(0.02, ACC.turbY - 0.13, -0.1); tail.rotation.x = .2; tail.rotation.z = .1; g.add(tail);
+    const jewel = new T.Mesh(new T.SphereGeometry(0.015, 12, 12), mat('#ffd700', .25)); jewel.position.set(0, ACC.turbY - 0.005, 0.114); g.add(jewel);
   }
   else if (o.hair && o.hair !== 'none') { // Indian hairstyles (shown when no pagdi)
-    const hM = mat(o.hairColor || '#15100b', .92);
-    const cap = new T.Mesh(new T.SphereGeometry(0.1, 18, 14), hM);
-    cap.scale.set(1.0, .82, 1.0); cap.position.set(0, ACC.turbY - 0.038, -0.008); g.add(cap);
+    const hM = new T.MeshStandardMaterial({ color: new T.Color(o.hairColor || '#15100b'), roughness: .48, metalness: .1 }); // oiled sheen breaks the helmet look
+    const cap = new T.Mesh(new T.SphereGeometry(0.094, 18, 14), hM);
+    cap.scale.set(1.0, .8, .98); cap.position.set(0, ACC.turbY - 0.026, -0.016); g.add(cap);
     if (o.hair === 'part') { // side-parted quiff, oiled and combed
       const quiff = new T.Mesh(new T.SphereGeometry(0.055, 12, 10), hM);
       quiff.scale.set(1.5, .55, .9); quiff.position.set(0.02, ACC.turbY + 0.008, 0.055); quiff.rotation.z = -.18; g.add(quiff);
@@ -387,12 +393,12 @@ function buildHeadgear(o) {
   }
   if (o.moustache) { const m = new T.Mesh(new T.TorusGeometry(0.035, 0.012, 8, 14, Math.PI), mat('#171310', .85));
     m.rotation.x = Math.PI / 2; m.rotation.z = Math.PI; m.position.set(0, ACC.mouY, ACC.mouZ); g.add(m); }
-  if (o.bindi) { const b = new T.Mesh(new T.CircleGeometry(0.011, 10), new T.MeshBasicMaterial({ color: '#c0182b' }));
-    b.position.set(0, 0.028, 0.102); g.add(b); } // the red bindi on the forehead
+  if (o.bindi) { const b = new T.Mesh(new T.CircleGeometry(0.0062, 10), new T.MeshBasicMaterial({ color: '#a01020' }));
+    b.position.set(0, 0.03, 0.1035); g.add(b); } // the bindi: a small dot, not a sticker
   if (o.earrings) { const gm = new T.MeshStandardMaterial({ color: '#e8c85a', metalness: .7, roughness: .25 });
-    for (const sx of [-1, 1]) { const ring = new T.Mesh(new T.TorusGeometry(.017, .005, 6, 12), gm);
-      ring.position.set(.096 * sx, -.035, .012); g.add(ring);
-      const drop = new T.Mesh(new T.SphereGeometry(.008, 6, 5), gm); drop.position.set(.096 * sx, -.058, .012); g.add(drop); } }
+    for (const sx of [-1, 1]) { const ring = new T.Mesh(new T.TorusGeometry(.014, .004, 6, 12), gm);
+      ring.position.set(.086 * sx, -.048, .008); g.add(ring);
+      const drop = new T.Mesh(new T.SphereGeometry(.007, 6, 5), gm); drop.position.set(.086 * sx, -.066, .008); g.add(drop); } }
   g.traverse(x => { if (x.isMesh) x.castShadow = true; });
   return g;
 }
@@ -405,7 +411,7 @@ function makeHuman(o) {
   model.scale.setScalar(s);
   grp.add(model);
   const skinTint = new T.Color(o.skin); { const hsl = { h: 0, s: 0, l: 0 }; skinTint.getHSL(hsl);
-    skinTint.setHSL(hsl.h, Math.min(1, hsl.s * 1.7), Math.min(.92, hsl.l * 1.28)); } // counteract texture-multiply greying
+    skinTint.setHSL(hsl.h, Math.min(1, hsl.s * 1.32), Math.min(.9, hsl.l * 1.12)); } // warm without going neon-orange on the hands
   model.traverse(n => { if (!(n.isMesh || n.isSkinnedMesh)) return;
     n.castShadow = true; n.frustumCulled = false;
     const mn = (n.material && n.material.name) || '';
@@ -421,7 +427,9 @@ function makeHuman(o) {
       else if (o.outfit === 'bandhgala') { n.material.map = makeFabricTexture(shadeHex(o.kurta, -80)); n.material.color = new T.Color('#ffffff'); n.material.roughness = .5; }
       else { n.material.map = makeEmbroideredKurta(o.kurta); n.material.color = new T.Color('#ffffff'); n.material.roughness = .62; }
       n.material.needsUpdate = true; }
-    else if (/Outfit_Bottom/i.test(mn)) n.material.color = new T.Color(o.dhoti);     // churidar / pyjama
+    else if (/Outfit_Bottom/i.test(mn)) { n.material = n.material.clone();           // churidar / pyjama in REAL cloth
+      n.material.normalMap = null; n.material.roughnessMap = null;
+      n.material.map = makeFabricTexture(o.dhoti || '#efe6d0'); n.material.color = new T.Color('#ffffff'); n.material.roughness = .9; }
     else if (/Footwear/i.test(mn)) n.material.color = new T.Color('#4a3626');        // leather juttis
     else if (/Skin|Body/i.test(mn) && !/Ch03/i.test(mn)) n.material.color = skinTint; // face + body skin tone (Michelle keeps her own painted texture)
     else if (/Headwear/i.test(mn)) n.visible = false;                                // replaced by our pagdi
@@ -3318,6 +3326,7 @@ function wireCreator() {
   chipRow('chGender', [{ t: '👳 Raja (homme)', v: false }, { t: '👰 Rani (femme)', v: true }], () => !!opts.female, v => {
     opts.female = v;
     if (v) { opts.beard = 'none'; opts.moustache = false; opts.turban = false;
+      opts.kurta = '#c2185b'; opts.dhoti = '#f9a825'; // deep pink sari, gold choli — harmonised defaults
       if (!['bun', 'long', 'braid', 'curly'].includes(opts.hair)) opts.hair = 'bun'; }
     else { opts.beard = 'full'; opts.moustache = true; opts.turban = true; if (opts.hair === 'bun' || opts.hair === 'braid') opts.hair = 'crop'; }
     const fem = v;
@@ -3443,7 +3452,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 24'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 25'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
