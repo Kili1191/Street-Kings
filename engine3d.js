@@ -31,7 +31,7 @@ const HAIRS_F = [['bun','Chignon'],['long','Long'],['braid','Natte'],['curly','B
 const HAIRCOLS = ['#0d0a08','#15100b','#2b1a10','#4a2f18','#6a6a6a'];
 // comfort first, GTA-style: horns, city ambience and SFX each have their own switch
 let ambGain = null;
-const sndCfg = (() => { try { return Object.assign({ horns: true, amb: true, sfx: true }, JSON.parse(localStorage.getItem('sk_snd') || '{}')); } catch (e) { return { horns: true, amb: true, sfx: true }; } })();
+const sndCfg = (() => { try { return Object.assign({ horns: true, amb: true, sfx: true, voice: true }, JSON.parse(localStorage.getItem('sk_snd') || '{}')); } catch (e) { return { horns: true, amb: true, sfx: true, voice: true }; } })();
 function saveSnd() { try { localStorage.setItem('sk_snd', JSON.stringify(sndCfg)); } catch (e) {} if (ambGain) ambGain.gain.value = sndCfg.amb ? .05 : 0; }
 
 // ---------- Character builder (low-poly humanoid) ----------
@@ -1057,6 +1057,12 @@ function buildSea() {
 // to the water, cremation pyres burning on Manikarnika-style platforms, bathers in the river.
 const GHAT_X = -HALF + 16; // east limit of the ghat zone
 const inGhats = (x, z) => x < GHAT_X && z > -HALF + CELL && z < -HALF + 2 * CELL;
+// the river is WIDE — a real crossing, swum stroke by stroke, with a wild far shore
+const RIVER_X0 = -HALF + 8.2;   // below the last step the bed drops away and you swim
+const RIVER_X1 = -HALF - 52;    // waterline of the far shore
+const FAR_X = -HALF - 76;       // western edge of the far bank's sand
+const inRiverWater = (x, z) => x < RIVER_X0 && x > RIVER_X1 && z > -HALF + CELL && z < -HALF + 2 * CELL;
+const onFarBank = (x, z) => x <= RIVER_X1 + 2 && x > FAR_X + 1.5 && z > -HALF + CELL && z < -HALF + 2 * CELL;
 const bathers = [], pyres = [], ripples = [];
 function buildGanga() {
   const z0 = -HALF + CELL, z1 = -HALF + 2 * CELL, zm = (z0 + z1) / 2, len = z1 - z0;
@@ -1066,7 +1072,7 @@ function buildGanga() {
   for (let i = 0; i < 40; i++) { rg.strokeStyle = 'rgba(220,230,210,.14)'; rg.lineWidth = rand(1, 2);
     const y = rand(0, 128); rg.beginPath(); rg.moveTo(0, y); rg.bezierCurveTo(42, y + rand(-5, 5), 84, y + rand(-5, 5), 128, y); rg.stroke(); }
   const rt = new T.CanvasTexture(rc); rt.wrapS = rt.wrapT = T.RepeatWrapping; rt.repeat.set(6, 5);
-  const river = new T.Mesh(new T.PlaneGeometry(70, len), new T.MeshStandardMaterial({ map: rt, roughness: .3, metalness: .1, transparent: true, opacity: .94 }));
+  const river = new T.Mesh(new T.PlaneGeometry(70, len), new T.MeshStandardMaterial({ map: rt, roughness: .3, metalness: .1, transparent: true, opacity: .94, side: T.DoubleSide }));
   river.rotation.x = -Math.PI / 2; river.position.set(-HALF - 35 + 10, -.14, zm); scene.add(river);
   seaMats.push(river.material);
   // stone ghat steps, some painted in worship stripes
@@ -1091,6 +1097,11 @@ function buildGanga() {
       const log = new T.Mesh(new T.CylinderGeometry(.09, .11, 1.6, 6), mat('#5c452e', .9));
       log.rotation.z = Math.PI / 2; log.rotation.y = layer % 2 ? Math.PI / 2 : 0;
       log.position.set((li - 1) * .3 * (layer % 2 ? 1 : 0), .55 + layer * .17, (li - 1) * .3 * (layer % 2 ? 0 : 1)); g.add(log); }
+    // the shrouded body lies on the logs, burning in the open for all to see — this is Kashi
+    const shroud = new T.Mesh(new T.CylinderGeometry(.16, .2, 1.5, 8), mat('#e8e0d0', .85));
+    shroud.rotation.z = Math.PI / 2; shroud.position.set(0, 1.06, 0); g.add(shroud);
+    for (let mg = 0; mg < 4; mg++) { const bead = new T.Mesh(new T.SphereGeometry(.045, 6, 5), mat(mg % 2 ? '#ff9800' : '#ffc107', .7));
+      bead.position.set(-.5 + mg * .33, 1.24, 0); g.add(bead); }
     const fire = new T.Mesh(new T.ConeGeometry(.5, 1.25, 8), new T.MeshStandardMaterial({ color: '#ff8a2a', emissive: '#ff5500', emissiveIntensity: 2.2, transparent: true, opacity: .9 }));
     fire.position.y = 1.4; g.add(fire);
     const fire2 = new T.Mesh(new T.ConeGeometry(.26, .85, 8), new T.MeshStandardMaterial({ color: '#ffd24d', emissive: '#ffb300', emissiveIntensity: 2.6, transparent: true, opacity: .95 }));
@@ -1108,7 +1119,7 @@ function buildGanga() {
   // the holy river is also a working river: offerings, trash and scum ride the current
   for (let i = 0; i < 14; i++) { const scum = new T.Mesh(new T.CircleGeometry(rand(1, 2.6), 10),
     new T.MeshStandardMaterial({ color: pick(['#6b7a52', '#7a8258', '#5c6a48']), transparent: true, opacity: .38, roughness: 1, depthWrite: false }));
-    scum.rotation.x = -Math.PI / 2; scum.position.set(rand(-HALF - 20, -HALF + 7), -.1, rand(z0 + 4, z1 - 4)); scene.add(scum); }
+    scum.rotation.x = -Math.PI / 2; scum.position.set(rand(RIVER_X1 + 3, -HALF + 7), -.1, rand(z0 + 4, z1 - 4)); scene.add(scum); }
   for (let i = 0; i < 64; i++) { // floating: marigolds, diyas, garlands, plastic bags, husks
     const r = Math.random(); let m;
     if (r < .38) m = new T.Mesh(new T.SphereGeometry(rand(.05, .08), 6, 5), mat(pick(['#ff9800', '#ffc107', '#ff7722']), .7));
@@ -1121,8 +1132,22 @@ function buildGanga() {
       new T.MeshStandardMaterial({ color: pick(['#9fb8c9', '#c9d4e0', '#8a94a0']), side: T.DoubleSide, roughness: 1 }));
       m.rotation.x = -Math.PI / 2 + rand(-.3, .3); }
     else m = new T.Mesh(new T.SphereGeometry(rand(.07, .11), 7, 5), mat('#6d5426', .95));
-    m.position.set(rand(-HALF - 18, -HALF + 7.5), -.08, rand(z0 + 3, z1 - 3));
+    m.position.set(rand(RIVER_X1 + 3, -HALF + 7.5), -.08, rand(z0 + 3, z1 - 3));
     scene.add(m); ripples.push({ m, t: rand(0, TAU), drift: rand(.06, .22) });
+  }
+  // funeral biers drift on the current: bamboo rafts bearing shrouded bodies given to the river
+  // (spawned here in buildGanga; the aghori figures who watch the far shore come with spawnBathers)
+  for (let i = 0; i < 3; i++) {
+    const raft = new T.Group();
+    for (let b3 = 0; b3 < 4; b3++) { const bam = new T.Mesh(new T.CylinderGeometry(.045, .045, 2.1, 5), mat('#a08a5a', .9));
+      bam.rotation.z = Math.PI / 2; bam.rotation.y = Math.PI / 2; bam.position.set((b3 - 1.5) * .17, 0, 0); raft.add(bam); }
+    const body2 = new T.Mesh(new T.CylinderGeometry(.15, .19, 1.55, 8), mat('#efe8d8', .85));
+    body2.rotation.x = Math.PI / 2; body2.position.y = .16; raft.add(body2);
+    for (let mg = 0; mg < 5; mg++) { const bead = new T.Mesh(new T.SphereGeometry(.04, 6, 5), mat(mg % 2 ? '#ff9800' : '#c0392b', .7));
+      bead.position.set(0, .3, -.55 + mg * .28); raft.add(bead); }
+    raft.rotation.y = rand(-.4, .4);
+    raft.position.set(rand(RIVER_X1 + 8, -HALF - 6), -.06, rand(z0 + 8, z1 - 8));
+    scene.add(raft); ripples.push({ m: raft, t: rand(0, TAU), drift: rand(.1, .2) });
   }
   // offerings and litter strewn down the steps themselves
   for (let i = 0; i < 40; i++) { const sx = rand(-HALF + 8, -HALF + 15.8), sz = rand(z0 + 3, z1 - 3);
@@ -1136,6 +1161,98 @@ function buildGanga() {
     const um = new T.Mesh(new T.ConeGeometry(1, .8, 8, 1, true), new T.MeshStandardMaterial({ color: pick(['#d98a2b', '#c0392b']), roughness: .9, side: T.DoubleSide }));
     um.position.set(-HALF + 14.2, 2.2, pz); um.castShadow = true; scene.add(um);
     const pole = new T.Mesh(new T.CylinderGeometry(.05, .05, 2.2, 6), mat('#8a6b3a')); pole.position.set(-HALF + 14.2, 1.1, pz); scene.add(pole); }
+  // ---- the FAR BANK: wild sand across the wide water ----
+  const bank = new T.Mesh(new T.PlaneGeometry(RIVER_X1 - FAR_X, len), new T.MeshStandardMaterial({ color: '#c9b287', roughness: 1 }));
+  bank.rotation.x = -Math.PI / 2; bank.position.set((RIVER_X1 + FAR_X) / 2, .04, zm); bank.receiveShadow = true; scene.add(bank);
+  for (let i = 0; i < 26; i++) { // reeds and river stones scattered along the shore
+    const rx = rand(RIVER_X1 - 2, RIVER_X1 + 1), rz2 = rand(z0 + 3, z1 - 3);
+    if (Math.random() < .55) { const reed = new T.Mesh(new T.CylinderGeometry(.02, .035, rand(.8, 1.6), 5), mat('#8a9a5a', .95));
+      reed.position.set(rx, .6, rz2); reed.rotation.z = rand(-.2, .2); scene.add(reed); }
+    else { const st = new T.Mesh(new T.SphereGeometry(rand(.12, .3), 7, 6), mat('#9a8f7c', .95));
+      st.scale.y = .55; st.position.set(rx - rand(0, 3), .06, rz2); scene.add(st); } }
+  const boat2 = new T.Mesh(new T.CylinderGeometry(.8, 1.1, 4.6, 8, 1, false), mat('#5c452e', .9));
+  boat2.scale.set(.45, 1, 1); boat2.rotation.z = Math.PI / 2; boat2.rotation.y = .4; boat2.position.set(RIVER_X1 - 3, .35, zm + 8); scene.add(boat2);
+  buildTajMahal((RIVER_X1 + FAR_X) / 2 - 1, z0 + len * .24);
+  buildAghoriCamp((RIVER_X1 + FAR_X) / 2 + 2, z0 + len * .78);
+}
+// ---- the Taj Mahal on the far shore, seen shimmering from the ghats like across the Yamuna ----
+function buildTajMahal(x, z) {
+  const g = new T.Group();
+  const marble = mat('#f0ece2', .55), marble2 = mat('#e6e0d2', .6);
+  const dark = mat('#4a3a30', .9), gold = new T.MeshStandardMaterial({ color: '#d4af37', metalness: .65, roughness: .3 });
+  // raised platform
+  const plat = new T.Mesh(new T.BoxGeometry(26, 1.4, 26), marble2); plat.position.y = .7; g.add(plat);
+  // main mass with the great iwan portal facing the river (east, +x after rotation)
+  const mass = new T.Mesh(new T.BoxGeometry(11, 8.6, 11), marble); mass.position.y = 5.6; g.add(mass);
+  for (const ry of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) { // one iwan per face + flanking arch niches
+    const face = new T.Group();
+    const frame = new T.Mesh(new T.BoxGeometry(4.6, 7.2, .5), marble2); frame.position.set(0, 5.3, 5.55); face.add(frame);
+    const arch = new T.Mesh(new T.CylinderGeometry(1.7, 1.7, .56, 16, 1, false, 0, Math.PI), dark);
+    arch.rotation.z = Math.PI / 2; arch.rotation.y = Math.PI / 2; arch.position.set(0, 6.4, 5.6); face.add(arch);
+    const door = new T.Mesh(new T.BoxGeometry(3.4, 4.4, .56), dark); door.position.set(0, 4.2, 5.6); face.add(door);
+    for (const sx of [-3.9, 3.9]) for (const yy of [3.2, 6.6]) {
+      const nich = new T.Mesh(new T.BoxGeometry(1.5, 2.3, .4), dark); nich.position.set(sx, yy, 5.52); face.add(nich); }
+    face.rotation.y = ry; g.add(face);
+  }
+  // drum + the great onion dome, lathe-profiled with the classic swell and point
+  const drum = new T.Mesh(new T.CylinderGeometry(3.1, 3.3, 1.6, 18), marble); drum.position.y = 10.6; g.add(drum);
+  const prof = [];
+  for (let i = 0; i <= 10; i++) { const t = i / 10;
+    prof.push(new T.Vector2(Math.sin(Math.min(Math.PI, t * Math.PI * .82 + .35)) * 3.9 * (1 - t * .12), t * 5.6)); }
+  prof.push(new T.Vector2(.06, 5.9));
+  const dome = new T.Mesh(new T.LatheGeometry(prof, 20), marble); dome.position.y = 11.2; g.add(dome);
+  const fin = new T.Mesh(new T.ConeGeometry(.14, 1.5, 8), gold); fin.position.y = 17.6; g.add(fin);
+  const finB = new T.Mesh(new T.SphereGeometry(.22, 8, 6), gold); finB.position.y = 17.2; g.add(finB);
+  // four chhatris shoulder the dome
+  for (const [cx, cz] of [[-3.9, -3.9], [3.9, -3.9], [-3.9, 3.9], [3.9, 3.9]]) {
+    const ch = new T.Group();
+    for (let p2 = 0; p2 < 4; p2++) { const a = p2 / 4 * TAU; const col = new T.Mesh(new T.CylinderGeometry(.12, .12, 1.5, 6), marble2);
+      col.position.set(Math.cos(a) * .8, .75, Math.sin(a) * .8); ch.add(col); }
+    const cdome = new T.Mesh(new T.SphereGeometry(1.05, 10, 8, 0, TAU, 0, Math.PI / 2), marble); cdome.position.y = 1.5; ch.add(cdome);
+    ch.position.set(cx, 9.9, cz); g.add(ch);
+  }
+  // four minarets at the platform corners, ringed balconies, capped with chhatris
+  for (const [mx2, mz2] of [[-11.6, -11.6], [11.6, -11.6], [-11.6, 11.6], [11.6, 11.6]]) {
+    const mn = new T.Group();
+    const shaft = new T.Mesh(new T.CylinderGeometry(.62, .88, 11.5, 10), marble); shaft.position.y = 5.75; mn.add(shaft);
+    for (const by of [3.8, 7.6]) { const ring = new T.Mesh(new T.TorusGeometry(.85, .14, 6, 14), marble2);
+      ring.rotation.x = Math.PI / 2; ring.position.y = by; mn.add(ring); }
+    const cap = new T.Mesh(new T.SphereGeometry(.72, 8, 6, 0, TAU, 0, Math.PI / 2), marble); cap.position.y = 11.9; mn.add(cap);
+    mn.position.set(mx2, 1.4, mz2); g.add(mn);
+  }
+  g.position.set(x, 0, z); g.rotation.y = Math.PI / 2; // great iwan faces the river — its terrace meets the water like the real Yamuna front
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  scene.add(g);
+  buildings.push({ x, z, hw: 13.5, hd: 13.5 });
+}
+// ---- the aghori shamshan on the far shore: ash, bones, and the ones who keep the fire ----
+const AGHORI = { x: 0, z: 0 };
+function buildAghoriCamp(x, z) {
+  AGHORI.x = x; AGHORI.z = z;
+  const ashG = new T.Mesh(new T.CircleGeometry(7, 16), new T.MeshStandardMaterial({ color: '#4e4a44', roughness: 1 }));
+  ashG.rotation.x = -Math.PI / 2; ashG.position.set(x, .06, z); scene.add(ashG);
+  // the smoldering pyre they tend
+  const embers = new T.Mesh(new T.SphereGeometry(.6, 8, 6), new T.MeshStandardMaterial({ color: '#6a2408', emissive: '#c43a00', emissiveIntensity: 1.1 }));
+  embers.scale.y = .3; embers.position.set(x, .18, z); scene.add(embers);
+  for (let i = 0; i < 4; i++) { const log = new T.Mesh(new T.CylinderGeometry(.07, .09, 1.3, 6), mat('#2e241a', .95));
+    log.rotation.z = Math.PI / 2; log.rotation.y = rand(0, TAU); log.position.set(x + rand(-.6, .6), .14, z + rand(-.6, .6)); scene.add(log); }
+  steams.push({ x, y: .8, z, r: .16 });
+  // scattered bones and skulls the sect combs the ash for
+  const boneM = mat('#ded8c8', .8);
+  for (let i = 0; i < 14; i++) { const a = rand(0, TAU), r = rand(1.5, 6.4);
+    const bone = new T.Mesh(new T.CylinderGeometry(.03, .03, rand(.25, .5), 5), boneM);
+    bone.rotation.set(Math.PI / 2, 0, rand(0, TAU)); bone.position.set(x + Math.cos(a) * r, .1, z + Math.sin(a) * r); scene.add(bone); }
+  for (let i = 0; i < 4; i++) { const a = rand(0, TAU), r = rand(2, 5.5);
+    const skull = new T.Mesh(new T.SphereGeometry(.11, 8, 6), boneM); skull.scale.set(1, .85, 1.1);
+    skull.position.set(x + Math.cos(a) * r, .11, z + Math.sin(a) * r); scene.add(skull); }
+  // a planted trishul with a mala hung on it, and kapala bowls by the fire
+  const tsh = new T.Group();
+  const staff = new T.Mesh(new T.CylinderGeometry(.03, .04, 2.6, 6), mat('#4a3626', .9)); staff.position.y = 1.3; tsh.add(staff);
+  for (const sx of [-.09, 0, .09]) { const pr = new T.Mesh(new T.CylinderGeometry(.014, .005, .5, 5), mat('#8a8f96', .4));
+    pr.position.set(sx, 2.75, 0); if (sx) pr.rotation.z = -sx * 3; tsh.add(pr); }
+  tsh.position.set(x + 2.2, 0, z - 1.4); scene.add(tsh);
+  for (let i = 0; i < 3; i++) { const kap = new T.Mesh(new T.SphereGeometry(.13, 8, 6, 0, TAU, Math.PI / 2), mat('#5c4a3a', .8));
+    kap.position.set(x + rand(-1.6, 1.6), .1, z + rand(1, 2.2)); scene.add(kap); }
 }
 function spawnBathers() { // in the Ganga at dawn: some bare-chested in a dhoti, others fully dressed, women in saris
   if (!HERO) return;
@@ -1161,9 +1278,10 @@ function spawnBathers() { // in the Ganga at dawn: some bare-chested in a dhoti,
     g.position.set(-HALF + 14.2, 1.1, gz + rand(-3, 3)); g.rotation.y = -Math.PI / 2; // facing the river
     scene.add(g); bathers.push({ g, base: 1.1, t: rand(0, TAU), dip: 0, land: true });
   }
-  // white-clad mourners stand at the cremation platforms
-  for (const p of pyres) for (let i = 0; i < 2; i++) {
-    const o = { vary: true, skin: pick(SKINS), outfit: 'kurta', kurta: '#f2ede2', dhoti: '#f2ede2', beard: pick(['none', 'stubble']), moustache: Math.random() < .5, turban: false, hair: 'crop', hairColor: '#15100b' };
+  // white-clad mourners stand at the cremation platforms — MEN ONLY, as at Manikarnika:
+  // women stay away from the burning ghat; tears are said to bind the departing soul
+  for (const p of pyres) for (let i = 0; i < 4; i++) {
+    const o = { vary: true, skin: pick(SKINS), outfit: 'kurta', kurta: '#f2ede2', dhoti: '#f2ede2', beard: pick(['none', 'stubble']), moustache: Math.random() < .5, turban: false, hair: i === 0 ? 'none' : 'crop', hairColor: '#15100b' }; // the chief mourner's head is shaved
     const g = makeHuman(o); const a = rand(0, TAU);
     g.position.set(p.x + Math.cos(a) * 2.4, .5, p.z + Math.sin(a) * 2.4);
     g.rotation.y = Math.atan2(p.x - g.position.x, p.z - g.position.z);
@@ -1200,6 +1318,23 @@ function spawnBathers() { // in the Ganga at dawn: some bare-chested in a dhoti,
     g.position.set(sx, ghatHeightAt(sx, sz), sz); g.rotation.y = -Math.PI / 2 + rand(-.7, .7); // mostly facing the water
     scene.add(g); bathers.push({ g, base: g.position.y, t: rand(0, TAU), dip: 0, land: true });
   }
+  // yoga at first light on the promenade — asanas held and flowing, facing the water
+  for (let i = 0; i < 4; i++) {
+    const o = npcLook(3); o.turban = false;
+    const g = makeHuman(o);
+    g.position.set(-HALF + 16.2, 1.1, z0 + 14 + i * 16 + rand(-2, 2)); g.rotation.y = -Math.PI / 2;
+    scene.add(g); bathers.push({ g, base: 1.1, t: rand(0, TAU), dip: 0, land: true, yoga: i % 3 });
+  }
+  // across the water: the aghori comb their shamshan's ash for what the river gives back
+  for (let i = 0; i < 5; i++) {
+    const askin = pick(['#5f5b55', '#6a6660']);
+    const o = { vary: true, naga: true, skin: askin, outfit: 'kurta', kurta: askin, dhoti: askin,
+      beard: 'long', hair: 'jata', hairColor: '#3a352e', turban: false, moustache: true, barefoot: true, mala: true, tilak: 'shaiva', trident: i === 0 };
+    const g = makeHuman(o); const a = i / 5 * TAU;
+    g.position.set(AGHORI.x + Math.cos(a) * rand(2.2, 4.8), 0, AGHORI.z + Math.sin(a) * rand(2.2, 4.8));
+    g.rotation.y = a + Math.PI; // ringed around their fire — half of them stooped, searching
+    scene.add(g); bathers.push({ g, base: 0, t: rand(0, TAU), dip: 0, land: true, stoop: i % 2 === 1 });
+  }
 }
 function updateBathers(dt) {
   const now = performance.now() / 1000;
@@ -1215,6 +1350,17 @@ function updateBathers(dt) {
         if (ph > .93 && Math.random() < .3 && steamPuffs.length < 60) {
           const m = new T.Mesh(new T.PlaneGeometry(.2, .34), new T.MeshBasicMaterial({ color: '#bcd4dc', transparent: true, opacity: .5, depthWrite: false }));
           m.position.set(b.g.position.x, b.g.position.y + 1.7, b.g.position.z); scene.add(m); steamPuffs.push({ m, life: .5 }); } }
+      continue; }
+    if (b.stoop) { const h = b.g.userData.human; // the aghori, bent double, combing the ash
+      if (h) { if (h.spine) h.spine.rotation.x = .92 + Math.sin(b.t * .7) * .22;
+        if (h.rArm) h.rArm.rotation.x = 1.05 + Math.sin(b.t * 1.3) * .35;
+        if (h.lArm) h.lArm.rotation.x = .8; }
+      b.g.rotation.y += Math.sin(b.t * .23) * .0035; continue; }
+    if (b.yoga !== undefined) { const h = b.g.userData.human; // slow flow between asanas
+      if (h) { const ph = (Math.sin(b.t * .45 + b.yoga * 2.1) + 1) / 2;
+        if (b.yoga === 0) { if (h.rArm) h.rArm.rotation.x = -2.9 * ph; if (h.lArm) h.lArm.rotation.x = -2.9 * ph; if (h.spine) h.spine.rotation.x = -.14 * ph; } // arms to the sky
+        else if (b.yoga === 1) { if (h.spine) h.spine.rotation.x = 1.15 * ph; if (h.rArm) h.rArm.rotation.x = 1.2 * ph; if (h.lArm) h.lArm.rotation.x = 1.2 * ph; } // forward fold
+        else { if (h.rArm) h.rArm.rotation.z = -1.35 * ph; if (h.lArm) h.lArm.rotation.z = 1.35 * ph; } } // arms spread wide
       continue; }
     if (b.land) continue; // mourners just stand with the fire
     if (b.dip > 0) { b.dip -= dt; b.g.position.y = b.base - .5; } // full dunk under Ganga maiya
@@ -1296,6 +1442,7 @@ function buildCity() {
   buildShikharaTemple(-HALF + CELL * .62, -HALF + CELL * .55, .8);
   buildShikharaTemple(CELL * .4, HALF - CELL * .45, .9); // Chennai side, north-style shrine near the sea
   buildOfferingStalls(); // and their mala-walas at every temple gate
+  buildYantraPlaza(-HALF + 26, -HALF + CELL * 1.35); // Kashi is laid out as a mandala — the geometry made visible
   genDelhiWires();
   prerenderMap();
   buildRamps();
@@ -1322,6 +1469,85 @@ function buildLandmarks() {
       for (const sx of [-4.6, 4.6]) { // striped minarets
         for (let seg = 0; seg < 5; seg++) { const ring = new T.Mesh(new T.CylinderGeometry(.5, .52, 2, 10), mat(seg % 2 ? '#f4f0e8' : '#a6402d', .8)); ring.position.set(sx, 1 + seg * 2, 0); g.add(ring); }
         const cap = new T.Mesh(new T.SphereGeometry(.65, 10, 8), mat('#f4f0e8', .5)); cap.position.set(sx, 10.6, 0); g.add(cap); }
+    } else if (i === 2) { // ---- JAIPUR, the Pink City: Hawa Mahal, the Maharaja's City Palace, Galtaji ----
+      // Hawa Mahal: the pink honeycomb facade — five tiers of jharokha windows built to let the palace women watch the street unseen
+      const hc = document.createElement('canvas'); hc.width = 256; hc.height = 128; const hq = hc.getContext('2d');
+      hq.fillStyle = '#eda096'; hq.fillRect(0, 0, 256, 128); // unmistakably PINK — no brick red anywhere near it
+      hq.fillStyle = '#ffffff'; hq.fillRect(0, 0, 256, 5); hq.fillRect(0, 123, 256, 5);     // white string-courses top and bottom
+      for (let r2 = 0; r2 < 4; r2++) for (let c2 = 0; c2 < 12; c2++) { const wx = 8 + c2 * 21, wy = 10 + r2 * 30;
+        hq.fillStyle = '#ffffff'; hq.fillRect(wx - 3, wy - 3, 18, 27);                      // bold white chhajja frame
+        hq.fillStyle = '#8e3b3b'; hq.beginPath(); hq.moveTo(wx, wy + 22); hq.lineTo(wx, wy + 8);
+        hq.arc(wx + 6, wy + 8, 6, Math.PI, 0); hq.lineTo(wx + 12, wy + 22); hq.fill();       // the arched jharokha
+        hq.fillStyle = '#ffe4d6'; hq.fillRect(wx - 3, wy + 22, 18, 4); }                     // sill
+      const hawaT = new T.CanvasTexture(hc);
+      const pinkM = new T.MeshStandardMaterial({ map: hawaT, roughness: .9 });
+      for (let tier = 0; tier < 5; tier++) { const w = 16 - tier * 2.6, h2 = 2.6;
+        const t2 = new T.Mesh(new T.BoxGeometry(w, h2, 2.2 + (4 - tier) * .35), pinkM);
+        t2.position.set(0, 1.3 + tier * h2, 0); g.add(t2);
+        if (tier > 1) for (const sx of [-w / 2 + .6, w / 2 - .6]) { // domed kiosks stepping up the sides
+          const k = new T.Mesh(new T.SphereGeometry(.55, 8, 6, 0, TAU, 0, Math.PI / 2), mat('#e8cfc0', .8));
+          k.position.set(sx, 1.3 + tier * h2 + 1.35, 0); g.add(k); } }
+      const crown = new T.Mesh(new T.SphereGeometry(.85, 10, 8, 0, TAU, 0, Math.PI / 2), mat('#e8cfc0', .8)); crown.position.y = 14.4; g.add(crown);
+      buildings.push({ x: cx, z: cz, hw: 8.4, hd: 2.4 });
+      // the City Palace: cream compound wall, the seven-tier Chandra Mahal where the Maharaja's family still lives
+      const cp = new T.Group(); cp.position.set(-24, 0, 4); g.add(cp);
+      const cream = mat('#f2dfc0', .9), pkTrim = mat('#d1766a', .85);
+      for (let tier = 0; tier < 5; tier++) { const w = 9 - tier * 1.4;
+        const t3 = new T.Mesh(new T.BoxGeometry(w, 2.2, w * .8), tier % 2 ? pkTrim : cream);
+        t3.position.y = 1.1 + tier * 2.2; cp.add(t3); }
+      const bangla = new T.Mesh(new T.CylinderGeometry(1.6, 1.6, 3.4, 12, 1, false, 0, Math.PI), cream);
+      bangla.rotation.z = Math.PI / 2; bangla.position.y = 11.9; cp.add(bangla); // curved bangla roof
+      const cpFlag = new T.Mesh(new T.ConeGeometry(.3, 1, 3), new T.MeshStandardMaterial({ color: '#e8483a', side: T.DoubleSide }));
+      cpFlag.rotation.z = Math.PI / 2; cpFlag.position.set(.8, 13.6, 0); cp.add(cpFlag); // the Maharaja is in residence
+      const cpPole = new T.Mesh(new T.CylinderGeometry(.04, .04, 2.4, 5), mat('#8a6b3a')); cpPole.position.set(0, 12.8, 0); cp.add(cpPole);
+      // Pritam Niwas Chowk: the four seasons gates, each painted a different glory
+      const wall = new T.Mesh(new T.BoxGeometry(13, 3.2, .7), cream); wall.position.set(0, 1.6, 5.4); cp.add(wall);
+      const seasons = ['#2a7a8c', '#d15b7a', '#3f8c4a', '#e0a02c']; // peacock monsoon, lotus summer, green spring, saffron winter
+      for (let s4 = 0; s4 < 4; s4++) { const gx = -4.9 + s4 * 3.25;
+        const panel = new T.Mesh(new T.BoxGeometry(2.3, 2.7, .2), mat(seasons[s4], .7)); panel.position.set(gx, 1.55, 5.8); cp.add(panel);
+        const arch2 = new T.Mesh(new T.CylinderGeometry(.9, .9, .24, 12, 1, false, 0, Math.PI), mat('#f2dfc0', .8));
+        arch2.rotation.z = Math.PI / 2; arch2.rotation.y = Math.PI / 2; arch2.position.set(gx, 2.6, 5.82); cp.add(arch2);
+        const dr = new T.Mesh(new T.BoxGeometry(1.1, 1.9, .26), mat('#4a2e1c', .9)); dr.position.set(gx, 1.15, 5.84); cp.add(dr); }
+      buildings.push({ x: cx - 24, z: cz + 4, hw: 6.8, hd: 4.6 });
+      // Galtaji, the monkey temple: out on a dirt track, pink shikhara over a green kund
+      const gj = new T.Group(); gj.position.set(37, 0, 37); g.add(gj);
+      const dirtPath = new T.Mesh(new T.PlaneGeometry(30, 3.6), new T.MeshStandardMaterial({ color: '#a8845a', roughness: 1 }));
+      dirtPath.rotation.x = -Math.PI / 2; dirtPath.rotation.z = .8; dirtPath.position.set(-10, .03, -10); gj.add(dirtPath);
+      const kund = new T.Mesh(new T.PlaneGeometry(7, 5), new T.MeshStandardMaterial({ color: '#4a7a5e', roughness: .3, metalness: .1 }));
+      kund.rotation.x = -Math.PI / 2; kund.position.set(0, .05, 4); gj.add(kund); // the sacred green tank the monkeys dive into
+      for (let st2 = 0; st2 < 3; st2++) { const step2 = new T.Mesh(new T.BoxGeometry(7.4, .25, .8), mat('#d8b090', .9));
+        step2.position.set(0, .12 + st2 * .22, 1.2 - st2 * .7); gj.add(step2); }
+      const gtemple = new T.Mesh(new T.BoxGeometry(4, 3, 3.2), mat('#e0a8a0', .9)); gtemple.position.set(0, 1.5, -2.5); gj.add(gtemple);
+      const gprof = []; for (let p3 = 0; p3 <= 6; p3++) { const t4 = p3 / 6; gprof.push(new T.Vector2(1.2 * (1 - Math.pow(t4, 1.7)) + .1, t4 * 3)); }
+      const gtower = new T.Mesh(new T.LatheGeometry(gprof, 4), mat('#d1766a', .85)); gtower.rotation.y = Math.PI / 4; gtower.position.set(0, 3, -2.5); gj.add(gtower);
+      for (const rx of [[-4, 2], [4.5, 5], [3.8, -1.5]]) { const rock = new T.Mesh(new T.SphereGeometry(rand(.8, 1.4), 7, 6), mat('#b09878', .95));
+        rock.scale.y = .6; rock.position.set(rx[0], .3, rx[1]); gj.add(rock); }
+      buildings.push({ x: cx + 37, z: cz + 37 - 2.5, hw: 2.2, hd: 1.8 });
+    } else if (i === 5) { // ---- the ADIYOGI: the great iron face of the first yogi, still and immense ----
+      const iron = new T.MeshStandardMaterial({ color: '#3d4148', metalness: .55, roughness: .55 });
+      const ad = new T.Group(); ad.position.set(0, 0, 0); g.add(ad);
+      const plinth2 = new T.Mesh(new T.BoxGeometry(16, 1.2, 9), mat('#5a5148', .95)); plinth2.position.y = .6; ad.add(plinth2);
+      const chest = new T.Mesh(new T.SphereGeometry(4.6, 16, 12), iron); chest.scale.set(1.5, .85, .62); chest.position.y = 3.4; ad.add(chest);
+      const neck2 = new T.Mesh(new T.CylinderGeometry(1.7, 2.1, 1.8, 12), iron); neck2.position.y = 6.6; ad.add(neck2);
+      const face2 = new T.Mesh(new T.SphereGeometry(2.6, 18, 14), iron); face2.scale.set(1, 1.22, .92); face2.position.y = 9.8; ad.add(face2);
+      const nose2 = new T.Mesh(new T.BoxGeometry(.55, 1.3, .5), iron); nose2.position.set(0, 9.5, 2.25); ad.add(nose2);
+      for (const sx of [-1, 1]) { // the long closed eyes of deep meditation
+        const eye = new T.Mesh(new T.BoxGeometry(1.25, .14, .2), mat('#c9c2b2', .5)); eye.rotation.z = -.08 * sx;
+        eye.position.set(1.05 * sx, 10.15, 2.28); ad.add(eye); }
+      for (let st3 = 0; st3 < 3; st3++) { const strip = new T.Mesh(new T.BoxGeometry(2.5, .22, .16), mat('#e8e2d2', .5));
+        strip.position.set(0, 11.15 + st3 * .38, 2.1); ad.add(strip); } // the wide tripundra across the brow
+      // matted jata swept back in a crest, and the crescent moon riding it
+      for (let j2 = 0; j2 < 4; j2++) { const coil2 = new T.Mesh(new T.TorusGeometry(1.9 - j2 * .3, .5, 8, 14), iron);
+        coil2.rotation.x = Math.PI / 2.4; coil2.position.set(0, 11.8 + j2 * .78, -.7 - j2 * .35); ad.add(coil2); }
+      const moon = new T.Mesh(new T.TorusGeometry(.65, .12, 6, 14, Math.PI * 1.2), new T.MeshStandardMaterial({ color: '#d4af37', metalness: .6, roughness: .3 }));
+      moon.position.set(1.9, 12.9, .4); moon.rotation.z = .6; ad.add(moon);
+      // the meditation ground: dark stone circle ringed with butter lamps
+      const medi = new T.Mesh(new T.CircleGeometry(13, 20), new T.MeshStandardMaterial({ color: '#3a3630', roughness: 1 }));
+      medi.rotation.x = -Math.PI / 2; medi.position.set(0, .02, 12); g.add(medi);
+      for (let l2 = 0; l2 < 12; l2++) { const a2 = l2 / 12 * TAU;
+        const lamp = new T.Mesh(new T.SphereGeometry(.12, 6, 5), new T.MeshStandardMaterial({ color: '#ffcf5a', emissive: '#ff9a00', emissiveIntensity: 1.4 }));
+        lamp.position.set(Math.cos(a2) * 12.2, .18, 12 + Math.sin(a2) * 12.2); g.add(lamp); }
+      buildings.push({ x: cx, z: cz, hw: 8.4, hd: 4.8 });
     } else { // generic tall monument tower per district
       const tower = new T.Mesh(new T.BoxGeometry(5, 14, 5), mat(col)); tower.position.y = 7; g.add(tower);
       const top = new T.Mesh(new T.ConeGeometry(3.4, 4, 4), mat('#f4c20d')); top.position.y = 16; top.rotation.y = Math.PI / 4; g.add(top);
@@ -1603,6 +1829,76 @@ function spawnCows(n) {
     cows.push({ g, dir: rand(0, TAU), speed: rand(.25, .6), t: rand(0, 10) }); }
 }
 
+// ---------- the painted elephants of Jaipur: caparisoned, chalk-decorated, unhurried ----------
+const elephants = [];
+function spawnElephants(n) {
+  for (let i = 0; i < n; i++) {
+    // they walk the Marwar cell only (the NE district: Jaipur country)
+    let p = null;
+    for (let t = 0; t < 60; t++) { const x = rand(HALF - CELL + 10, HALF - 10), z = rand(-HALF + 10, -HALF + CELL - 10);
+      if (onRoad(x, z) && !blocked(x, z)) { p = { x, z }; break; } }
+    if (!p) continue;
+    const g = new T.Group();
+    const hide = mat('#8a8078', .95), hide2 = mat('#7a716a', .95);
+    const deco = pick([['#d15b7a', '#e0b93c'], ['#2a7a8c', '#e0b93c'], ['#c0392b', '#f2e8dc']]); // Rajasthani paint pairs
+    const dM = mat(deco[0], .8), dM2 = new T.MeshStandardMaterial({ color: deco[1], metalness: .35, roughness: .5 });
+    // the great body, high-shouldered
+    const body = new T.Mesh(new T.SphereGeometry(1.05, 16, 12), hide); body.scale.set(1.05, 1.02, 1.62); body.position.y = 1.95; g.add(body);
+    const rump = new T.Mesh(new T.SphereGeometry(.82, 12, 10), hide2); rump.position.set(0, 2, -1.3); g.add(rump);
+    const head = new T.Mesh(new T.SphereGeometry(.62, 14, 10), hide); head.scale.set(.95, 1.05, .9); head.position.set(0, 2.42, 1.62); g.add(head);
+    // painted forehead: the chalked pattern plate between the eyes
+    const brow = new T.Mesh(new T.SphereGeometry(.5, 12, 8, 0, TAU, 0, Math.PI / 2.4), dM);
+    brow.rotation.x = Math.PI / 2.6; brow.position.set(0, 2.62, 1.86); g.add(brow);
+    for (let d3 = 0; d3 < 5; d3++) { const dot = new T.Mesh(new T.SphereGeometry(.045, 6, 5), dM2);
+      dot.position.set(-.24 + d3 * .12, 2.86, 2.02); g.add(dot); }
+    // the trunk curls down in painted rings
+    let tx = 0, ty = 2.2, tz = 2.14;
+    for (let s5 = 0; s5 < 5; s5++) { const r5 = .19 - s5 * .028;
+      const seg = new T.Mesh(new T.CylinderGeometry(r5, r5 - .022, .42, 8), s5 % 2 ? dM : hide);
+      seg.position.set(tx, ty, tz); seg.rotation.x = .5 - s5 * .3;
+      g.add(seg); ty -= .38; tz += .12 - s5 * .05; }
+    // white tusks curving up
+    for (const sx of [-1, 1]) { const tusk = new T.Mesh(new T.ConeGeometry(.07, .85, 8), mat('#e8e2d2', .4));
+      tusk.position.set(.3 * sx, 1.95, 2.05); tusk.rotation.x = -1.9; tusk.rotation.z = -.25 * sx; g.add(tusk); }
+    // great painted ears, swinging slow
+    for (const sx of [-1, 1]) { const ear = new T.Mesh(new T.SphereGeometry(.55, 10, 8), hide2);
+      ear.scale.set(.16, 1.05, .8); ear.position.set(.66 * sx, 2.55, 1.45); ear.rotation.z = .25 * sx;
+      const earIn = new T.Mesh(new T.SphereGeometry(.4, 8, 6), dM); earIn.scale.set(.1, .95, .7); earIn.position.set(.6 * sx, 2.55, 1.45); earIn.rotation.z = .25 * sx;
+      g.add(ear); g.add(earIn); g.userData['ear' + (sx > 0 ? 'R' : 'L')] = ear; }
+    // the caparison: fringed cloth over the back, gold-bordered
+    const cloth = new T.Mesh(new T.BoxGeometry(1.9, .1, 2.5), dM); cloth.position.y = 2.95; g.add(cloth);
+    const border = new T.Mesh(new T.BoxGeometry(2, .06, 2.6), dM2); border.position.y = 2.9; g.add(border);
+    for (let f3 = 0; f3 < 6; f3++) for (const sx of [-1.02, 1.02]) { const tassel = new T.Mesh(new T.SphereGeometry(.05, 6, 5), dM2);
+      tassel.position.set(sx, 2.78, -1 + f3 * .42); g.add(tassel); }
+    // pillar legs with painted anklets, and toenails
+    for (const [sx, sz] of [[-.5, .85], [.5, .85], [-.5, -.95], [.5, -.95]]) {
+      const leg = new T.Mesh(new T.CylinderGeometry(.26, .3, 1.55, 10), hide); leg.position.set(sx, .78, sz); g.add(leg);
+      if (sz > 0) { const ank = new T.Mesh(new T.TorusGeometry(.3, .05, 6, 12), dM2); ank.rotation.x = Math.PI / 2; ank.position.set(sx, .35, sz); g.add(ank); }
+      for (let n2 = 0; n2 < 3; n2++) { const nail = new T.Mesh(new T.SphereGeometry(.055, 6, 5), mat('#e8e2d2', .5));
+        nail.position.set(sx - .12 + n2 * .12, .06, sz + .26); g.add(nail); } }
+    const tail2 = new T.Mesh(new T.CylinderGeometry(.045, .03, 1.3, 6), hide2); tail2.position.set(0, 1.85, -2.05); tail2.rotation.x = .3; g.add(tail2);
+    g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+    g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
+    elephants.push({ g, dir: rand(0, TAU), speed: rand(.35, .55), t: rand(0, 10) });
+  }
+}
+function updateElephants(dt) {
+  for (const e of elephants) {
+    e.t += dt;
+    if (e.g.position.distanceToSquared(player.pos) > 130 * 130) continue;
+    if (Math.sin(e.t * .13) > .92) e.dir += rand(-.5, .5); // occasionally reconsiders its route
+    const nx = e.g.position.x + Math.sin(e.dir) * e.speed * dt, nz = e.g.position.z + Math.cos(e.dir) * e.speed * dt;
+    // an elephant stays in its own country and off the sand
+    if (!blocked(nx, nz) && nx > HALF - CELL + 6 && nz < -HALF + CELL - 6 && !inBeach(nx, nz)) {
+      e.g.position.x = nx; e.g.position.z = nz; e.g.rotation.y = lerp(e.g.rotation.y, e.dir, .04); }
+    else e.dir += rand(1.2, 2.2);
+    e.g.position.y = Math.sin(e.t * 1.7) * .03; // the slow roll of its walk
+    e.g.rotation.z = Math.sin(e.t * .85) * .025;
+    const eL = e.g.userData.earL, eR = e.g.userData.earR;
+    if (eL) eL.rotation.y = Math.sin(e.t * 1.3) * .3;
+    if (eR) eR.rotation.y = -Math.sin(e.t * 1.3 + 1) * .3;
+  }
+}
 // ---------- street animals: monkeys (monkey cities) + stray dogs ----------
 const monkeys = [], dogs = [];
 function spawnMonkeys(n) {
@@ -1610,7 +1906,8 @@ function spawnMonkeys(n) {
     // monkeys live where they really do: Old Delhi, Marwar, Kashi
     const cell = pick([0, 2, 3]); const mx = cell % 3, mz = (cell / 3) | 0;
     let p = null;
-    for (let t = 0; t < 40; t++) { const x = rand((mx - 1) * CELL - CELL * .42, (mx - 1) * CELL + CELL * .42), z = rand((mz - 1) * CELL - CELL * .42, (mz - 1) * CELL + CELL * .42);
+    if (i < 8) p = { x: CELL + 37 + rand(-6, 6), z: -CELL + 37 + rand(-4, 7) }; // the Galtaji troop holds its kund
+    else for (let t = 0; t < 40; t++) { const x = rand((mx - 1) * CELL - CELL * .42, (mx - 1) * CELL + CELL * .42), z = rand((mz - 1) * CELL - CELL * .42, (mz - 1) * CELL + CELL * .42);
       if (onSidewalk(x, z) && !blocked(x, z)) { p = { x, z }; break; } }
     if (!p) continue;
     const g = new T.Group(); const fur = mat('#7a5f46', .9), face = mat('#c9a074', .7);
@@ -1774,6 +2071,37 @@ function buildOfferingStalls() {
     vendorSpots.push({ x: x - Math.sin(-side * Math.PI / 2) * .95, z: z - Math.cos(-side * Math.PI / 2) * .95, yaw: -side * Math.PI / 2, kind: 'phool' });
   }
 }
+// Kashi's sacred geometry: the old city is described as a cosmic mandala centred on its great
+// temple — concentric pilgrim circuits, radial lanes, the whole map a yantra. Painted underfoot here.
+function buildYantraPlaza(x, z) {
+  const c = document.createElement('canvas'); c.width = c.height = 512; const q = c.getContext('2d');
+  q.fillStyle = '#c9b896'; q.fillRect(0, 0, 512, 512); // worn stone
+  const cx2 = 256, cy2 = 256;
+  q.strokeStyle = '#8e3b2a'; q.fillStyle = '#8e3b2a';
+  for (const r6 of [244, 210, 118]) { q.lineWidth = r6 === 210 ? 3 : 7; q.beginPath(); q.arc(cx2, cy2, r6, 0, TAU); q.stroke(); } // the circuits
+  q.lineWidth = 4;
+  for (let p4 = 0; p4 < 12; p4++) { const a3 = p4 / 12 * TAU; // twelve lotus petals between the rings
+    const px2 = cx2 + Math.cos(a3) * 164, py2 = cy2 + Math.sin(a3) * 164;
+    q.beginPath(); q.ellipse(px2, py2, 44, 18, a3 + Math.PI / 2, 0, TAU); q.stroke(); }
+  q.lineWidth = 5; // interlocking triangles at the heart — the yantra
+  for (const up of [1, -1]) { q.beginPath();
+    for (let v3 = 0; v3 < 3; v3++) { const a4 = up * Math.PI / 2 + v3 / 3 * TAU;
+      const vx = cx2 + Math.cos(a4) * 96, vy = cy2 + Math.sin(a4) * 96;
+      if (v3 === 0) q.moveTo(vx, vy); else q.lineTo(vx, vy); }
+    q.closePath(); q.stroke(); }
+  q.beginPath(); q.arc(cx2, cy2, 9, 0, TAU); q.fill(); // the bindu at the centre of everything
+  for (let sp = 0; sp < 8; sp++) { const a5 = sp / 8 * TAU + Math.PI / 8; // radial lanes running out of the circle
+    q.lineWidth = 3; q.beginPath(); q.moveTo(cx2 + Math.cos(a5) * 214, cy2 + Math.sin(a5) * 214);
+    q.lineTo(cx2 + Math.cos(a5) * 250, cy2 + Math.sin(a5) * 250); q.stroke(); }
+  const yt = new T.CanvasTexture(c);
+  const plaza = new T.Mesh(new T.CircleGeometry(11, 28), new T.MeshStandardMaterial({ map: yt, roughness: .95, transparent: true, opacity: .85 }));
+  plaza.rotation.x = -Math.PI / 2; plaza.rotation.z = rand(0, TAU); plaza.position.set(x, .03, z); plaza.receiveShadow = true; scene.add(plaza);
+  for (let i = 0; i < 8; i++) { const a6 = i / 8 * TAU; // small shrine stones stand the circuit like the yatra stations
+    const st4 = new T.Mesh(new T.BoxGeometry(.5, .7, .5), mat(i % 2 ? '#e07020' : '#c9b896', .9));
+    st4.position.set(x + Math.cos(a6) * 10.3, .35, z + Math.sin(a6) * 10.3); st4.castShadow = true; scene.add(st4);
+    const stTop = new T.Mesh(new T.SphereGeometry(.22, 8, 6, 0, TAU, 0, Math.PI / 2), mat('#e07020', .8));
+    stTop.position.set(x + Math.cos(a6) * 10.3, .7, z + Math.sin(a6) * 10.3); scene.add(stTop); }
+}
 // streetside shrines: a tiny saffron mandir absorbed into the pavement, marigold and diyas
 const shrines = [];
 function buildStreetShrines() {
@@ -1924,6 +2252,17 @@ const LINES = {
   ok: ['“Theek hai theek hai, chalo!”', '“Arre okay okay — sit, sit.”', '“Bas aapke liye, boss. Chalo.”'],
   no: ['“Nahi nahi! Not possible!”', '“Kya?! Petrol bhi nahi milta itne mein!”', '“Arre boss, joking or what?”'],
 };
+// around the Adiyogi, the talk is only ever of the inner dimension
+const SPIRIT = [
+  '“You are not the body. You are not even the mind. Sit with that.”',
+  '“Shi-va means: that which is not. Emptiness, full of everything.”',
+  '“Do not seek, my friend. Simply become willing. The rest happens.”',
+  '“One breath in, one breath out — the whole cosmos passes between.”',
+  '“The mind is a mirror, beta. Dust it every single day.”',
+  '“Anger is you drinking poison and waiting for the other to die.”',
+  '“First engineer the inner. The outer will follow, always.”',
+  '“The first yogi taught: stillness is not absence. It is totality.”',
+];
 const CHAT = [
   ['“Arre bhai, best kebab is behind Jama Masjid, trust me.”', '“Mind the wires, beta. And the monkeys.”', '“Chandni Chowk mein sab milta hai — sab!”'],
   ['“One day I will be hero in pictures, you watch.”', '“Dabbawala never late. NEVER.”', '“Local train full? Arre, there is always room for one more.”'],
@@ -1958,7 +2297,7 @@ function updateVendors(dt) {
     if (h.lArm) { h.lArm.rotation.x = -.2; h.lArm.rotation.z = .15; }
     if (h.spine) h.spine.rotation.x = .1 + Math.sin(v.phase * .5) * .05;
     v.called -= dt;
-    if (d2 < 8 * 8 && v.called <= 0) { v.called = rand(9, 18); hint(VENDOR_CRIES[v.kind] || VENDOR_CRIES.chai); }
+    if (d2 < 8 * 8 && v.called <= 0) { v.called = rand(9, 18); const cry = VENDOR_CRIES[v.kind] || VENDOR_CRIES.chai; hint(cry); speak(cry, 1.15); }
   }
 }
 // ---------- Bollywood: a live film shoot in Bambai — join the dance, earn an actor's fee ----------
@@ -2604,7 +2943,7 @@ addEventListener('keydown', e => { const k = e.key.toLowerCase();
   if ([' ', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright'].includes(k)) e.preventDefault();
   keys[k] = true;
   if (k === 'f') tryEnterExit();
-  if (k === 'j') punch();
+  if (k === 'j') { if (player.swim) { if (performance.now() - (player.diveT || 0) > 500) { player.diveT = performance.now(); player.dive = !player.dive; } } else punch(); }
   if (k === 't') spit();
   if (k === 'h' && player.inVehicle) horn();
   if (k === 'r' && player.inVehicle) { const st = Radio.switch(); toast('\ud83d\udcfb ' + st.name, '#8ef58e'); }
@@ -2631,12 +2970,13 @@ const tHeld = {};
     el.addEventListener('pointerdown', e => { e.preventDefault(); fn(); });
     el.addEventListener('touchstart', e => e.preventDefault(), { passive: false }); };
   bind('tAct', () => { if (player.nego) acceptRide(); else tryEnterExit(); });
-  bind('tPunch', punch); bind('tSpit', spit);
+  bind('tPunch', () => { if (player.swim) { player.diveT = performance.now(); player.dive = !player.dive; } else punch(); }); // in water the fist button dives
+  bind('tSpit', spit);
   bind('tRadio', () => { if (player.inVehicle) { const st = Radio.switch(); toast('\ud83d\udcfb ' + st.name, '#8ef58e'); } });
   bind('tPhone', callPetrolWala);
   bind('tE', () => { if (player.nego) haggle(); else tryVisit(); });
   bind('tSnd', () => { const p = $('sndPanel'); if (p) p.classList.toggle('on'); });
-  for (const key of ['horns', 'amb', 'sfx']) { const el = $('snd_' + key); if (!el) continue;
+  for (const key of ['horns', 'amb', 'sfx', 'voice']) { const el = $('snd_' + key); if (!el) continue;
     const paint = () => { el.classList.toggle('on', !!sndCfg[key]); };
     el.addEventListener('pointerdown', e => { e.preventDefault(); sndCfg[key] = !sndCfg[key]; saveSnd(); paint(); }); paint(); }
   const gfxEl = $('snd_gfx');
@@ -2709,9 +3049,9 @@ function haggle() {
   if (n.tries <= 2 && Math.random() < odds) {
     n.fare = Math.max(15, Math.round(n.fare * rand(.6, .85)));
     n.veh.driver.fare = n.fare;
-    toast(pick(LINES.ok) + ' \u20b9' + n.fare, '#8ef58e');
+    const okL = pick(LINES.ok); toast(okL + ' \u20b9' + n.fare, '#8ef58e'); speak(okL, .9);
   } else {
-    toast(pick(LINES.no) + ' \u2014 il red\u00e9marre', '#ff9f43');
+    const noL = pick(LINES.no); toast(noL + ' \u2014 il red\u00e9marre', '#ff9f43'); speak(noL, .9);
     n.veh.ai = true; player.nego = null;
   }
 }
@@ -2876,6 +3216,27 @@ function AudioSysCrash() { if (!actx || !sndCfg.sfx) return; const t = actx.curr
   const g = actx.createGain(); g.gain.value = .25; b.buffer = buf; b.connect(g); g.connect(amaster); b.start(t); }
 function blip(f, d, ty, v) { if (!actx || !sndCfg.sfx) return; const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain(); o.type = ty || 'square'; o.frequency.value = f; g.gain.setValueAtTime(v || .2, t); g.gain.exponentialRampToValueAtTime(.001, t + d); o.connect(g); g.connect(amaster); o.start(t); o.stop(t + d); }
 function cashSnd() { blip(880, .08, 'sine', .3); setTimeout(() => blip(1320, .12, 'sine', .3), 70); }
+// ---------- Voices: Indian-English speech through the browser's own TTS ----------
+// picks an en-IN voice (Chrome ships one on most devices; iOS has Rishi), falls back to hi-IN then any English
+let _voiceIN = null, _voicesTried = false;
+function pickVoice() {
+  if (_voicesTried && _voiceIN) return _voiceIN;
+  if (!('speechSynthesis' in window)) return null;
+  const vs = speechSynthesis.getVoices(); if (!vs.length) return null;
+  _voicesTried = true;
+  _voiceIN = vs.find(v => /en[-_]IN/i.test(v.lang)) || vs.find(v => /hi[-_]IN/i.test(v.lang)) || vs.find(v => /^en/i.test(v.lang)) || null;
+  return _voiceIN;
+}
+if ('speechSynthesis' in window) speechSynthesis.onvoiceschanged = () => { _voicesTried = false; pickVoice(); };
+function speak(text, pitch) {
+  if (!sndCfg.voice || !('speechSynthesis' in window)) return;
+  const clean = String(text).replace(/[“”"«»]/g, '').replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').trim();
+  if (!clean || speechSynthesis.speaking) return; // never talk over an ongoing line
+  const u = new SpeechSynthesisUtterance(clean);
+  const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-IN';
+  u.rate = 1.02; u.pitch = clamp(pitch ?? rand(.85, 1.25), .5, 2); u.volume = .9;
+  speechSynthesis.speak(u);
+}
 function siren(on) { if (!actx) return; if (on && !sirenNode) { const o = actx.createOscillator(), g = actx.createGain(), lfo = actx.createOscillator(), lg = actx.createGain(); o.type = 'sine'; o.frequency.value = 700; lfo.frequency.value = 2; lg.gain.value = 250; lfo.connect(lg); lg.connect(o.frequency); g.gain.value = .04; o.connect(g); g.connect(amaster); o.start(); lfo.start(); sirenNode = { o, lfo }; } else if (!on && sirenNode) { try { sirenNode.o.stop(); sirenNode.lfo.stop(); } catch (e) {} sirenNode = null; } }
 
 // ---------- Monuments: tickets + guided tours with real history ----------
@@ -2888,10 +3249,10 @@ const MONUMENTS = [
     'Mumbai\u2019s Hindi film industry \u2014 Bollywood \u2014 releases more films every year than Hollywood.',
     'Dadasaheb Phalke shot India\u2019s first full-length feature, Raja Harishchandra, in 1913.',
     'The black-and-yellow kaali-peeli taxi and the dabbawala lunchbox network are Mumbai street icons.'] },
-  { name: 'Mehrangarh Fort', facts: [
-    'Mehrangarh was begun around 1459 by Rao Jodha, founder of Jodhpur.',
-    'Its walls rise straight from a 120-metre cliff \u2014 among the most imposing forts in India.',
-    'Below it spreads the Blue City: houses washed in indigo to stay cool and mark heritage.'] },
+  { name: 'Hawa Mahal & City Palace', facts: [
+    'Hawa Mahal (1799) has 953 jharokha windows \u2014 built so royal women could watch the street unseen, cooled by the breeze.',
+    'The City Palace is still home to the Maharaja of Jaipur\u2019s family; its Pritam Niwas Chowk has four gates, one for each season.',
+    'Out past the dirt track lies Galtaji, the monkey temple \u2014 spring-fed tanks where hundreds of macaques bathe.'] },
   { name: 'The Ghats of Kashi', facts: [
     'Varanasi\u2019s riverfront strings together some 88 ghats along the Ganga.',
     'Every dusk, priests perform the Ganga Aarti with fire lamps at Dashashwamedh Ghat.',
@@ -2900,10 +3261,10 @@ const MONUMENTS = [
     'The Golden Temple was completed in 1604 under Guru Arjan, the fifth Sikh Guru.',
     'Maharaja Ranjit Singh gilded the shrine with gold in the early 1800s.',
     'Its langar kitchen serves free meals to as many as 100,000 visitors a day, all seated as equals.'] },
-  { name: 'St. Francis Church', facts: [
-    'Built in 1503 in Kochi, this is the oldest European church in India.',
-    'Vasco da Gama died in Kochi in 1524 and was first buried here.',
-    'Kerala\u2019s spice coast traded with Rome and Arabia centuries before Europe\u2019s sea route.'] },
+  { name: 'Adiyogi', facts: [
+    'The Adiyogi bust stands 34 metres tall \u2014 certified the largest bust sculpture in the world.',
+    'It honours Shiva as the FIRST yogi, who gave yoga to humanity long before any religion took shape.',
+    'Around it, seekers sit for hours: the teaching is simple \u2014 stillness first, everything else after.'] },
   { name: 'Howrah Bridge', facts: [
     'Opened in 1943, the 705-metre cantilever was riveted together \u2014 no nuts or bolts.',
     'It carries roughly 100,000 vehicles and countless pedestrians every day.',
@@ -2963,8 +3324,11 @@ function tryVisit() {
     bestN.g.rotation.y = Math.atan2(player.pos.x - bestN.g.position.x, player.pos.z - bestN.g.position.z);
     bestN.pause = 3;
     const di = districtAt(bestN.g.position.x, bestN.g.position.z);
-    const line = (player.dharma < 25 && Math.random() < .4) ? '\u201cSharam karo! (Aie honte!)\u201d \ud83d\ude20' : pick(CHAT[di] || CHAT[0]);
-    toast(line, '#ffe9b8');
+    // within the Adiyogi's gaze, every conversation turns to the inner world
+    const nearAdiyogi = (player.pos.x - CELL) ** 2 + player.pos.z ** 2 < 30 * 30;
+    const line = nearAdiyogi ? pick(SPIRIT)
+      : (player.dharma < 25 && Math.random() < .4) ? '\u201cSharam karo! (Aie honte!)\u201d \ud83d\ude20' : pick(CHAT[di] || CHAT[0]);
+    toast(line, '#ffe9b8'); speak(line);
   }
 }
 function updateTour(dt, now) {
@@ -3021,7 +3385,10 @@ function showBanner(title, fact) { const el = $('banner'); $('bTitle').textConte
 let hintT = 0; function hint(t) { const el = $('hint'); el.textContent = t; el.style.opacity = 1; hintT = .12; }
 
 // ---------- collision ----------
-function blocked(x, z) { if (Math.abs(x) > HALF - 1 || Math.abs(z) > HALF - 1) return true;
+function blocked(x, z) {
+  if (Math.abs(z) > HALF - 1 || x > HALF - 1) return true;
+  // the west edge opens onto the Ganga in the Kashi cell — swim it to the far bank
+  if (x < -HALF + 1 && !(z > -HALF + CELL + 1.5 && z < -HALF + 2 * CELL - 1.5 && x > FAR_X + 1.5)) return true;
   for (const b of buildings) { if (Math.abs(x - b.x) < b.hw && Math.abs(z - b.z) < b.hd) return true; } return false; }
 // push a walking body out of a vehicle's oriented box — nobody phases through metal
 function pushOutOfVehicle(pos, v, pr) {
@@ -3107,12 +3474,12 @@ function update(dt) {
   if (player.nego) {
     const n = player.nego, d2 = n.veh.g.position.distanceToSquared(player.pos);
     if (d2 > 9 * 9) { n.veh.ai = true; player.nego = null; }
-    else hint('\ud83d\udefa ' + (n.line || (n.line = pick(LINES.hail))) + ' \u20b9' + n.fare + ' \u2014 E hop in \u00b7 N haggle');
+    else { const first = !n.line; hint('\ud83d\udefa ' + (n.line || (n.line = pick(LINES.hail))) + ' \u20b9' + n.fare + ' \u2014 E hop in \u00b7 N haggle'); if (first) speak(n.line, .92); }
   }
   updateTour(dt, performance.now());
 
   if (scandal) { scandal.t -= dt; if (scandal.t <= 0) scandal = null; }
-  updateNPCs(dt); updateCows(dt); updateVehicles(dt); updateCops(dt); updateMonkeys(dt); updateDogs(dt); recycleLife(dt);
+  updateNPCs(dt); updateCows(dt); updateElephants(dt); updateVehicles(dt); updateCops(dt); updateMonkeys(dt); updateDogs(dt); recycleLife(dt);
   updateVendors(dt); updateFilmSet(dt); updatePetrolWala(dt); updateMissions(dt); updateBathers(dt);
   for (const m of seaMats) if (m.map) { m.map.offset.y += dt * .012; m.map.offset.x += dt * .004; } // the water breathes
   Radio.tick();
@@ -3161,13 +3528,28 @@ function update(dt) {
 
   updateHUD(); drawMinimap3d();
 }
+let _breathEl = null, _uwEl = null;
+function breathUI(show, pct) {
+  if (!_breathEl) { _breathEl = document.createElement('div');
+    _breathEl.style.cssText = 'position:fixed;left:50%;bottom:92px;transform:translateX(-50%);width:180px;height:10px;border-radius:6px;background:rgba(10,14,20,.55);border:1px solid rgba(255,255,255,.25);z-index:40;display:none';
+    const fill = document.createElement('div'); fill.style.cssText = 'height:100%;border-radius:6px;background:#4fc3f7;width:100%';
+    _breathEl.appendChild(fill); document.body.appendChild(_breathEl); }
+  _breathEl.style.display = show ? 'block' : 'none';
+  if (show) _breathEl.firstChild.style.width = Math.max(0, pct) + '%';
+}
+function underwaterFx(on) {
+  if (!_uwEl) { _uwEl = document.createElement('div');
+    _uwEl.style.cssText = 'position:fixed;inset:0;background:radial-gradient(ellipse at 50% 55%, rgba(24,86,92,.34), rgba(8,40,52,.62));pointer-events:none;z-index:30;display:none';
+    document.body.appendChild(_uwEl); }
+  _uwEl.style.display = on ? 'block' : 'none';
+}
 function updateFoot(dt, f, s) {
   player.g.visible = true;
   const mag = Math.min(1, Math.hypot(f, s));
   let dx = 0, dz = 0;
   if (mag > .12) { const ang = cam.yaw; dx = Math.sin(ang) * f - Math.cos(ang) * s; dz = Math.cos(ang) * f + Math.sin(ang) * s;
     const l = Math.hypot(dx, dz); dx /= l; dz /= l; }
-  const sprint = keys['shift'] ? 1.7 : 1, spd = 3.4 * sprint * mag;
+  const sprint = (keys['shift'] ? 1.7 : 1) * (player.swim ? .78 : 1), spd = (player.swim ? (player.dive ? 2.1 : 2.7) : 3.4) * sprint * mag;
   player.moving = mag > .12; player.speed = player.moving ? spd : 0;
   if (player.moving) { player.yaw = angLerp(player.yaw, Math.atan2(dx, dz), Math.min(1, dt * 9));
     const nx = player.pos.x + dx * spd * dt, nz = player.pos.z + dz * spd * dt;
@@ -3181,13 +3563,45 @@ function updateFoot(dt, f, s) {
   for (const v of vehicles) pushOutOfVehicle(player.pos, v, .42);
   for (const c of cows) { const dx = player.pos.x - c.g.position.x, dz = player.pos.z - c.g.position.z, d2 = dx * dx + dz * dz;
     if (d2 < 1.3 * 1.3 && d2 > 1e-6) { const d = Math.sqrt(d2); player.pos.x = c.g.position.x + dx / d * 1.3; player.pos.z = c.g.position.z + dz / d * 1.3; } }
+  for (const e of elephants) { const dx = player.pos.x - e.g.position.x, dz = player.pos.z - e.g.position.z, d2 = dx * dx + dz * dz;
+    if (d2 < 2.1 * 2.1 && d2 > 1e-6) { const d = Math.sqrt(d2); player.pos.x = e.g.position.x + dx / d * 2.1; player.pos.z = e.g.position.z + dz / d * 2.1; } }
   for (const n of npcs) { if (n.down > 0) continue; const dx = n.g.position.x - player.pos.x, dz = n.g.position.z - player.pos.z, d2 = dx * dx + dz * dz;
     if (d2 < .8 * .8 && d2 > 1e-6) { const d = Math.sqrt(d2); // shoulder through the crowd — they give way
       const nx2 = player.pos.x + dx / d * .8, nz2 = player.pos.z + dz / d * .8;
       if (!blocked(nx2, nz2)) { n.g.position.x = nx2; n.g.position.z = nz2; } } }
   player.pos.y = rampHeightAt(player.pos.x, player.pos.z); // ghat steps and the flyover are walkable
+  // ---- swimming, GTA-style: past the last step the bed drops away ----
+  const nowMs = performance.now();
+  const deepWater = inRiverWater(player.pos.x, player.pos.z) && player.pos.x < RIVER_X0 - 2.2;
+  if (deepWater && !player.swim) { player.swim = true; player.dive = false; player.breath = 100;
+    toast('🏊 Ganga mein! 👊/J — plonger · l\'autre rive est loin…', '#7ec3e8'); }
+  if (!deepWater && player.swim) { player.swim = false; player.dive = false; player.g.rotation.x = 0; underwaterFx(false); }
+  if (player.swim) {
+    if (keys['c'] && nowMs - (player.diveT || 0) > 500) { player.diveT = nowMs; player.dive = !player.dive; }
+    if (player.dive) { player.breath -= dt * 7;
+      if (player.breath <= 0) { player.breath = 0; player.dive = false; toast('😮‍💨 Plus de souffle — remonte!', '#ff9f43'); } }
+    else player.breath = Math.min(100, (player.breath ?? 100) + dt * 34);
+    const ts = nowMs / 1000;
+    player.pos.y = player.dive ? -2.35 : -.52 + Math.sin(ts * 2.1) * .07;
+    player.g.rotation.x = player.dive ? -1.02 : -1.28; // prone at the surface, angled when diving
+    if (player.moving && !player.dive && Math.random() < dt * 5 && steamPuffs.length < 60) {
+      const m = new T.Mesh(new T.PlaneGeometry(.5, .3), new T.MeshBasicMaterial({ color: '#cfe4de', transparent: true, opacity: .5, depthWrite: false }));
+      m.position.set(player.pos.x, -.1, player.pos.z); m.rotation.x = -Math.PI / 2; scene.add(m); steamPuffs.push({ m, life: .5 }); }
+  }
+  breathUI(player.swim && (player.dive || player.breath < 100), player.breath ?? 100);
+  underwaterFx(!!player.dive);
+  // the far shore has its own keepers — and its own warnings
+  if (onFarBank(player.pos.x, player.pos.z) && nowMs > (updateFoot._farT || 0)) {
+    updateFoot._farT = nowMs + 9000;
+    const dA = Math.hypot(player.pos.x - AGHORI.x, player.pos.z - AGHORI.z);
+    if (dA < 16) toast('☠️ Aghori shamshan — “Jo sab chhod dete hain, wahi yahan rehte hain…”', '#c9b8a0');
+    else if (player.pos.z < -HALF + CELL + CELL * .45) toast('🕌 Taj Mahal — le marbre de l\'amour éternel, au bord de l\'eau', '#f2ecd9');
+  }
   player.g.position.copy(player.pos); player.g.rotation.y = player.yaw;
-  animateChar(player.g, player.moving, dt, 3.4 * sprint);
+  animateChar(player.g, player.moving, dt, player.swim ? 2.7 : 3.4 * sprint);
+  if (player.swim) { const h = player.g.userData.human, tk = nowMs / 1000 * (player.moving ? 4.2 : 1.5);
+    if (h) { if (h.rArm) { h.rArm.rotation.x = -1 + Math.sin(tk) * 1.35; h.rArm.rotation.z = -.25; } // freestyle strokes
+      if (h.lArm) { h.lArm.rotation.x = -1 + Math.sin(tk + Math.PI) * 1.35; h.lArm.rotation.z = .25; } } }
 }
 function updateDrive(dt, f, s) {
   const v = player.inVehicle;
@@ -3203,8 +3617,11 @@ function updateDrive(dt, f, s) {
       smashProp(b, Math.sin(v.yaw) * Math.sign(v.speed), Math.cos(v.yaw) * Math.sign(v.speed), Math.abs(v.speed));
       v.speed *= .78; damage(3); spark(v.g.position); toast('💥 “Mera thela!!”', '#ff9f43'); break; } }
   const nx = v.g.position.x + Math.sin(v.yaw) * v.speed * dt, nz = v.g.position.z + Math.cos(v.yaw) * v.speed * dt;
+  if (inRiverWater(nx, nz)) { v.speed *= -.3; // no vehicle swims the Ganga
+    if (!updateDrive._rivT || performance.now() > updateDrive._rivT) { updateDrive._rivT = performance.now() + 2500;
+      toast('🌊 Gaadi paani mein nahi chalegi!', '#7ec3e8'); } }
   // the old-quarter galis: too narrow for anything wider than an auto
-  if ((v.hw || .95) > .7 && inGali(nx, nz) && !inGali(v.g.position.x, v.g.position.z)) {
+  else if ((v.hw || .95) > .7 && inGali(nx, nz) && !inGali(v.g.position.x, v.g.position.z)) {
     v.speed *= -.3; if (!updateDrive._galiT || performance.now() > updateDrive._galiT) { updateDrive._galiT = performance.now() + 2500;
       toast('🛵 Gali trop étroite! Tuktuk, moto ou vélo seulement', '#ffd24d'); }
   }
@@ -3283,6 +3700,7 @@ function recycleLife(dt) {
   for (const d of dogs) d.g.visible = d.g.position.distanceToSquared(player.pos) < R2;
   for (const c of cows) c.g.visible = c.g.position.distanceToSquared(player.pos) < R2;
   for (const m of monkeys) m.g.visible = m.g.position.distanceToSquared(player.pos) < R2;
+  for (const e of elephants) e.g.visible = e.g.position.distanceToSquared(player.pos) < R2;
   for (const n of npcs) { if (n.down > 0) continue;
     if (n.g.position.distanceToSquared(player.pos) > 130 * 130) { const p = nearPlayerSpot(35, 75, true);
       if (p) { n.g.position.set(p.x, 0, p.z); n.pause = 0; } } }
@@ -3524,7 +3942,7 @@ function startGame() {
   player.pos.copy(findSpawn());
   player.g = makeCharacter(opts); player.g.position.copy(player.pos); scene.add(player.g);
   const N = GFX === 'low' ? .5 : 1.2; // dense on the pretty tier; the light tier thins the crowd, the fog hides it
-  spawnNPCs(Math.round(44 * N)); spawnCows(Math.round(9 * N)); spawnVehicles(Math.round(46 * N)); spawnMonkeys(Math.round(12 * N)); spawnDogs(Math.round(13 * N));
+  spawnNPCs(Math.round(44 * N)); spawnCows(Math.round(9 * N)); spawnVehicles(Math.round(46 * N)); spawnMonkeys(Math.round(12 * N) + 8); spawnDogs(Math.round(13 * N)); spawnElephants(GFX === 'low' ? 2 : 3);
   spawnVendors(); spawnDancers(); spawnBathers(); // the rigged human is loaded by now — staff the stalls, roll camera, fill the river
   started = true;
   toast('नमस्ते, ' + opts.name + '!', '#ff9933');
@@ -3605,7 +4023,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 29'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 30'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -3616,6 +4034,11 @@ function boot() {
       loadVehModels(() => { clearTimeout(failsafe); enable(); rebuildPreview(); }); }); });
   window.__tp = (x, z) => { player.pos.set(x, 0, z); if (player.inVehicle) { player.inVehicle.g.position.set(x, 0, z); } };
   window.__temples = () => TEMPLES;
+  window.__swim = () => ({ swim: player.swim, dive: player.dive, breath: player.breath, x: player.pos.x, y: player.pos.y, z: player.pos.z });
+  window.__ele = () => elephants.map(e => ({ x: +e.g.position.x.toFixed(1), z: +e.g.position.z.toFixed(1) }));
+  window.__probe = (w) => { const hits = []; scene.traverse(o => { if (o.isMesh && o.geometry && o.geometry.parameters && Math.abs((o.geometry.parameters.width || 0) - w) < .01) {
+    const wp = o.getWorldPosition(new T.Vector3()); hits.push([+wp.x.toFixed(1), +wp.y.toFixed(1), +wp.z.toFixed(1)]); } }); return hits.slice(0, 8); };
+  window.__spots = () => ({ taj: { x: (RIVER_X1 + FAR_X) / 2 - 1, z: -HALF + CELL + (CELL) * .24 }, aghori: AGHORI, adiyogi: { x: CELL, z: 0 }, hawa: { x: CELL, z: -CELL }, galtaji: { x: CELL + 37, z: -CELL + 37 } });
   window.__tpwoman = () => { const n = npcs.find(n2 => n2.female); if (!n) return false;
     player.pos.set(n.g.position.x + 2.2, 0, n.g.position.z); player.g.position.copy(player.pos);
     cam.yaw = Math.atan2(n.g.position.x - player.pos.x, n.g.position.z - player.pos.z); return n.g.position.toArray(); };
