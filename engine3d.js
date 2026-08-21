@@ -951,7 +951,7 @@ const GFX = (() => { try { const saved = localStorage.getItem('sk_gfx'); if (sav
 // ---------- adaptive quality: the game watches its own framerate and sheds work until it's smooth ----------
 // Order of sacrifice, cheapest-looking first: resolution → bloom → shadows. It climbs back up when
 // the frames come easily again, so a heavy district costs you sharpness for a moment, not the session.
-const ADAPT = { base: 1, scale: 1, t0: 0, frames: 0, until: 0, bloomOff: false, shadowsOff: false, told: false };
+const ADAPT = { base: 1, floor: 1, scale: 1, t0: 0, frames: 0, until: 0, bloomOff: false, shadowsOff: false, told: false };
 function adaptQuality() {
   if (!renderer) return;
   // WALL-CLOCK timing, not game time: game dt is capped at 50ms, so on a machine crawling at 3fps
@@ -965,7 +965,7 @@ function adaptQuality() {
   const fps = ADAPT.frames * 1000 / el;
   ADAPT.t0 = now; ADAPT.frames = 0;
   if (fps < 45) {
-    if (ADAPT.scale > .62) { ADAPT.scale = Math.max(.62, ADAPT.scale - .14); renderer.setPixelRatio(ADAPT.base * ADAPT.scale); if (composer) composer.setSize(innerWidth, innerHeight); }
+    if (ADAPT.scale > ADAPT.floor) { ADAPT.scale = Math.max(ADAPT.floor, ADAPT.scale - .11); renderer.setPixelRatio(ADAPT.base * ADAPT.scale); if (composer) composer.setSize(innerWidth, innerHeight); }
     else if (composer && !ADAPT.bloomOff) { ADAPT.bloomOff = true; composer = null; }   // drop the bloom pass
     else if (!ADAPT.shadowsOff && renderer.shadowMap.enabled) { ADAPT.shadowsOff = true; // and finally the shadows
       renderer.shadowMap.enabled = false; if (sun) sun.castShadow = false;
@@ -981,10 +981,13 @@ function adaptQuality() {
 }
 function initThree() {
   const low = GFX === 'low';
-  renderer = new T.WebGLRenderer({ canvas: $('game'), antialias: !low, powerPreference: 'high-performance' });
+  renderer = new T.WebGLRenderer({ canvas: $('game'), antialias: true, powerPreference: 'high-performance' });
   // a Retina laptop reports devicePixelRatio 2 — that is FOUR times the pixels to shade every
   // frame, and it is the single biggest cost in the whole engine. Cap it, then let ADAPT tune it.
   ADAPT.base = low ? 1 : Math.min(devicePixelRatio || 1, 1.5);
+  // Never render BELOW the screen's native resolution: on a 1x display that is what turns every
+  // diagonal into a staircase. Below this floor the bloom and the shadows go instead.
+  ADAPT.floor = Math.max(.72, Math.min(1, 1 / ADAPT.base));
   renderer.setPixelRatio(ADAPT.base);
   renderer.setSize(innerWidth, innerHeight);
   renderer.shadowMap.enabled = !low; renderer.shadowMap.type = T.PCFSoftShadowMap;
@@ -1005,6 +1008,13 @@ function initThree() {
   // post: bloom + gamma — only on the pretty tier
   if (window.EffectComposer && !low) {
     composer = new window.EffectComposer(renderer);
+    // THE JAGGED EDGES: once rendering goes through the composer's own buffers, the canvas
+    // antialias flag is ignored and every diagonal turns into a staircase. WebGL2 can multisample
+    // those buffers directly — this is what puts the smooth edges back with the bloom still on.
+    if (renderer.capabilities && renderer.capabilities.isWebGL2) {
+      if (composer.renderTarget1) composer.renderTarget1.samples = 4;
+      if (composer.renderTarget2) composer.renderTarget2.samples = 4;
+    }
     composer.addPass(new window.RenderPass(scene, camera));
     const bloom = new window.UnrealBloomPass(new T.Vector2(innerWidth, innerHeight), 0.2, 0.3, 0.9);
     composer.addPass(bloom);
@@ -4788,7 +4798,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 40'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 41'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -4805,6 +4815,10 @@ function boot() {
     scene.traverse(o => { if (o.isSkinnedMesh) skinned++; if (o.isMesh) { meshes++; const gg = o.geometry;
       if (gg && gg.index) tris += gg.index.count / 3; else if (gg && gg.attributes.position) tris += gg.attributes.position.count / 3; } });
     return { meshes, skinned, tris: Math.round(tris), calls: renderer.info.render.calls, buildings: buildings.length, npcs: npcs.length, vehicles: vehicles.length }; };
+  window.__aa = () => ({ webgl2: !!(renderer.capabilities && renderer.capabilities.isWebGL2),
+    canvasAA: renderer.getContext().getContextAttributes().antialias, composer: !!composer,
+    samples: composer ? [composer.renderTarget1.samples, composer.renderTarget2.samples] : null,
+    pixelRatio: renderer.getPixelRatio(), gfx: GFX });
   window.__adapt = () => ({ base: ADAPT.base, scale: +ADAPT.scale.toFixed(2), bloomOff: ADAPT.bloomOff, shadowsOff: ADAPT.shadowsOff, ratio: renderer.getPixelRatio() });
   // audit every panel of every vehicle in the world: anything still wearing the neutral fallback
   // grey, or anything near-white, is an unpainted vehicle and must not exist
