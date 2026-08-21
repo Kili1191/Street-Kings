@@ -4211,7 +4211,12 @@ function updateFoot(dt, f, s) {
   let dx = 0, dz = 0;
   if (mag > .12) { const ang = cam.yaw; dx = Math.sin(ang) * f - Math.cos(ang) * s; dz = Math.cos(ang) * f + Math.sin(ang) * s;
     const l = Math.hypot(dx, dz); dx /= l; dz /= l; }
-  const sprint = (keys['shift'] ? 1.7 : 1) * (player.swim ? .78 : 1), spd = (player.swim ? (player.dive ? 2.1 : 2.7) : 3.4) * sprint * mag;
+  // Hold a direction and he gets going by himself: a second of walking, then he winds up into a
+  // run over the next second or so. Nobody should have to hold a key down to cross a city.
+  player.runT = player.moving ? (player.runT || 0) + dt : 0;
+  const wind = clamp((player.runT - 1.2) / 1.2, 0, 1);
+  const sprint = Math.max(keys['shift'] ? 1.75 : 1, 1 + wind * .78) * (player.swim ? .78 : 1);
+  const spd = (player.swim ? (player.dive ? 2.1 : 2.7) : 3.4) * sprint * mag;
   player.moving = mag > .12; player.speed = player.moving ? spd : 0;
   if (player.moving) { player.yaw = angLerp(player.yaw, Math.atan2(dx, dz), Math.min(1, dt * 9));
     const nx = player.pos.x + dx * spd * dt, nz = player.pos.z + dz * spd * dt;
@@ -4798,7 +4803,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 41'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 42'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -4815,6 +4820,8 @@ function boot() {
     scene.traverse(o => { if (o.isSkinnedMesh) skinned++; if (o.isMesh) { meshes++; const gg = o.geometry;
       if (gg && gg.index) tris += gg.index.count / 3; else if (gg && gg.attributes.position) tris += gg.attributes.position.count / 3; } });
     return { meshes, skinned, tris: Math.round(tris), calls: renderer.info.render.calls, buildings: buildings.length, npcs: npcs.length, vehicles: vehicles.length }; };
+  window.__run = () => ({ runT: +(player.runT || 0).toFixed(2), speed: +player.speed.toFixed(2),
+    moving: player.moving, anim: player.g.userData.human ? { walk: +player.g.userData.human.w.walk.toFixed(2), run: +player.g.userData.human.w.run.toFixed(2) } : null });
   window.__aa = () => ({ webgl2: !!(renderer.capabilities && renderer.capabilities.isWebGL2),
     canvasAA: renderer.getContext().getContextAttributes().antialias, composer: !!composer,
     samples: composer ? [composer.renderTarget1.samples, composer.renderTarget2.samples] : null,
