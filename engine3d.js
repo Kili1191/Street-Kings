@@ -35,7 +35,11 @@ const sndCfg = (() => { try { return Object.assign({ horns: true, amb: true, sfx
 function saveSnd() { try { localStorage.setItem('sk_snd', JSON.stringify(sndCfg)); } catch (e) {} if (ambGain) ambGain.gain.value = sndCfg.amb ? .05 : 0; }
 
 // ---------- Character builder (low-poly humanoid) ----------
-function mat(color, rough) { return new T.MeshStandardMaterial({ color: new T.Color(color), roughness: rough == null ? .88 : rough, metalness: .02 }); }
+function mat(color, rough, metal, emissive) {
+  const m = new T.MeshStandardMaterial({ color: new T.Color(color), roughness: rough == null ? .88 : rough, metalness: metal == null ? .02 : metal });
+  if (emissive) { m.emissive = new T.Color(emissive); m.emissiveIntensity = .7; }
+  return m;
+}
 function limb(w, h, color) { // rounded capsule, pivot at TOP
   const r = w / 2; const g = new T.CapsuleGeometry(r, Math.max(0.02, h - 2 * r), 4, 10); g.translate(0, -h / 2, 0);
   return new T.Mesh(g, mat(color));
@@ -3009,6 +3013,156 @@ function buildAuto(color) {
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
+// ---------- the Indian commuter motorcycle (a Hero Splendor, near enough) ----------
+// Small, upright, indestructible: a teardrop tank, a long flat seat two people share, a round
+// chrome headlamp, a chrome exhaust down the right flank, and a rear rack for whatever must ride.
+function buildMoto() {
+  const g = new T.Group();
+  const col = pick(['#a8201a', '#1a3a6b', '#17181c', '#2e6b4a', '#5c2a52', '#7a4a1e']);
+  const bodyM = mat(col, .38), blackM = mat('#1c1c20', .8), chrome = mat('#b9bec4', .26, .8);
+  const engineM = mat('#5f646b', .45, .6);
+  const fw = wheel(.32, .1); fw.position.set(0, .32, .66); g.add(fw);
+  const rw = wheel(.32, .13); rw.position.set(0, .32, -.62); g.add(rw);
+  for (const sx of [-.1, .1]) {                                   // telescopic forks
+    const fork = new T.Mesh(new T.CylinderGeometry(.028, .028, .78, 6), chrome);
+    fork.rotation.x = .3; fork.position.set(sx, .7, .56); g.add(fork); }
+  const fend = new T.Mesh(new T.TorusGeometry(.37, .05, 6, 14, Math.PI * .55), bodyM);
+  fend.rotation.set(0, Math.PI / 2, -.55); fend.position.set(0, .4, .66); g.add(fend);
+  const rfend = new T.Mesh(new T.TorusGeometry(.38, .055, 6, 14, Math.PI * .5), bodyM);
+  rfend.rotation.set(0, Math.PI / 2, 2.5); rfend.position.set(0, .42, -.62); g.add(rfend);
+  const lamp = new T.Mesh(new T.SphereGeometry(.125, 12, 10), chromeLight(true));
+  lamp.name = 'headlight'; lamp.scale.z = .7; lamp.position.set(0, .95, .64); g.add(lamp);
+  const lampCase = new T.Mesh(new T.CylinderGeometry(.14, .12, .12, 12), chrome);
+  lampCase.rotation.x = Math.PI / 2; lampCase.position.set(0, .95, .58); g.add(lampCase);
+  const bar = new T.Mesh(new T.CylinderGeometry(.018, .018, .68, 8), chrome);
+  bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.08, .5); g.add(bar);
+  for (const sx of [-1, 1]) {
+    const grip = new T.Mesh(new T.CylinderGeometry(.032, .032, .13, 8), blackM);
+    grip.rotation.z = Math.PI / 2; grip.position.set(sx * .3, 1.08, .5); g.add(grip);
+    const stem = new T.Mesh(new T.CylinderGeometry(.011, .011, .17, 5), chrome);
+    stem.position.set(sx * .3, 1.18, .48); g.add(stem);
+    const mir = new T.Mesh(new T.CircleGeometry(.055, 10), chrome);
+    mir.rotation.y = sx * .5; mir.position.set(sx * .33, 1.27, .47); g.add(mir);
+    const ind = new T.Mesh(new T.SphereGeometry(.028, 6, 5), mat('#e08a1e', .4, 0, '#c96a00'));
+    ind.position.set(sx * .26, .92, .58); g.add(ind); }
+  const tank = new T.Mesh(new T.SphereGeometry(.25, 14, 10), bodyM);   // teardrop tank
+  tank.scale.set(.82, .74, 1.3); tank.position.set(0, .84, .16); g.add(tank);
+  const stripe = new T.Mesh(new T.BoxGeometry(.02, .07, .5), mat('#efe6d2', .5));
+  stripe.position.set(.2, .86, .16); g.add(stripe);
+  const stripe2 = stripe.clone(); stripe2.position.x = -.2; g.add(stripe2);
+  const seat = new T.Mesh(new T.BoxGeometry(.29, .11, .82), blackM);   // the long shared seat
+  seat.position.set(0, .82, -.3); g.add(seat);
+  const seatNose = new T.Mesh(new T.SphereGeometry(.16, 10, 8), blackM);
+  seatNose.scale.set(.9, .35, .8); seatNose.position.set(0, .84, .04); g.add(seatNose);
+  const eng = new T.Mesh(new T.BoxGeometry(.3, .28, .34), engineM); eng.position.set(0, .5, .02); g.add(eng);
+  for (let f2 = 0; f2 < 4; f2++) { const fin = new T.Mesh(new T.BoxGeometry(.34, .02, .3), engineM);
+    fin.position.set(0, .42 + f2 * .06, .02); g.add(fin); }                       // cylinder fins
+  const exh = new T.Mesh(new T.CylinderGeometry(.045, .06, 1.0, 8), chrome);
+  exh.rotation.set(Math.PI / 2 - .05, 0, 0); exh.position.set(.17, .4, -.3); g.add(exh);
+  const guard = new T.Mesh(new T.BoxGeometry(.03, .16, .5), bodyM); guard.position.set(-.16, .46, -.28); g.add(guard);
+  const rack = new T.Mesh(new T.BoxGeometry(.28, .03, .34), chrome); rack.position.set(0, .88, -.78); g.add(rack);
+  const tail = new T.Mesh(new T.BoxGeometry(.12, .08, .05), mat('#a02020', .4, 0, '#901515'));
+  tail.position.set(0, .8, -.9); g.add(tail);
+  const plate = new T.Mesh(new T.BoxGeometry(.22, .12, .02), new T.MeshStandardMaterial({ map: makePlateTexture(), roughness: .6 }));
+  plate.position.set(0, .66, -.92); g.add(plate);
+  const stand = new T.Mesh(new T.CylinderGeometry(.018, .018, .34, 5), blackM);
+  stand.rotation.z = .5; stand.position.set(-.2, .18, -.3); g.add(stand);
+  g.userData.seat = { x: 0, y: -.16, z: .02 };
+  g.userData.dim = { w: .42, l: 1.0 }; g.userData.maxSpd = 20; g.userData.acc = 15;
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+// ---------- the red city bus: barred windows, roof rack, and a destination board ----------
+function buildBus() {
+  const g = new T.Group();
+  const col = pick(['#b5342b', '#1f6b8a', '#2e7a45']);
+  const bodyM = mat(col, .5), cream = mat('#efe6d2', .6), blackM = mat('#1c1c20', .8), chrome = mat('#b9bec4', .3, .7);
+  const L = 9.4, W = 2.5, H = 2.5, floorY = .95;
+  const body = new T.Mesh(new T.BoxGeometry(W, H, L), bodyM); body.position.y = floorY + H / 2; g.add(body);
+  const roof = new T.Mesh(new T.CylinderGeometry(W / 2, W / 2, L, 16, 1, false, 0, Math.PI), bodyM);
+  roof.rotation.set(0, 0, Math.PI / 2); roof.scale.y = .34; roof.position.y = floorY + H; g.add(roof);
+  const band = new T.Mesh(new T.BoxGeometry(W + .04, .34, L + .02), cream);        // the cream waistband
+  band.position.y = floorY + H * .52; g.add(band);
+  const skirt = new T.Mesh(new T.BoxGeometry(W + .02, .5, L), mat(shadeHex(col, -40), .7));
+  skirt.position.y = floorY - .1; g.add(skirt);
+  // windows, and the horizontal bars across them that every Indian bus has
+  for (const sx of [-1, 1]) for (let i = 0; i < 7; i++) {
+    const z = -L / 2 + 1.1 + i * 1.16;
+    const win = new T.Mesh(new T.BoxGeometry(.04, .9, .96), glassMat());
+    win.position.set(sx * (W / 2), floorY + H * .68, z); g.add(win);
+    for (let b2 = 0; b2 < 3; b2++) { const rod = new T.Mesh(new T.CylinderGeometry(.016, .016, .96, 5), chrome);
+      rod.rotation.x = Math.PI / 2; rod.position.set(sx * (W / 2 + .03), floorY + H * .52 + b2 * .2, z); g.add(rod); }
+  }
+  const wsh = new T.Mesh(new T.BoxGeometry(W - .18, 1.05, .05), glassMat());
+  wsh.position.set(0, floorY + H * .66, L / 2); g.add(wsh);
+  const rearWin = new T.Mesh(new T.BoxGeometry(W - .3, .8, .05), glassMat());
+  rearWin.position.set(0, floorY + H * .66, -L / 2); g.add(rearWin);
+  const board = new T.Mesh(new T.BoxGeometry(W - .5, .3, .06), mat('#1a1a1e', .8));   // destination board
+  board.position.set(0, floorY + H * 1.02, L / 2 - .04); g.add(board);
+  for (let i = 0; i < 5; i++) { const gl = new T.Mesh(new T.BoxGeometry(.16, .1, .02), mat('#f2d24a', .5, 0, '#c9a02b'));
+    gl.position.set(-.6 + i * .3, floorY + H * 1.02, L / 2 - .005); g.add(gl); }
+  const door = new T.Mesh(new T.BoxGeometry(.06, 1.6, 1.0), mat('#12131a', .9));      // open doorway
+  door.position.set(-(W / 2), floorY + .7, L / 2 - 1.7); g.add(door);
+  const rack = new T.Mesh(new T.BoxGeometry(W - .5, .08, L - 2.4), chrome);           // roof rack + luggage
+  rack.position.y = floorY + H + .5; g.add(rack);
+  for (let i = 0; i < 5; i++) { const bag = new T.Mesh(new T.BoxGeometry(rand(.4, .7), rand(.3, .5), rand(.5, .9)),
+      mat(pick(['#8a5a3a', '#4a6b8a', '#a89468', '#c0392b']), .9));
+    bag.position.set(rand(-.6, .6), floorY + H + .75, rand(-L / 2 + 2, L / 2 - 2)); g.add(bag); }
+  for (const sx of [-1, 1]) { const hl = new T.Mesh(new T.SphereGeometry(.13, 10, 8), chromeLight(true));
+    hl.name = 'headlight'; hl.position.set(sx * .85, floorY - .05, L / 2); g.add(hl);
+    const tl = new T.Mesh(new T.BoxGeometry(.2, .12, .05), mat('#a02020', .4, 0, '#901515'));
+    tl.position.set(sx * .85, floorY - .05, -L / 2); g.add(tl); }
+  for (const [sx, sz] of [[-1, L / 2 - 1.5], [1, L / 2 - 1.5], [-1, -L / 2 + 2.2], [1, -L / 2 + 2.2], [-1, -L / 2 + 3.4], [1, -L / 2 + 3.4]]) {
+    const w = wheel(.55, .3); w.position.set(sx * (W / 2 - .18), .55, sz); g.add(w); }
+  const bumper = new T.Mesh(new T.BoxGeometry(W + .1, .22, .2), chrome);
+  bumper.position.set(0, floorY - .3, L / 2); g.add(bumper);
+  g.userData.seat = { x: .4, y: .5, z: 3.4 }; g.userData.dim = { w: 1.3, l: 4.7 };
+  g.userData.maxSpd = 14; g.userData.acc = 9; g.userData.roofH = floorY + H + .5;
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+// ---------- the Tata lorry: high cab, wooden body, painted everywhere, HORN OK PLEASE ----------
+function buildTruck() {
+  const g = new T.Group();
+  const col = pick(['#1f7ab0', '#c93a2a', '#2e8a52', '#e0891e', '#8a3a8a']);
+  const trim = pick(['#f2d24a', '#efe6d2', '#c93a2a', '#1f7ab0']);
+  const bodyM = mat(col, .5), trimM = mat(trim, .55), woodM = mat('#8a6b3a', .9);
+  const blackM = mat('#1c1c20', .8), chrome = mat('#b9bec4', .3, .7);
+  const L = 6.4, W = 2.3;
+  const chassis = new T.Mesh(new T.BoxGeometry(W - .3, .3, L), blackM); chassis.position.y = .78; g.add(chassis);
+  // cab: tall, upright, sitting over the front axle
+  const cab = new T.Mesh(new T.BoxGeometry(W, 1.75, 2.0), bodyM); cab.position.set(0, 1.85, L / 2 - 1.0); g.add(cab);
+  const bonnet = new T.Mesh(new T.BoxGeometry(W - .25, .7, .9), bodyM); bonnet.position.set(0, 1.3, L / 2 + .35); g.add(bonnet);
+  const grille = new T.Mesh(new T.BoxGeometry(W - .45, .5, .08), chrome); grille.position.set(0, 1.3, L / 2 + .8); g.add(grille);
+  const wsh = new T.Mesh(new T.BoxGeometry(W - .3, .75, .06), glassMat()); wsh.position.set(0, 2.15, L / 2 - .02); g.add(wsh);
+  const visor = new T.Mesh(new T.BoxGeometry(W + .12, .1, .45), trimM);            // the sun visor over the screen
+  visor.rotation.x = -.16; visor.position.set(0, 2.6, L / 2 + .08); g.add(visor);
+  for (let i = 0; i < 9; i++) { const tas = new T.Mesh(new T.ConeGeometry(.04, .16, 4), mat(pick(['#c0392b', '#f2d24a', '#2e8a52', '#efe6d2']), .8));
+    tas.rotation.x = Math.PI; tas.position.set(-W / 2 + .18 + i * (W - .36) / 8, 2.46, L / 2 + .26); g.add(tas); }  // the fringe
+  for (const sx of [-1, 1]) { const sw = new T.Mesh(new T.BoxGeometry(.06, .6, .8), glassMat());
+    sw.position.set(sx * (W / 2), 2.1, L / 2 - 1.2); g.add(sw);
+    const hl = new T.Mesh(new T.SphereGeometry(.14, 10, 8), chromeLight(true));
+    hl.name = 'headlight'; hl.position.set(sx * .72, 1.28, L / 2 + .82); g.add(hl); }
+  // cargo body: planked wooden sides on a painted frame
+  const bed = new T.Mesh(new T.BoxGeometry(W, .2, 3.5), woodM); bed.position.set(0, 1.2, -L / 2 + 1.9); g.add(bed);
+  for (const sx of [-1, 1]) { for (let p2 = 0; p2 < 7; p2++) {
+      const plank = new T.Mesh(new T.BoxGeometry(.08, 1.1, .46), p2 % 2 ? woodM : trimM);
+      plank.position.set(sx * (W / 2), 1.85, -L / 2 + .4 + p2 * .5); g.add(plank); } }
+  const head = new T.Mesh(new T.BoxGeometry(W, 1.5, .12), trimM); head.position.set(0, 2.05, -L / 2 + 3.6); g.add(head);
+  const tailgate = new T.Mesh(new T.BoxGeometry(W, 1.1, .12), bodyM); tailgate.position.set(0, 1.85, -L / 2 + .18); g.add(tailgate);
+  const okBoard = new T.Mesh(new T.PlaneGeometry(1.9, .85), new T.MeshStandardMaterial({ map: makeHornOkTexture(), roughness: .9 }));
+  okBoard.position.set(0, 1.7, -L / 2 + .1); okBoard.rotation.y = Math.PI; g.add(okBoard);
+  for (const sx of [-1, 1]) { const flap = new T.Mesh(new T.BoxGeometry(.02, .5, .5), blackM);
+    flap.position.set(sx * (W / 2 - .1), .5, -L / 2 + .3); g.add(flap); }
+  const bumper = new T.Mesh(new T.BoxGeometry(W + .14, .26, .22), chrome); bumper.position.set(0, .85, L / 2 + .85); g.add(bumper);
+  const exh = new T.Mesh(new T.CylinderGeometry(.07, .07, 2.2, 8), chrome); exh.position.set(-(W / 2 + .1), 2.0, L / 2 - 1.9); g.add(exh);
+  for (const [sx, sz] of [[-1, L / 2 - 1.1], [1, L / 2 - 1.1], [-1, -L / 2 + 1.5], [1, -L / 2 + 1.5], [-1, -L / 2 + 2.6], [1, -L / 2 + 2.6]]) {
+    const w = wheel(.58, .32); w.position.set(sx * (W / 2 - .16), .58, sz); g.add(w); }
+  g.userData.seat = { x: .35, y: 1.0, z: L / 2 - 1.1 }; g.userData.dim = { w: 1.2, l: 3.3 };
+  g.userData.maxSpd = 15; g.userData.acc = 10; g.userData.roofH = 2.7;
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
 // rounded passenger car: hatch / sedan / taxi / cop
 function buildCar(kind, color) {
   const g = new T.Group();
@@ -3372,7 +3526,7 @@ function spawnVehicles(n) {
       kind = r < .32 ? 'auto' : r < .5 ? 'moto' : r < .57 ? 'taxi' : r < .62 ? 'sedan' : r < .66 ? 'hatch' :
              r < .69 ? 'suv' : r < .72 ? 'van' : r < .76 ? 'truck' : r < .8 ? 'bus' : r < .92 ? 'cycle' : 'enfield';
       g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#f4c20d', '#207a4a', '#1a1a1e'])) :
-          kind === 'enfield' ? buildEnfield() : kind === 'cycle' ? buildBicycle() : buildVehModel(kind);
+          kind === 'enfield' ? buildEnfield() : kind === 'cycle' ? buildBicycle() : kind === 'moto' ? buildMoto() : kind === 'bus' ? buildBus() : kind === 'truck' ? buildTruck() : buildVehModel(kind);
     }
     if (!g) { kind = r < .34 ? 'auto' : r < .5 ? 'hatch' : r < .68 ? 'sedan' : r < .82 ? 'taxi' : r < .92 ? 'cycle' : 'enfield';
       g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#f4c20d', '#207a4a', '#1a1a1e'])) :
@@ -4634,7 +4788,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 39'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 40'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -4667,6 +4821,14 @@ function boot() {
     const seen = new Set(); return out.filter(x => { const k = x.kind + x.name + x.col; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 10); };
   // line one of every kind up in a row, so all of them can be judged in a single frame
   // freeze the game and frame one vehicle like a catalogue photo — the only reliable way to judge it
+  window.__spawnAt = (kind) => {   // build one of a kind next to the player, for inspection
+    const g = kind === 'bus' ? buildBus() : kind === 'truck' ? buildTruck() : kind === 'moto' ? buildMoto()
+      : kind === 'auto' ? buildAuto('#207a4a') : kind === 'enfield' ? buildEnfield() : buildBicycle();
+    g.position.set(player.pos.x + 6, 0, player.pos.z + 2); g.rotation.y = Math.PI * .8; scene.add(g);
+    const d = g.userData.dim || { w: 1, l: 2 };
+    vehicles.push({ g, kind, yaw: g.rotation.y, speed: 0, ai: false, hw: d.w, hl: d.l, horn: 2 });
+    return kind;
+  };
   window.__photo = (kind) => {
     const v = vehicles.find(x => x.kind === kind); if (!v) return 'none';
     started = false;
