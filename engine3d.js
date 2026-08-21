@@ -628,6 +628,14 @@ function animateHuman(g, moving, dt, speed) {
   h.mixer.update(dt);
   if (h.seated) { // driving pose: hips/knees bent, hands reach FORWARD to the wheel — never up in the air
     const set = (b, x) => { if (b) b.rotation.x = x; };
+    if (h.sideSaddle) {          // riding side-saddle: knees together, both legs hanging off one flank
+      set(h.rLeg, -1.05); set(h.lLeg, -.95); set(h.rCalf, .55); set(h.lCalf, .5);
+      if (h.rLeg) h.rLeg.rotation.z = .12; if (h.lLeg) h.lLeg.rotation.z = .12;
+      if (h.rArm) { h.rArm.rotation.x -= .25; h.rArm.rotation.z -= .1; }
+      if (h.lArm) { h.lArm.rotation.x -= .25; h.lArm.rotation.z += .1; }
+      if (h.spine) h.spine.rotation.x += .06;
+      return;
+    }
     if (h.bike) {                // motorbike: thighs open around the tank, feet back on the pegs
       set(h.rLeg, -.62); set(h.lLeg, -.62);
       if (h.rLeg) h.rLeg.rotation.z = -.30; if (h.lLeg) h.lLeg.rotation.z = .30;
@@ -2926,30 +2934,78 @@ function glassMat() { return new T.MeshStandardMaterial({ color: '#1c2b38', roug
 function chromeLight(warm) { return new T.MeshStandardMaterial({ color: warm ? '#ffdf9a' : '#ffffff', emissive: warm ? '#ffb84d' : '#dfe8ff', emissiveIntensity: .8, roughness: .2, metalness: .4 }); }
 // auto-rickshaw at true Bajaj proportions: 2.6 m long, 1.3 m wide, 1.72 m tall, open sides
 function buildAuto(color) {
+  // A Bajaj auto-rickshaw is not a box on wheels: it is an EGG. A bulbous front cowl carrying one
+  // small wheel and a round headlamp, a curved windscreen, a narrow open cabin, and a canvas canopy
+  // that swells over the passengers and drops away at the back. Two-tone, always — a painted lower
+  // body under a canopy in another colour: green-and-yellow in Delhi, black-and-yellow in Bombay.
   const g = new T.Group();
-  const bodyM = mat(color, .5), blackM = mat('#1c1c20', .75), greenM = mat('#1e6b3c', .6);
-  // floor pan + lower skirt
-  const floor = new T.Mesh(new T.BoxGeometry(1.15, .1, 2.25), blackM); floor.position.set(0, .32, 0); g.add(floor);
-  const skirt = new T.Mesh(new T.BoxGeometry(1.18, .34, 2.1), greenM); skirt.position.set(0, .5, -.02); g.add(skirt);
-  // rounded front cowl (vertical half-cylinder) + windshield
-  const cowl = new T.Mesh(new T.CylinderGeometry(.58, .6, .75, 14, 1, false, -Math.PI / 2, Math.PI), bodyM);
-  cowl.position.set(0, .84, .78); g.add(cowl);
-  const wsh = new T.Mesh(new T.BoxGeometry(1.02, .5, .04), glassMat()); wsh.rotation.x = -.14; wsh.position.set(0, 1.36, .82); g.add(wsh);
-  // roof (slight dome) + rear panel + corner pillars — sides stay open so you see the driver
-  const roof = new T.Mesh(new T.SphereGeometry(1, 16, 10, 0, TAU, 0, Math.PI * .32), bodyM);
-  roof.scale.set(.62, .28, 1.1); roof.position.set(0, 1.52, -.15); g.add(roof);
-  const back = new T.Mesh(new T.BoxGeometry(1.12, .88, .06), bodyM); back.position.set(0, .98, -1.05); g.add(back);
-  for (const [sx, sz] of [[-.54, .72], [.54, .72], [-.54, -1.0], [.54, -1.0]]) {
-    const pil = new T.Mesh(new T.CylinderGeometry(.03, .03, .95, 6), blackM); pil.position.set(sx, 1.05, sz); g.add(pil); }
-  // bench + handlebar + headlight + meter
-  const bench = new T.Mesh(new T.BoxGeometry(1.02, .12, .5), blackM); bench.position.set(0, .62, -.62); g.add(bench);
-  const bar = new T.Mesh(new T.CylinderGeometry(.025, .025, .55, 8), blackM); bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.06, .55); g.add(bar);
-  const hl = new T.Mesh(new T.SphereGeometry(.085, 10, 8), chromeLight(true)); hl.name = 'headlight'; hl.position.set(0, 1.02, 1.1); g.add(hl);
-  // three small wheels (real autos ride on 8-inch wheels)
-  const fw = wheel(.24, .14); fw.position.set(0, .24, .95); g.add(fw);
-  for (const sx of [-.52, .52]) { const w = wheel(.24, .14); w.position.set(sx, .24, -.7); g.add(w); }
-  g.userData.seat = { x: 0, y: .04, z: .1 }; // low on the bench — head stays under the canopy
-  g.userData.dim = { w: .78, l: 1.42 }; g.userData.maxSpd = 13; g.userData.acc = 10;
+  const canopy = color === '#f4c20d' ? '#207a4a' : '#f4c20d';
+  const bodyM = mat(color, .45), canM = mat(canopy, .8), blackM = mat('#1c1c20', .75);
+  const trimM = mat(shadeHex(color, -34), .6), chrome = mat('#b9bec4', .3);
+
+  // --- the bulbous nose: an egg-shaped cowl over the single front wheel ---
+  const cowl = new T.Mesh(new T.SphereGeometry(.5, 16, 12), bodyM);
+  cowl.scale.set(.92, 1.15, 1.25); cowl.position.set(0, .72, .76); g.add(cowl);
+  const nose = new T.Mesh(new T.SphereGeometry(.3, 12, 10), bodyM);
+  nose.scale.set(.9, .8, 1); nose.position.set(0, .5, 1.02); g.add(nose);
+  const guard = new T.Mesh(new T.TorusGeometry(.34, .07, 8, 16, Math.PI), trimM);   // front mudguard
+  guard.rotation.y = Math.PI / 2; guard.position.set(0, .34, .95); g.add(guard);
+  const lamp = new T.Mesh(new T.SphereGeometry(.11, 12, 10), chromeLight(true));
+  lamp.name = 'headlight'; lamp.position.set(0, .88, 1.06); g.add(lamp);
+  const lampRim = new T.Mesh(new T.TorusGeometry(.12, .022, 6, 14), chrome);
+  lampRim.position.set(0, .88, 1.05); g.add(lampRim);
+
+  // --- windscreen: a curved pane, not a flat sheet ---
+  const wsh = new T.Mesh(new T.CylinderGeometry(.62, .62, .52, 14, 1, true, -.8, 1.6), glassMat());
+  wsh.position.set(0, 1.24, .58); g.add(wsh);
+  const wshTop = new T.Mesh(new T.CylinderGeometry(.63, .63, .07, 14, 1, true, -.8, 1.6), trimM);
+  wshTop.position.set(0, 1.52, .58); g.add(wshTop);
+
+  // --- floor pan and the narrow lower body ---
+  const floor = new T.Mesh(new T.BoxGeometry(1.06, .12, 2.1), blackM); floor.position.set(0, .36, -.15); g.add(floor);
+  const skirt = new T.Mesh(new T.SphereGeometry(.6, 14, 10), bodyM);
+  skirt.scale.set(.86, .72, 1.5); skirt.position.set(0, .66, -.35); g.add(skirt);
+  const rear = new T.Mesh(new T.SphereGeometry(.56, 14, 12), bodyM);                 // the rounded tail
+  rear.scale.set(.9, 1.18, .78); rear.position.set(0, 1.0, -1.0); g.add(rear);
+  const rearWin = new T.Mesh(new T.CylinderGeometry(.4, .4, .3, 12, 1, true, -.7, 1.4), glassMat());
+  rearWin.rotation.y = Math.PI; rearWin.position.set(0, 1.22, -1.02); g.add(rearWin);
+
+  // --- the canopy: a swollen canvas roof that drops away behind ---
+  const hood = new T.Mesh(new T.SphereGeometry(.78, 16, 12, 0, TAU, 0, Math.PI * .55), canM);
+  hood.scale.set(.78, .52, 1.18); hood.position.set(0, 1.46, -.25); g.add(hood);
+  const brow = new T.Mesh(new T.TorusGeometry(.62, .045, 6, 18, Math.PI), canM);     // the fringe over the driver
+  brow.rotation.set(Math.PI / 2, 0, 0); brow.position.set(0, 1.62, .3); g.add(brow);
+  for (const sx of [-.6, .6]) {                                                      // side flaps rolled up
+    const flap = new T.Mesh(new T.CylinderGeometry(.07, .07, 1.2, 8), canM);
+    flap.position.set(sx, 1.56, -.3); g.add(flap); }
+  for (const [sx, sz] of [[-.56, .42], [.56, .42], [-.56, -.86], [.56, -.86]]) {     // corner pillars
+    const pil = new T.Mesh(new T.CylinderGeometry(.028, .028, 1.1, 6), trimM);
+    pil.position.set(sx, 1.1, sz); g.add(pil); }
+  for (const sx of [-.58, .58]) {                                                    // the grab rail passengers hold
+    const rail = new T.Mesh(new T.CylinderGeometry(.022, .022, 1.25, 6), chrome);
+    rail.rotation.x = Math.PI / 2; rail.position.set(sx, .95, -.22); g.add(rail); }
+
+  // --- driver's saddle, handlebars, meter, and the passenger bench ---
+  const saddle = new T.Mesh(new T.SphereGeometry(.24, 10, 8), blackM);
+  saddle.scale.set(.9, .4, 1.1); saddle.position.set(0, .78, .1); g.add(saddle);
+  const bar = new T.Mesh(new T.CylinderGeometry(.026, .026, .62, 8), chrome);
+  bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.02, .52); g.add(bar);
+  for (const sx of [-.29, .29]) { const grip = new T.Mesh(new T.CylinderGeometry(.038, .038, .13, 8), blackM);
+    grip.rotation.z = Math.PI / 2; grip.position.set(sx, 1.02, .52); g.add(grip); }
+  const meter = new T.Mesh(new T.BoxGeometry(.14, .12, .1), blackM); meter.position.set(.3, 1.14, .46); g.add(meter);
+  const bench = new T.Mesh(new T.BoxGeometry(1.0, .16, .62), blackM); bench.position.set(0, .74, -.72); g.add(bench);
+  const backRest = new T.Mesh(new T.BoxGeometry(1.0, .42, .12), blackM); backRest.position.set(0, .98, -.99); g.add(backRest);
+
+  // --- wheels: small, fat, and three of them ---
+  const fw = wheel(.3, .16); fw.position.set(0, .3, .95); g.add(fw);
+  for (const sx of [-.56, .56]) { const w = wheel(.3, .17); w.position.set(sx, .3, -.72); g.add(w); }
+  const spare = new T.Mesh(new T.TorusGeometry(.22, .08, 8, 14), blackM);
+  spare.position.set(0, .78, -1.3); g.add(spare);
+  const spareHub = new T.Mesh(new T.CylinderGeometry(.07, .07, .07, 8), chrome);
+  spareHub.rotation.x = Math.PI / 2; spareHub.position.set(0, .78, -1.3); g.add(spareHub);
+
+  g.userData.seat = { x: 0, y: .04, z: .1 };   // low on the saddle — head stays under the canopy
+  g.userData.dim = { w: .8, l: 1.5 }; g.userData.maxSpd = 13; g.userData.acc = 10;
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
@@ -3063,16 +3119,17 @@ function buildVehModel(k) {
     o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox;
     parts.push({ o, vol: (bb.max.x - bb.min.x) * (bb.max.y - bb.min.y) * (bb.max.z - bb.min.z) }); } });
   const big = parts.reduce((a, p2) => Math.max(a, p2.vol), 0);
+  // Repaint the BODY only. Overriding every panel turned a lorry into one flat yellow mass — the
+  // kit's own materials already give the windows, wheels and lamps their look, so they are left
+  // alone. The only thing forced is this: no panel may stay white, ever.
   for (const { o, vol } of parts) {
-    const n = o.name || '', mn = (o.material && o.material.name) || '';
-    if (/glass|window|windscreen|screen/i.test(n + mn)) { o.material.color = new T.Color('#2b3239'); o.material.roughness = .18; o.material.metalness = .2; continue; }
-    if (/wheel|tyre|tire|rim/i.test(n + mn)) { o.material.color = new T.Color('#1b1b1e'); continue; }
-    if (/light|lamp|head/i.test(n + mn)) { o.material.color = new T.Color('#f2e6c8'); continue; }
-    const isBody = /body|chassis|hull|cabin|door|roof|bonnet|boot|panel/i.test(n + mn) || vol > big * .3;
-    // bodywork takes the paint, the smaller panels its darker trim, the little fittings go dark:
-    // nothing is ever left in the neutral grey that made vans look unpainted
-    o.material.color = new T.Color(isBody ? liv.body : vol > big * .06 ? liv.trim : '#33363b');
-    if (isBody) { o.material.roughness = .42; o.material.metalness = .18; }
+    const n = (o.name || '') + ((o.material && o.material.name) || '');
+    const isBody = /body|chassis|hull|cabin|bonnet|boot/i.test(n) || vol > big * .55;
+    if (isBody) { o.material.color = new T.Color(liv.body); o.material.roughness = .45; o.material.metalness = .16; continue; }
+    if (/glass|window|windscreen/i.test(n)) { o.material.color = new T.Color('#2b3239'); o.material.roughness = .16; o.material.metalness = .25; continue; }
+    if (/wheel|tyre|tire|rim/i.test(n)) { o.material.color = new T.Color('#1b1b1e'); continue; }
+    const c = o.material.color, lum = (c.r + c.g + c.b) / 3, sat = Math.max(c.r, c.g, c.b) - Math.min(c.r, c.g, c.b);
+    if (lum > .78 && sat < .1) o.material.color = new T.Color(liv.trim);   // a blank white panel is an unpainted one
   }
   g.add(m);
   g.userData.seat = M.seat; g.userData.dim = M.dim;
@@ -3276,12 +3333,16 @@ function addWtfLoad(g, kind) {
     const seat = g.userData.seat || { x: 0, y: .5, z: -.1 };
     const po = npcLook(4); po.turban = false;
     const pass = makeHuman(Math.random() < .6 ? { ...po, female: true, beard: 'none', moustache: false, hair: 'bun', outfit: 'silk' } : po);
-    g.add(pass); pass.position.set(seat.x, seat.y, seat.z - .42); pass.rotation.y = Math.random() < .5 ? .8 : 0;
-    if (pass.userData.human) { pass.userData.human.seated = true; animateChar(pass, false, .03, 0); }
+    const side = Math.random() < .55;                       // women ride side-saddle, in a sari
+    g.add(pass); pass.position.set(seat.x + (side ? .1 : 0), seat.y, seat.z - .62);
+    pass.rotation.y = side ? 1.35 : 0;
+    if (pass.userData.human) { pass.userData.human.seated = true;
+      pass.userData.human.bike = !side; pass.userData.human.sideSaddle = side;
+      animateChar(pass, false, .03, 0); }
     wtfHumans++;
     if (Math.random() < .5 && wtfHumans < 8) { const kid = makeHuman({ vary: false, skin: pick(SKINS), outfit: 'kurta', kurta: pick(KURTAS), dhoti: pick(DHOTIS), beard: 'none', moustache: false, turban: false, hair: 'crop' });
-      kid.scale.multiplyScalar(.55); g.add(kid); kid.position.set(seat.x, seat.y + .08, seat.z + .38);
-      if (kid.userData.human) { kid.userData.human.seated = true; animateChar(kid, false, .03, 0); } wtfHumans++; }
+      kid.scale.multiplyScalar(.55); g.add(kid); kid.position.set(seat.x, seat.y + .3, seat.z + .52);  // standing on the footboard, in front of papa
+      if (kid.userData.human) { kid.userData.human.seated = true; kid.userData.human.bike = true; animateChar(kid, false, .03, 0); } wtfHumans++; }
   }
   else if (kind === 'auto' && r < .4) {
     if (r < .18) { const mat2 = new T.Mesh(new T.CylinderGeometry(.34, .34, 1.9, 10), mat(pick(['#c0392b', '#5577bb', '#8a7a5a']), .95)); // rolled mattress across the roof
@@ -4573,7 +4634,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 38'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 39'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -4604,6 +4665,34 @@ function boot() {
           const bb = o.geometry.boundingBox, vol = (bb.max.x-bb.min.x)*(bb.max.y-bb.min.y)*(bb.max.z-bb.min.z);
           if (vol > big * .12) out.push({ kind: v.kind, name: o.name || '(unnamed)', mat: (o.material.name||''), col: '#' + c.getHexString(), rel: +(vol/big).toFixed(2) }); } }); }
     const seen = new Set(); return out.filter(x => { const k = x.kind + x.name + x.col; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 10); };
+  // line one of every kind up in a row, so all of them can be judged in a single frame
+  // freeze the game and frame one vehicle like a catalogue photo — the only reliable way to judge it
+  window.__photo = (kind) => {
+    const v = vehicles.find(x => x.kind === kind); if (!v) return 'none';
+    started = false;
+    v.g.visible = true; v.g.traverse(o => { o.visible = true; });   // it may have been culled before the freeze
+    const box = new T.Box3().setFromObject(v.g), c = box.getCenter(new T.Vector3()), sz = box.getSize(new T.Vector3());
+    const d = Math.max(sz.x, sz.y, sz.z) * 1.9 + 2.2;
+    camera.position.set(c.x + d * .78, c.y + d * .42, c.z + d * .68);
+    camera.lookAt(c); camera.updateProjectionMatrix();
+    return { kind, size: [+sz.x.toFixed(1), +sz.y.toFixed(1), +sz.z.toFixed(1)] };
+  };
+  window.__unfreeze = () => { started = true; };
+  window.__showroom = () => {
+    const kinds = ['sedan', 'hatch', 'suv', 'van', 'truck', 'bus', 'taxi', 'police', 'auto', 'moto', 'enfield', 'cycle'];
+    const bx = player.pos.x, bz = player.pos.z, placed = [];
+    let i = 0;
+    for (const k of kinds) {
+      const v = vehicles.find(v2 => v2.kind === k && !v2._show);
+      if (!v) continue;
+      v._show = true; v.ai = false; v.speed = 0; v.node = null;
+      const col = i % 4, row = (i / 4) | 0;
+      v.g.position.set(bx - 6 + col * 4, 0, bz - 11 - row * 6);
+      v.yaw = Math.PI * .8; v.g.rotation.y = v.yaw;
+      placed.push(k); i++;
+    }
+    return placed;
+  };
   window.__paint = () => {
     const bad = [], byKind = {};
     for (const v of vehicles) {
