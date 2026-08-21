@@ -627,8 +627,8 @@ function animateHuman(g, moving, dt, speed) {
   // blend weights by state
   const tgt = { idle: moving ? 0 : 1, walk: moving && speed < 4.6 ? 1 : 0, run: moving && speed >= 4.6 ? 1 : 0 };
   for (const k in h.w) { h.w[k] = lerp(h.w[k], tgt[k], Math.min(1, dt * 8)); if (h.actions[k]) h.actions[k].setEffectiveWeight(h.w[k]); }
-  if (h.actions.walk) h.actions.walk.setEffectiveTimeScale(clamp(speed / 3.2, .55, 1.3) * h.gait);
-  if (h.actions.run) h.actions.run.setEffectiveTimeScale(clamp(speed / 6, .8, 1.2) * h.gait);
+  if (h.actions.walk) h.actions.walk.setEffectiveTimeScale(clamp(speed / 2.9, .6, 1.45) * h.gait);
+  if (h.actions.run) h.actions.run.setEffectiveTimeScale(clamp(speed / 4.1, 1, 1.85) * h.gait);
   h.mixer.update(dt);
   if (h.seated) { // driving pose: hips/knees bent, hands reach FORWARD to the wheel — never up in the air
     const set = (b, x) => { if (b) b.rotation.x = x; };
@@ -3173,6 +3173,124 @@ function buildTruck() {
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
 }
+// ---------- what actually parks on an Indian street ----------
+// The trick at this polygon count is not curves, it is EDGES: the dark line of a window rubber, the
+// shut-line of a door, the arch cut around a wheel, a chrome bumper catching the sun. Without them
+// any shape reads as a toy brick, however well it is coloured.
+function carDetails(g, W, L, floorY, roofY, col) {
+  const seamM = mat('#15161a', .55), chrome = mat('#c2c7cd', .22, .85), rubber = mat('#101114', .7);
+  for (const sx of [-1, 1]) {                              // door shut-lines down each flank
+    for (const dz of [L * .06, -L * .2]) {
+      const seam = new T.Mesh(new T.BoxGeometry(.02, (roofY - floorY) * .8, .022), seamM);
+      seam.position.set(sx * (W / 2 + .005), (floorY + roofY) / 2, dz); g.add(seam); }
+    const handle = new T.Mesh(new T.BoxGeometry(.03, .05, .17), chrome);
+    handle.position.set(sx * (W / 2 + .02), floorY + (roofY - floorY) * .42, -L * .04); g.add(handle);
+    const sill = new T.Mesh(new T.BoxGeometry(.05, .07, L * .62), seamM);       // rocker panel under the doors
+    sill.position.set(sx * (W / 2 - .01), floorY - .06, -L * .04); g.add(sill);
+  }
+  return { seamM, chrome, rubber };
+}
+function wheelArch(g, x, y, z, r, col) {                    // the dark cut of an arch around each wheel
+  const arch = new T.Mesh(new T.TorusGeometry(r + .04, .055, 6, 14, Math.PI), mat(shadeHex(col, -55), .8));
+  arch.rotation.set(0, Math.PI / 2, 0); arch.position.set(x, y, z); g.add(arch);
+}
+// The Hindustan Ambassador: a 1956 Morris Oxford still on the road sixty years later. Pontoon body,
+// upright cabin, fat chrome grille, round headlamps — the yellow taxi of Kolkata.
+function buildAmbassador(color) {
+  const g = new T.Group();
+  const col = color || pick(['#f2c010', '#141416', '#e8e2d2', '#1f3f6b', '#7a1f2a']);
+  const bodyM = mat(col, .32, .2), glass = glassMat();
+  const chrome = mat('#c2c7cd', .2, .9), blackM = mat('#15161a', .7);
+  const L = 4.5, W = 1.78, floorY = .62, roofY = 1.72;
+  const lower = new T.Mesh(new T.BoxGeometry(W, .58, L), bodyM); lower.position.y = floorY + .18; g.add(lower);
+  const nose = new T.Mesh(new T.SphereGeometry(.9, 14, 10), bodyM);            // the rounded pontoon ends
+  nose.scale.set(W / 1.8, .32, .5); nose.position.set(0, floorY + .3, L / 2 - .1); g.add(nose);
+  const tail = nose.clone(); tail.position.z = -L / 2 + .1; g.add(tail);
+  const cabin = new T.Mesh(new T.BoxGeometry(W - .12, .58, L * .48), bodyM);
+  cabin.position.set(0, roofY - .3, -.15); g.add(cabin);
+  const roof = new T.Mesh(new T.SphereGeometry(1, 16, 10, 0, TAU, 0, Math.PI / 2), bodyM);
+  roof.scale.set((W - .12) / 2, .2, L * .24); roof.position.set(0, roofY - .04, -.15); g.add(roof);
+  // glass, each pane framed in dark rubber — this is what makes it read as a car
+  const mkWin = (w, h, d, x, y, z, ry) => {
+    const frame = new T.Mesh(new T.BoxGeometry(w + .07, h + .07, d), blackM);
+    frame.position.set(x, y, z); if (ry) frame.rotation.y = ry; g.add(frame);
+    const pane = new T.Mesh(new T.BoxGeometry(w, h, d + .02), glass);
+    pane.position.set(x, y, z); if (ry) pane.rotation.y = ry; g.add(pane);
+  };
+  mkWin(W - .3, .48, .06, 0, roofY - .3, L * .17);                 // windscreen
+  mkWin(W - .34, .42, .06, 0, roofY - .3, -L * .3);                // rear screen
+  for (const sx of [-1, 1]) { mkWin(.06, .44, L * .19, sx * (W / 2 - .06), roofY - .3, .06);
+    mkWin(.06, .4, L * .16, sx * (W / 2 - .06), roofY - .3, -L * .21); }
+  const grille = new T.Mesh(new T.BoxGeometry(W - .5, .3, .08), chrome);
+  grille.position.set(0, floorY + .3, L / 2 + .04); g.add(grille);
+  for (let i = 0; i < 7; i++) { const bar = new T.Mesh(new T.BoxGeometry(.03, .26, .1), blackM);
+    bar.position.set(-.55 + i * .18, floorY + .3, L / 2 + .06); g.add(bar); }
+  for (const sx of [-1, 1]) {
+    const lamp = new T.Mesh(new T.SphereGeometry(.14, 12, 10), chromeLight(true));
+    lamp.name = 'headlight'; lamp.scale.z = .55; lamp.position.set(sx * (W / 2 - .28), floorY + .38, L / 2); g.add(lamp);
+    const rim = new T.Mesh(new T.TorusGeometry(.15, .025, 6, 14), chrome);
+    rim.position.set(sx * (W / 2 - .28), floorY + .38, L / 2 + .01); g.add(rim);
+    const tl = new T.Mesh(new T.BoxGeometry(.12, .16, .05), mat('#a02020', .35, 0, '#901515'));
+    tl.position.set(sx * (W / 2 - .22), floorY + .38, -L / 2 - .02); g.add(tl);
+    const mir = new T.Mesh(new T.BoxGeometry(.03, .07, .12), chrome);
+    mir.position.set(sx * (W / 2 + .06), roofY - .38, L * .2); g.add(mir);
+  }
+  for (const zs of [1, -1]) { const bump = new T.Mesh(new T.BoxGeometry(W + .06, .14, .16), chrome);
+    bump.position.set(0, floorY - .02, zs * (L / 2 + .06)); g.add(bump); }
+  const plate = new T.Mesh(new T.BoxGeometry(.42, .13, .03), new T.MeshStandardMaterial({ map: makePlateTexture(), roughness: .6 }));
+  plate.position.set(0, floorY + .06, -L / 2 - .09); plate.rotation.y = Math.PI; g.add(plate);
+  carDetails(g, W, L, floorY, roofY, col);
+  for (const [sx, sz] of [[-1, L * .3], [1, L * .3], [-1, -L * .28], [1, -L * .28]]) {
+    const w = wheel(.34, .18); w.position.set(sx * (W / 2 - .08), .34, sz); g.add(w);
+    wheelArch(g, sx * (W / 2 - .02), .34, sz, .34, col); }
+  g.userData.seat = { x: .38, y: .14, z: L * .06 }; g.userData.dim = { w: .9, l: 2.25 };
+  g.userData.maxSpd = 19; g.userData.acc = 13; g.userData.roofH = roofY + .1;
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
+// The Maruti 800 / Alto: the little box that put India on wheels. Tiny, upright, flat panels.
+function buildMaruti(color) {
+  const g = new T.Group();
+  const col = color || pick(['#efe9dc', '#9aa3ad', '#c9302c', '#2f6ba8', '#2e6b4a', '#d9760b']);
+  const bodyM = mat(col, .3, .2), glass = glassMat();
+  const chrome = mat('#c2c7cd', .22, .85), blackM = mat('#15161a', .7);
+  const L = 3.4, W = 1.5, floorY = .55, roofY = 1.6;
+  const lower = new T.Mesh(new T.BoxGeometry(W, .6, L), bodyM); lower.position.y = floorY + .2; g.add(lower);
+  const bonnet = new T.Mesh(new T.BoxGeometry(W - .06, .2, L * .26), bodyM);
+  bonnet.position.set(0, floorY + .48, L * .34); g.add(bonnet);
+  const cabin = new T.Mesh(new T.BoxGeometry(W - .04, .62, L * .52), bodyM);
+  cabin.position.set(0, roofY - .32, -L * .08); g.add(cabin);
+  const roof = new T.Mesh(new T.BoxGeometry(W - .1, .07, L * .48), bodyM);
+  roof.position.set(0, roofY, -L * .08); g.add(roof);
+  const mkWin = (w, h, d, x, y, z) => {
+    const frame = new T.Mesh(new T.BoxGeometry(w + .06, h + .06, d), blackM); frame.position.set(x, y, z); g.add(frame);
+    const pane = new T.Mesh(new T.BoxGeometry(w, h, d + .02), glass); pane.position.set(x, y, z); g.add(pane); };
+  mkWin(W - .26, .46, .06, 0, roofY - .32, L * .17);
+  mkWin(W - .3, .4, .06, 0, roofY - .32, -L * .34);
+  for (const sx of [-1, 1]) { mkWin(.06, .42, L * .2, sx * (W / 2 - .04), roofY - .32, .02);
+    mkWin(.06, .36, L * .14, sx * (W / 2 - .04), roofY - .32, -L * .24); }
+  const grille = new T.Mesh(new T.BoxGeometry(W - .44, .12, .06), blackM);
+  grille.position.set(0, floorY + .3, L / 2 + .02); g.add(grille);
+  for (const sx of [-1, 1]) {
+    const lamp = new T.Mesh(new T.BoxGeometry(.3, .16, .08), chromeLight(true));
+    lamp.name = 'headlight'; lamp.position.set(sx * (W / 2 - .28), floorY + .45, L / 2); g.add(lamp);
+    const tl = new T.Mesh(new T.BoxGeometry(.13, .22, .06), mat('#a02020', .35, 0, '#901515'));
+    tl.position.set(sx * (W / 2 - .22), floorY + .48, -L / 2 - .01); g.add(tl);
+    const mir = new T.Mesh(new T.BoxGeometry(.03, .06, .11), bodyM);
+    mir.position.set(sx * (W / 2 + .05), roofY - .42, L * .22); g.add(mir); }
+  for (const zs of [1, -1]) { const bump = new T.Mesh(new T.BoxGeometry(W + .04, .16, .12), mat(shadeHex(col, -30), .6));
+    bump.position.set(0, floorY + .02, zs * (L / 2 + .04)); g.add(bump); }
+  const plate = new T.Mesh(new T.BoxGeometry(.36, .12, .03), new T.MeshStandardMaterial({ map: makePlateTexture(), roughness: .6 }));
+  plate.position.set(0, floorY + .12, -L / 2 - .07); plate.rotation.y = Math.PI; g.add(plate);
+  carDetails(g, W, L, floorY, roofY, col);
+  for (const [sx, sz] of [[-1, L * .32], [1, L * .32], [-1, -L * .3], [1, -L * .3]]) {
+    const w = wheel(.28, .15); w.position.set(sx * (W / 2 - .06), .28, sz); g.add(w);
+    wheelArch(g, sx * (W / 2 - .01), .28, sz, .28, col); }
+  g.userData.seat = { x: .32, y: .1, z: L * .04 }; g.userData.dim = { w: .78, l: 1.7 };
+  g.userData.maxSpd = 18; g.userData.acc = 13; g.userData.roofH = roofY + .06;
+  g.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  return g;
+}
 // rounded passenger car: hatch / sedan / taxi / cop
 function buildCar(kind, color) {
   const g = new T.Group();
@@ -3536,7 +3654,9 @@ function spawnVehicles(n) {
       kind = r < .32 ? 'auto' : r < .5 ? 'moto' : r < .57 ? 'taxi' : r < .62 ? 'sedan' : r < .66 ? 'hatch' :
              r < .69 ? 'suv' : r < .72 ? 'van' : r < .76 ? 'truck' : r < .8 ? 'bus' : r < .92 ? 'cycle' : 'enfield';
       g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#f4c20d', '#207a4a', '#1a1a1e'])) :
-          kind === 'enfield' ? buildEnfield() : kind === 'cycle' ? buildBicycle() : kind === 'moto' ? buildMoto() : kind === 'bus' ? buildBus() : kind === 'truck' ? buildTruck() : buildVehModel(kind);
+          kind === 'enfield' ? buildEnfield() : kind === 'cycle' ? buildBicycle() : kind === 'moto' ? buildMoto() : kind === 'bus' ? buildBus() : kind === 'truck' ? buildTruck()
+        : kind === 'taxi' ? buildAmbassador(Math.random() < .5 ? '#f2c010' : '#141416')
+        : kind === 'sedan' ? buildAmbassador() : kind === 'hatch' ? buildMaruti() : buildVehModel(kind);
     }
     if (!g) { kind = r < .34 ? 'auto' : r < .5 ? 'hatch' : r < .68 ? 'sedan' : r < .82 ? 'taxi' : r < .92 ? 'cycle' : 'enfield';
       g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#f4c20d', '#207a4a', '#1a1a1e'])) :
@@ -4803,7 +4923,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 42'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 43'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
