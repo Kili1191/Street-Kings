@@ -31,7 +31,7 @@ const HAIRS_F = [['bun','Chignon'],['long','Long'],['braid','Natte'],['curly','B
 const HAIRCOLS = ['#0d0a08','#15100b','#2b1a10','#4a2f18','#6a6a6a'];
 // comfort first, GTA-style: horns, city ambience and SFX each have their own switch
 let ambGain = null;
-const sndCfg = (() => { try { return Object.assign({ horns: true, amb: true, sfx: true, voice: true }, JSON.parse(localStorage.getItem('sk_snd') || '{}')); } catch (e) { return { horns: true, amb: true, sfx: true, voice: true }; } })();
+const sndCfg = (() => { try { return Object.assign({ horns: true, amb: true, sfx: true, voice: false }, JSON.parse(localStorage.getItem('sk_snd') || '{}')); } catch (e) { return { horns: true, amb: true, sfx: true, voice: false }; } })();
 function saveSnd() { try { localStorage.setItem('sk_snd', JSON.stringify(sndCfg)); } catch (e) {} if (ambGain) ambGain.gain.value = sndCfg.amb ? .05 : 0; }
 
 // ---------- Character builder (low-poly humanoid) ----------
@@ -1884,6 +1884,7 @@ const contactShadows = [];
 function addContactShadow(g, rx, rz, op) {
   const m = new T.Mesh(new T.CircleGeometry(1, 14), new T.MeshBasicMaterial({
     map: shadowTexture(), transparent: true, opacity: op || .5, depthWrite: false }));
+  m.name = 'contactShadow';
   m.rotation.x = -Math.PI / 2; m.position.y = .02; m.scale.set(rx, rz || rx, 1); m.renderOrder = -1;
   g.add(m); contactShadows.push({ m, host: g }); return m;
 }
@@ -2643,7 +2644,7 @@ function spawnVendors() {
   if (!HERO) return;
   // a POOL of walas that follows the trade: far-off vendors quietly re-man the stalls around the
   // player (see recycleLife), so every stall you walk past is staffed — without 176 live humans
-  const nV = Math.min(GFX === 'low' ? 14 : 26, vendorSpots.length), nP = GFX === 'low' ? 5 : 12;
+  const nV = Math.min(GFX === 'low' ? 18 : 34, vendorSpots.length), nP = GFX === 'low' ? 8 : 18;
   for (let i = 0; i < nV; i++) {
     const s = vendorSpots[i];
     const g = makeHuman(npcLook(districtAt(s.x, s.z))); g.position.set(s.x, 0, s.z); g.rotation.y = s.yaw;
@@ -2943,7 +2944,7 @@ function buildAuto(color) {
   // bench + handlebar + headlight + meter
   const bench = new T.Mesh(new T.BoxGeometry(1.02, .12, .5), blackM); bench.position.set(0, .62, -.62); g.add(bench);
   const bar = new T.Mesh(new T.CylinderGeometry(.025, .025, .55, 8), blackM); bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.06, .55); g.add(bar);
-  const hl = new T.Mesh(new T.SphereGeometry(.085, 10, 8), chromeLight(true)); hl.position.set(0, 1.02, 1.1); g.add(hl);
+  const hl = new T.Mesh(new T.SphereGeometry(.085, 10, 8), chromeLight(true)); hl.name = 'headlight'; hl.position.set(0, 1.02, 1.1); g.add(hl);
   // three small wheels (real autos ride on 8-inch wheels)
   const fw = wheel(.24, .14); fw.position.set(0, .24, .95); g.add(fw);
   for (const sx of [-.52, .52]) { const w = wheel(.24, .14); w.position.set(sx, .24, -.7); g.add(w); }
@@ -2955,7 +2956,7 @@ function buildAuto(color) {
 // rounded passenger car: hatch / sedan / taxi / cop
 function buildCar(kind, color) {
   const g = new T.Group();
-  const col = kind === 'taxi' ? '#1a1a1c' : kind === 'cop' ? '#22334e' : color || pick(['#b8bcc2', '#8a2f28', '#2d4a6b', '#d8d5cc', '#5c6156', '#7d3b52']);
+  const col = kind === 'taxi' ? '#141416' : kind === 'cop' ? '#22334e' : color || pick(['#9aa3ad', '#8a2f28', '#25406e', '#c9302c', '#2e6b4a', '#7d3b52', '#d9760b']);
   const bodyM = mat(col, .42);
   const sedan = kind === 'sedan' || kind === 'taxi' || kind === 'cop';
   const L = sedan ? 4.4 : 3.7;
@@ -2995,14 +2996,27 @@ const VEH_SPECS = {
   bus:    { len: 9.5, spd: 14, acc: 9,  seat: { x: .4, y: .5, z: 3.4 } },
 };
 // street-plausible Indian paint jobs, light enough to keep the kits' texture detail
+// What actually rolls down an Indian street: Maruti hatchbacks in silver and deep red, white cars
+// that are really warm ivory, kaali-peeli taxis (black body, yellow roof) in Bombay and all-yellow
+// Ambassadors in Kolkata, green-and-yellow CNG autos, red city buses, and lorries hand-painted in
+// colours no factory ever offered. Trim panels take a darker shade of the body — never bare grey.
 const VEH_PAINTS = {
-  sedan: ['#e8e0cc', '#d9c9a8', '#b8c9e8', '#c98a8a', '#8a8f96', '#5a7ab0', '#b03030'],
-  hatch: ['#e8d9b0', '#c94040', '#5577bb', '#99b9d9', '#d0d0c8', '#c9760b'],
-  suv:   ['#3a3f46', '#6a7078', '#8a3030', '#d9d0b8', '#2e5d3a'],
-  van:   ['#d9d0b8', '#7a9ab8', '#c9a030', '#b0b0a8'],
-  truck: ['#e88a2a', '#d9a030', '#c96040', '#7aa050'],   // hand-painted Tata oranges
-  bus:   ['#c94040', '#d98a30', '#4a7a50', '#c9b030'],
+  sedan: ['#efe9dc', '#9aa3ad', '#7a1f2a', '#25406e', '#3c4a52', '#b8ac96', '#5a7ab0'],
+  hatch: ['#c9302c', '#efe9dc', '#2f6ba8', '#9aa3ad', '#d9760b', '#2e6b4a', '#6a2f5c'],
+  suv:   ['#2a2f36', '#5f6a72', '#7a1f24', '#e8e2d2', '#26523a', '#334a6b'],
+  van:   ['#d8d2c2', '#4a7a9a', '#c9a030', '#8a9098', '#7a3a30'],
+  truck: ['#1f7ab0', '#c93a2a', '#2e8a52', '#e0891e', '#8a3a8a'],   // hand-painted Tata lorries
+  bus:   ['#c0392b', '#1f6b8a', '#2e7a45', '#d98a30'],
 };
+const VEH_TRIM = { taxi: '#f2c010', police: '#12326b', bus: '#efe6d2', truck: '#f2d24a' };
+function vehLivery(k) {
+  if (k === 'taxi') return Math.random() < .5
+    ? { body: '#141416', trim: '#f2c010' }        // Bombay kaali-peeli
+    : { body: '#f2c010', trim: '#141416' };       // Kolkata's yellow Ambassador
+  if (k === 'police') return { body: '#eceadf', trim: '#12326b' };
+  const body = (VEH_PAINTS[k] && pick(VEH_PAINTS[k])) || '#b8564a';
+  return { body, trim: VEH_TRIM[k] || shadeHex(body, -46) };
+}
 function loadVehModels(cb) {
   const B = window.VEH_ASSETS;
   if (!B || !window.GLTFLoader) { cb(); return; }
@@ -3041,7 +3055,7 @@ function buildVehModel(k) {
   m.scale.setScalar(M.scale);
   m.rotation.y = M.yawFix;
   m.position.y = -M.minY * M.scale; // sit on the road
-  const paint = (VEH_PAINTS[k] && k !== 'taxi' && k !== 'police') ? pick(VEH_PAINTS[k]) : null;
+  const liv = vehLivery(k);
   // Painting by mesh NAME failed on half the kit — a van whose body mesh isn't called "body" stayed
   // factory white. So the bodywork is found by SIZE instead: the biggest panels are the car.
   const parts = [];
@@ -3054,8 +3068,11 @@ function buildVehModel(k) {
     if (/glass|window|windscreen|screen/i.test(n + mn)) { o.material.color = new T.Color('#2b3239'); o.material.roughness = .18; o.material.metalness = .2; continue; }
     if (/wheel|tyre|tire|rim/i.test(n + mn)) { o.material.color = new T.Color('#1b1b1e'); continue; }
     if (/light|lamp|head/i.test(n + mn)) { o.material.color = new T.Color('#f2e6c8'); continue; }
-    const isBody = /body|chassis|hull|cabin|door|roof|bonnet|boot|panel/i.test(n + mn) || vol > big * .35;
-    o.material.color = new T.Color(isBody && paint ? paint : isBody ? '#b8564a' : '#8d8d92');
+    const isBody = /body|chassis|hull|cabin|door|roof|bonnet|boot|panel/i.test(n + mn) || vol > big * .3;
+    // bodywork takes the paint, the smaller panels its darker trim, the little fittings go dark:
+    // nothing is ever left in the neutral grey that made vans look unpainted
+    o.material.color = new T.Color(isBody ? liv.body : vol > big * .06 ? liv.trim : '#33363b');
+    if (isBody) { o.material.roughness = .42; o.material.metalness = .18; }
   }
   g.add(m);
   g.userData.seat = M.seat; g.userData.dim = M.dim;
@@ -3115,7 +3132,12 @@ function buildEnfield() {
 }
 // old Indian roadster bicycle (Hero/Atlas style) — rideable
 function buildBicycle() {
-  const g = new T.Group(); const black = mat('#1c1c20', .55);
+  // the Indian roadster is usually black, but the rest of the rack is painted: bottle green,
+  // maroon, post-office red, the blue of a school cycle
+  const g = new T.Group();
+  const frameCol = Math.random() < .55 ? '#1c1c20'
+    : pick(['#1e5c3a', '#6b1f28', '#1f3f6b', '#7a4a1e', '#5c2a5c', '#2a6b6b']);
+  const black = mat(frameCol, .55);
   const chrome = new T.MeshStandardMaterial({ color: '#c2c7cd', roughness: .3, metalness: .8 });
   const tube = (a, b, r) => { const d = b.clone().sub(a), l = d.length();
     const m = new T.Mesh(new T.CylinderGeometry(r, r, l, 8), black);
@@ -3288,11 +3310,11 @@ function spawnVehicles(n) {
       // Indian traffic is two- and three-wheelers first, cars second
       kind = r < .32 ? 'auto' : r < .5 ? 'moto' : r < .57 ? 'taxi' : r < .62 ? 'sedan' : r < .66 ? 'hatch' :
              r < .69 ? 'suv' : r < .72 ? 'van' : r < .76 ? 'truck' : r < .8 ? 'bus' : r < .92 ? 'cycle' : 'enfield';
-      g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
+      g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#f4c20d', '#207a4a', '#1a1a1e'])) :
           kind === 'enfield' ? buildEnfield() : kind === 'cycle' ? buildBicycle() : buildVehModel(kind);
     }
     if (!g) { kind = r < .34 ? 'auto' : r < .5 ? 'hatch' : r < .68 ? 'sedan' : r < .82 ? 'taxi' : r < .92 ? 'cycle' : 'enfield';
-      g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#207a4a', '#1a1a1e'])) :
+      g = kind === 'auto' ? buildAuto(pick(['#f4c20d', '#f4c20d', '#207a4a', '#1a1a1e'])) :
           kind === 'enfield' ? buildEnfield() : kind === 'cycle' ? buildBicycle() : buildCar(kind); }
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU);
     scene.add(g);
@@ -3491,7 +3513,10 @@ function updateTransition(dt) {
     const seat = v.g.userData.seat || { x: 0, y: .55, z: .3 };
     player.inVehicle = v; player.transition = null;
     v.g.add(player.g); player.g.position.set(seat.x, seat.y, seat.z); player.g.rotation.set(0, 0, 0);
-    const u = player.g.userData; if (u.human) u.human.seated = true;
+    const u = player.g.userData;
+    if (u.human) { u.human.seated = true;
+      u.human.bike = (v.kind === 'moto' || v.kind === 'enfield');  // straddle a motorbike
+      u.human.pedal = v.kind === 'cycle' ? 0 : undefined; }        // and pedal a cycle from the first frame
     // closed cabins have opaque glass: GTA-style, the car becomes your avatar (open vehicles keep you visible)
     const open = ['auto', 'moto', 'enfield', 'cycle'].includes(v.kind);
     player.g.visible = open;
@@ -3644,7 +3669,7 @@ function speak(text, pitch) {
   if (!clean || speechSynthesis.speaking) return; // never talk over an ongoing line
   const u = new SpeechSynthesisUtterance(clean);
   const v = pickVoice(); if (v) { u.voice = v; u.lang = v.lang; } else u.lang = 'en-IN';
-  u.rate = 1.02; u.pitch = clamp(pitch ?? rand(.85, 1.25), .5, 2); u.volume = .9;
+  u.rate = .92; u.pitch = clamp(pitch ?? rand(.78, 1.02), .5, 2); u.volume = .85;
   speechSynthesis.speak(u);
 }
 function siren(on) { if (!actx) return; if (on && !sirenNode) { const o = actx.createOscillator(), g = actx.createGain(), lfo = actx.createOscillator(), lg = actx.createGain(); o.type = 'sine'; o.frequency.value = 700; lfo.frequency.value = 2; lg.gain.value = 250; lfo.connect(lg); lg.connect(o.frequency); g.gain.value = .04; o.connect(g); g.connect(amaster); o.start(); lfo.start(); sirenNode = { o, lfo }; } else if (!on && sirenNode) { try { sirenNode.o.stop(); sirenNode.lfo.stop(); } catch (e) {} sirenNode = null; } }
@@ -3987,7 +4012,8 @@ function updateFoot(dt, f, s) {
   const deepWater = inRiverWater(player.pos.x, player.pos.z) && player.pos.x < RIVER_X0 - 2.2 && player.pos.x > RIVER_X1 + 2.4; // you WADE OUT near either shore — no crawling up the sand
   if (deepWater && !player.swim) { player.swim = true; player.dive = false; player.breath = 100;
     toast('🏊 Ganga mein! 👊/J — plonger · l\'autre rive est loin…', '#7ec3e8'); }
-  if (!deepWater && player.swim) { player.swim = false; player.dive = false; player.g.rotation.x = 0; underwaterFx(false); }
+  if (!deepWater && player.swim) { player.swim = false; player.dive = false;
+    player.g.rotation.x = 0; player.g.rotation.z = 0; player.g.rotation.order = 'XYZ'; underwaterFx(false); }
   if (player.swim) {
     if (keys['c'] && nowMs - (player.diveT || 0) > 500) { player.diveT = nowMs; player.dive = !player.dive; }
     if (player.dive) { player.breath -= dt * 7;
@@ -3995,7 +4021,13 @@ function updateFoot(dt, f, s) {
     else player.breath = Math.min(100, (player.breath ?? 100) + dt * 34);
     const ts = nowMs / 1000;
     player.pos.y = player.dive ? -2.35 : -.52 + Math.sin(ts * 2.1) * .07;
-    player.g.rotation.x = player.dive ? -1.02 : -1.28; // prone at the surface, angled when diving
+    // ROTATION ORDER matters here: with the default order the prone pitch is taken about the WORLD
+    // x-axis, so swimming east or west rolled him onto his side — a floating corpse. In 'YXZ' the
+    // heading is applied first and the pitch after, about his own axis, so he always lies face-down.
+    player.g.rotation.order = 'YXZ';
+    const swimT = ts * (player.moving ? 3.4 : 1.15);
+    player.g.rotation.x = player.dive ? -1.05 : (player.moving ? -1.30 : -.72);  // treading water sits upright
+    player.g.rotation.z = player.moving ? Math.sin(swimT) * .26 : Math.sin(ts * 1.1) * .05;  // the body rolls with each stroke
     if (player.moving && !player.dive && Math.random() < dt * 5 && steamPuffs.length < 60) {
       const m = new T.Mesh(new T.PlaneGeometry(.5, .3), new T.MeshBasicMaterial({ color: '#cfe4de', transparent: true, opacity: .5, depthWrite: false }));
       m.position.set(player.pos.x, -.1, player.pos.z); m.rotation.x = -Math.PI / 2; scene.add(m); steamPuffs.push({ m, life: .5 }); }
@@ -4013,12 +4045,23 @@ function updateFoot(dt, f, s) {
   }
   player.g.position.copy(player.pos); player.g.rotation.y = player.yaw;
   animateChar(player.g, player.moving, dt, player.swim ? 2.7 : 3.4 * sprint);
-  if (player.swim) { const h = player.g.userData.human, tk = nowMs / 1000 * (player.moving ? 4.2 : 1.5);
-    if (h) { if (h.rArm) { h.rArm.rotation.x = -1 + Math.sin(tk) * 1.35; h.rArm.rotation.z = -.25; } // freestyle strokes
-      if (h.lArm) { h.lArm.rotation.x = -1 + Math.sin(tk + Math.PI) * 1.35; h.lArm.rotation.z = .25; }
-      if (h.rLeg) h.rLeg.rotation.x = -.15 + Math.sin(tk * 1.8) * .38; // flutter kick, always churning
-      if (h.lLeg) h.lLeg.rotation.x = -.15 + Math.sin(tk * 1.8 + Math.PI) * .38;
-      if (h.rCalf) h.rCalf.rotation.x = .3; if (h.lCalf) h.lCalf.rotation.x = .3; } }
+  if (player.swim) {   // a real front crawl: one arm pulls while the other recovers with a bent elbow,
+    const h = player.g.userData.human;                      // the legs flutter twice per arm cycle,
+    const tk = nowMs / 1000 * (player.moving ? 3.4 : 1.15); // and the head stays lifted out of the water
+    if (h) {
+      const A = Math.sin(tk), B = Math.sin(tk + Math.PI), K = Math.sin(tk * 2.1);
+      if (h.rArm) { h.rArm.rotation.x = -1.15 + A * 1.55; h.rArm.rotation.z = -.26 - Math.max(0, A) * .32; }
+      if (h.lArm) { h.lArm.rotation.x = -1.15 + B * 1.55; h.lArm.rotation.z = .26 + Math.max(0, B) * .32; }
+      if (h.rFore) h.rFore.rotation.x = -.3 - Math.max(0, -A) * .8;
+      if (h.lFore) h.lFore.rotation.x = -.3 - Math.max(0, -B) * .8;
+      if (h.rLeg) { h.rLeg.rotation.x = -.1 + K * .36; h.rLeg.rotation.z = -.06; }
+      if (h.lLeg) { h.lLeg.rotation.x = -.1 - K * .36; h.lLeg.rotation.z = .06; }
+      if (h.rCalf) h.rCalf.rotation.x = .26 + Math.max(0, K) * .34;
+      if (h.lCalf) h.lCalf.rotation.x = .26 + Math.max(0, -K) * .34;
+      if (h.spine) h.spine.rotation.x = .14;
+      if (h.head) h.head.rotation.x = player.dive ? .1 : .62;   // face out of the water to breathe
+      if (h.neck) h.neck.rotation.x = player.dive ? 0 : .2;
+    } }
 }
 function updateDrive(dt, f, s) {
   const v = player.inVehicle;
@@ -4161,23 +4204,30 @@ function recycleLife(dt) {
     if (v.g.position.distanceToSquared(player.pos) > 170 * 170) { const p = nearPlayerSpot(55, 110, false);
       if (p) { v.g.position.set(p.x, 0, p.z); } } }
   for (const d of dogs) { if (d.g.position.distanceToSquared(player.pos) > 140 * 140) { const p = nearPlayerSpot(30, 70, true); if (p) d.g.position.set(p.x, 0, p.z); } }
-  // the walas follow the trade: a vendor left far behind re-mans an empty stall near the player
-  for (const v of vendors) { if (v.g.position.distanceToSquared(player.pos) < 130 * 130) continue;
-    let best = null, bd = Infinity;
-    for (const s of vendorSpots) { if (s.staffed) continue;
-      const d2 = (s.x - player.pos.x) ** 2 + (s.z - player.pos.z) ** 2;
-      if (d2 > 45 * 45 && d2 < 110 * 110 && d2 < bd) { bd = d2; best = s; } }
-    if (!best) break;
-    if (v.spot) v.spot.staffed = false;
-    v.spot = best; best.staffed = true; v.kind = best.kind;
-    v.g.position.set(best.x, 0, best.z); v.g.rotation.y = best.yaw;
+  // The walas follow the TRADE, not a distance rule: any stall standing empty near the player pulls
+  // in whichever wala is furthest away and out of sight. Walk down a lane and it fills ahead of you.
+  { let moved = 0;
+    for (const sp of vendorSpots) {
+      if (sp.staffed || moved >= 3) continue;
+      const dx = sp.x - player.pos.x, dz = sp.z - player.pos.z;
+      if (dx * dx + dz * dz > 62 * 62) continue;                 // only stalls you might actually reach
+      let far = null, fd = 78 * 78;
+      for (const v of vendors) { const vd = v.g.position.distanceToSquared(player.pos); if (vd > fd) { fd = vd; far = v; } }
+      if (!far) break;
+      if (far.spot) far.spot.staffed = false;
+      far.spot = sp; sp.staffed = true; far.kind = sp.kind;
+      far.g.position.set(sp.x, 0, sp.z); far.g.rotation.y = sp.yaw;
+      moved++;
+    }
   }
-  for (const c of patrons) { if (c.g.position.distanceToSquared(player.pos) < 130 * 130) continue;
-    const v = vendors[randi(0, vendors.length - 1)]; if (!v || !v.spot) continue;
-    if (v.g.position.distanceToSquared(player.pos) > 100 * 100) continue;
-    const s = v.spot, fs2 = Math.sin(s.yaw), fc2 = Math.cos(s.yaw);
-    c.g.position.set(s.x + fs2 * 2.2 + fc2 * rand(-.7, .7), 0, s.z + fc2 * 2.2 - fs2 * rand(-.7, .7));
-    c.g.rotation.y = s.yaw + Math.PI + rand(-.35, .35);
+  // customers drift to whichever stalls are manned near the player
+  for (const c of patrons) {
+    if (c.g.position.distanceToSquared(player.pos) < 55 * 55) continue;
+    const near = vendors.filter(v => v.spot && v.g.position.distanceToSquared(player.pos) < 48 * 48);
+    if (!near.length) continue;
+    const sp = near[randi(0, near.length - 1)].spot, fs2 = Math.sin(sp.yaw), fc2 = Math.cos(sp.yaw);
+    c.g.position.set(sp.x + fs2 * 2.2 + fc2 * rand(-.7, .7), 0, sp.z + fc2 * 2.2 - fs2 * rand(-.7, .7));
+    c.g.rotation.y = sp.yaw + Math.PI + rand(-.35, .35);
   }
 }
 function updateNPCs(dt) {
@@ -4523,7 +4573,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 37'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 38'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -4541,6 +4591,46 @@ function boot() {
       if (gg && gg.index) tris += gg.index.count / 3; else if (gg && gg.attributes.position) tris += gg.attributes.position.count / 3; } });
     return { meshes, skinned, tris: Math.round(tris), calls: renderer.info.render.calls, buildings: buildings.length, npcs: npcs.length, vehicles: vehicles.length }; };
   window.__adapt = () => ({ base: ADAPT.base, scale: +ADAPT.scale.toFixed(2), bloomOff: ADAPT.bloomOff, shadowsOff: ADAPT.shadowsOff, ratio: renderer.getPixelRatio() });
+  // audit every panel of every vehicle in the world: anything still wearing the neutral fallback
+  // grey, or anything near-white, is an unpainted vehicle and must not exist
+  window.__greyParts = () => { const out = [];
+    for (const v of vehicles) { let big = 0;
+      v.g.traverse(o => { if (o.isMesh && o.geometry) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        const bb = o.geometry.boundingBox; big = Math.max(big, (bb.max.x-bb.min.x)*(bb.max.y-bb.min.y)*(bb.max.z-bb.min.z)); } });
+      v.g.traverse(o => { if (!o.isMesh || !o.material || !o.material.color) return;
+        const c = o.material.color, mx = Math.max(c.r,c.g,c.b), mn = Math.min(c.r,c.g,c.b);
+        if (mx > 0 && (mx-mn)/mx < .08 && mx > .52) {
+          if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+          const bb = o.geometry.boundingBox, vol = (bb.max.x-bb.min.x)*(bb.max.y-bb.min.y)*(bb.max.z-bb.min.z);
+          if (vol > big * .12) out.push({ kind: v.kind, name: o.name || '(unnamed)', mat: (o.material.name||''), col: '#' + c.getHexString(), rel: +(vol/big).toFixed(2) }); } }); }
+    const seen = new Set(); return out.filter(x => { const k = x.kind + x.name + x.col; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 10); };
+  window.__paint = () => {
+    const bad = [], byKind = {};
+    for (const v of vehicles) {
+      const k = v.kind; byKind[k] = byKind[k] || { n: 0, grey: 0 };
+      byKind[k].n++;
+      let greyPanels = 0, biggest = 0, bigCol = null, big0 = 0;
+      v.g.traverse(o => { if (o.isMesh && o.geometry) { if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        const bb = o.geometry.boundingBox; big0 = Math.max(big0, (bb.max.x-bb.min.x)*(bb.max.y-bb.min.y)*(bb.max.z-bb.min.z)); } });
+      v.g.traverse(o => { if (!o.isMesh || !o.material || !o.material.color) return;
+        const n = (o.name || '') + ((o.material && o.material.name) || '');
+        if (/wheel|tyre|tire|rim|glass|window|light|lamp|plate|shadow|Wolf3D|contactShadow/i.test(n)) return;  // fittings and the rider are not bodywork
+        const c = o.material.color, mx = Math.max(c.r, c.g, c.b), mn = Math.min(c.r, c.g, c.b);
+        const sat = mx > 0 ? (mx - mn) / mx : 0;
+        if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        const bb = o.geometry.boundingBox, vol = (bb.max.x-bb.min.x)*(bb.max.y-bb.min.y)*(bb.max.z-bb.min.z);
+        if (vol > biggest) { biggest = vol; bigCol = '#' + c.getHexString(); }
+        if (sat < .07 && mx > .5 && vol > 0 && vol > 0) { if (vol > 0) greyPanels += (vol > 0 && vol >= 0 ? 0 : 0); }
+        if (sat < .08 && mx > .52 && vol > big0 * .12) greyPanels++; });
+      if (greyPanels) { byKind[k].grey++; bad.push({ kind: k, greyPanels, body: bigCol }); }
+    }
+    return { total: vehicles.length, unpainted: bad.length, byKind, sample: bad.slice(0, 6) };
+  };
+  window.__board = (k) => { const p = window.__tpkind(k); if (!p) return 'no ' + k; tryEnterExit(); return 'boarding'; };
+  window.__ridestate = () => { const h = player.g.userData.human;
+    return { inVehicle: player.inVehicle ? player.inVehicle.kind : null, transition: !!player.transition,
+      seated: !!(h && h.seated), pedal: h && h.pedal !== undefined ? +h.pedal.toFixed(2) : null, bike: !!(h && h.bike),
+      speed: player.inVehicle ? +player.inVehicle.speed.toFixed(1) : 0 }; };
   window.__rider = () => { for (const v of vehicles) { if ((v.kind === 'moto' || v.kind === 'enfield' || v.kind === 'cycle') && v.driver) {
     const bx = new T.Box3().setFromObject(v.driver.g);
     return { kind: v.kind, feetY: +bx.min.y.toFixed(2), headY: +bx.max.y.toFixed(2) }; } } return 'no rider'; };
@@ -4549,6 +4639,11 @@ function boot() {
     kinds: ROADS.edges.reduce((a, e) => (a[e.kind] = (a[e.kind] || 0) + 1, a), {}) });
   window.__probe = (w) => { const hits = []; scene.traverse(o => { if (o.isMesh && o.geometry && o.geometry.parameters && Math.abs((o.geometry.parameters.width || 0) - w) < .01) {
     const wp = o.getWorldPosition(new T.Vector3()); hits.push([+wp.x.toFixed(1), +wp.y.toFixed(1), +wp.z.toFixed(1)]); } }); return hits.slice(0, 8); };
+  window.__vendNear = (r) => { r = r || 45; const rr = r * r; let near = 0, staffed = 0;
+    for (const sp of vendorSpots) { const dx = sp.x - player.pos.x, dz = sp.z - player.pos.z;
+      if (dx * dx + dz * dz < rr) { near++; if (sp.staffed) staffed++; } }
+    let pn = 0; for (const c of patrons) if (c.g.position.distanceToSquared(player.pos) < rr) pn++;
+    return { stallsNear: near, staffed, customersNear: pn }; };
   window.__vend = () => ({ vendors: vendors.length, patrons: patrons.length, spots: vendorSpots.length,
     first: vendors.slice(0, 4).map(v => ({ x: +v.g.position.x.toFixed(1), z: +v.g.position.z.toFixed(1), yaw: +v.g.rotation.y.toFixed(2) })) });
   window.__spots = () => ({ taj: { x: (RIVER_X1 + FAR_X) / 2 - 1, z: -HALF + CELL + (CELL) * .24 }, aghori: AGHORI, adiyogi: { x: CELL, z: 0 }, hawa: { x: CELL, z: -CELL }, galtaji: { x: CELL + 37, z: -CELL + 37 } });
