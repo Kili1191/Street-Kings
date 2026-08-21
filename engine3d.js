@@ -614,6 +614,7 @@ function makeHuman(o) {
     ? [['FIdle', 'idle'], ['FWalk', 'walk'], ['Run', 'run']]
     : [['Idle', 'idle'], ['Walk', 'walk'], ['Run', 'run']];
   for (const [nm, key] of wants) { const c = SRC.clips[nm]; if (c) { const a = mixer.clipAction(c); a.enabled = true; a.setEffectiveWeight(key === 'idle' ? 1 : 0); a.play(); actions[key] = a; } }
+  addContactShadow(grp, .3, .22, .42);
   grp.userData = { human: { mixer, actions, w: { idle: 1, walk: 0, run: 0 }, gait: rand(.82, 1.18), head, neck, spine, rArm, lArm, rFore, lFore, rLeg, lLeg, rCalf, lCalf, seated: false }, attack: null };
   return grp;
 }
@@ -627,6 +628,17 @@ function animateHuman(g, moving, dt, speed) {
   h.mixer.update(dt);
   if (h.seated) { // driving pose: hips/knees bent, hands reach FORWARD to the wheel — never up in the air
     const set = (b, x) => { if (b) b.rotation.x = x; };
+    if (h.bike) {                // motorbike: thighs open around the tank, feet back on the pegs
+      set(h.rLeg, -.62); set(h.lLeg, -.62);
+      if (h.rLeg) h.rLeg.rotation.z = -.30; if (h.lLeg) h.lLeg.rotation.z = .30;
+      set(h.rCalf, 1.25); set(h.lCalf, 1.25);
+      if (h.rArm) { h.rArm.rotation.x -= .78; h.rArm.rotation.z -= .22; }
+      if (h.lArm) { h.lArm.rotation.x -= .78; h.lArm.rotation.z += .22; }
+      if (h.rFore) h.rFore.rotation.x -= .18;
+      if (h.lFore) h.lFore.rotation.x -= .18;
+      if (h.spine) h.spine.rotation.x += .22;
+      return;
+    }
     if (h.pedal !== undefined) { // on a bicycle: legs drive the cranks in opposition, back bowed to the bars
       const p = h.pedal;
       set(h.rLeg, -.92 + Math.sin(p) * .4); set(h.lLeg, -.92 + Math.sin(p + Math.PI) * .4);
@@ -725,21 +737,178 @@ function districtAt(x, z) {
   const mx = clamp(Math.floor((x + HALF) / CELL), 0, 2), mz = clamp(Math.floor((z + HALF) / CELL), 0, 2);
   return mz * 3 + mx;
 }
-// some grid roads are unpaved dirt lanes, like most of India outside the metros
-const dirtV = new Set(), dirtH = new Set();
-{ let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  for (let k = 1; k * STEP < WORLD; k++) { if (rnd() < .3) dirtV.add(k); if (rnd() < .3) dirtH.add(k); } }
-const isDirtV = k => dirtV.has(k), isDirtH = k => dirtH.has(k);
-const onRoad = (x, z) => {
-  const fx = ((x % STEP) + STEP) % STEP, fz = ((z % STEP) + STEP) % STEP;
-  return fx < ROADW || fz < ROADW;
-};
-// sidewalk band = just outside the road, before the buildings
-const onSidewalk = (x, z) => {
-  const fx = ((x % STEP) + STEP) % STEP, fz = ((z % STEP) + STEP) % STEP;
-  const near = v => v >= ROADW && v < ROADW + SIDEW;
-  return !onRoad(x, z) && (near(fx) || near(fz) || fx >= STEP - SIDEW || fz >= STEP - SIDEW);
-};
+// ---------- THE STREET NETWORK ----------
+// An Indian old city is not a lattice. It grows: arteries radiate from a chowk, bend around what
+// was already there, narrow as they go, fork into galis and die in courtyards. Junctions are
+// mostly T-shaped, almost never four clean arms. So the streets here are a GRAPH, grown outward
+// from hubs — not a modulo. The one exception is Jaipur, whose walled city really was planned on
+// a grid in 1727 along Vastu Shastra lines; that district alone keeps its lattice, on purpose.
+const ROADS = { nodes: [], edges: [], grid: new Map(), Q: 12 };
+function _bucket(e) {
+  const m = e.w / 2 + SIDEW + 2, q = ROADS.Q;
+  const gx0 = ((Math.min(e.a.x, e.b.x) - m + HALF) / q) | 0, gx1 = ((Math.max(e.a.x, e.b.x) + m + HALF) / q) | 0;
+  const gz0 = ((Math.min(e.a.z, e.b.z) - m + HALF) / q) | 0, gz1 = ((Math.max(e.a.z, e.b.z) + m + HALF) / q) | 0;
+  for (let gx = gx0; gx <= gx1; gx++) for (let gz = gz0; gz <= gz1; gz++) {
+    const k = gx + ',' + gz; let arr = ROADS.grid.get(k);
+    if (!arr) ROADS.grid.set(k, arr = []); arr.push(e);
+  }
+}
+function roadNode(x, z) { const n = { x, z, e: [] }; ROADS.nodes.push(n); return n; }
+function roadEdge(a, b, w, kind) {
+  const dx = b.x - a.x, dz = b.z - a.z, len = Math.hypot(dx, dz);
+  if (len < 2) return null;
+  const e = { a, b, w, kind: kind || 'street', len, ux: dx / len, uz: dz / len, dirt: false };
+  ROADS.edges.push(e); a.e.push(e); b.e.push(e); _bucket(e);
+  return e;
+}
+// nearest street to a point, via the bucket grid — this replaces the old modulo test
+function nearRoad(x, z) {
+  const q = ROADS.Q;
+  const arr = ROADS.grid.get((((x + HALF) / q) | 0) + ',' + (((z + HALF) / q) | 0));
+  if (!arr) return null;
+  let best = null, bd = 1e9;
+  for (let i = 0; i < arr.length; i++) { const e = arr[i];
+    const px = x - e.a.x, pz = z - e.a.z;
+    let s = px * e.ux + pz * e.uz; if (s < 0) s = 0; else if (s > e.len) s = e.len;
+    const dx = px - e.ux * s, dz = pz - e.uz * s, d = dx * dx + dz * dz;
+    if (d < bd) { bd = d; best = e; }
+  }
+  return best ? { d: Math.sqrt(bd), e: best } : null;
+}
+const onRoad = (x, z) => { const r = nearRoad(x, z); return !!r && r.d < r.e.w / 2; };
+// sidewalk band = just outside the carriageway, before the buildings
+const onSidewalk = (x, z) => { const r = nearRoad(x, z); return !!r && r.d >= r.e.w / 2 && r.d < r.e.w / 2 + SIDEW; };
+
+function buildRoadNetwork() {
+  const inWorld = (x, z) => Math.abs(x) < HALF - 4 && Math.abs(z) < HALF - 4 && !inBeach(x, z) && !inGhats(x, z);
+  const trunks = [];
+  for (let i = 0; i < 9; i++) {
+    const mx = i % 3, mz = (i / 3) | 0, cx = (mx - 1) * CELL, cz = (mz - 1) * CELL;
+    const reach = CELL / 2 - 8;
+    const grow = (from, ang, w, segs, kind) => {
+      let cur = from, a2 = ang, ww = w;
+      for (let s = 0; s < segs; s++) {
+        a2 += rand(-.38, .38);                                    // nothing runs straight for long
+        const len = rand(15, 30);
+        const nx = cur.x + Math.sin(a2) * len, nz = cur.z + Math.cos(a2) * len;
+        if (!inWorld(nx, nz)) break;
+        const n2 = roadNode(nx, nz);
+        const e = roadEdge(cur, n2, ww, kind);
+        if (!e) break;
+        e.dirt = (i !== 1 && i !== 6 && i !== 7) && Math.random() < .3; // metros are paved, the rest often aren't
+        cur = n2; ww = Math.max(3.2, ww * rand(.82, .95));
+        // side lanes peel off, and the thinnest of them are galis no car can enter
+        if (s > 0 && Math.random() < .45) {
+          const bw = Math.max(3, ww * rand(.55, .8));
+          grow(n2, a2 + (Math.random() < .5 ? 1 : -1) * (Math.PI / 2 + rand(-.5, .5)),
+            bw, randi(1, 3), bw < 4.2 ? 'gali' : 'lane');
+        }
+      }
+      return cur;
+    };
+    // Each city is laid out the way the real one is: not copied street for street (a district here
+    // is 107 m across, Chandni Chowk alone is 1.5 km) but built on the same plan.
+    const PATTERN = ['spine', 'arterial', 'grid', 'ghatfan', 'organic', 'organic', 'spine', 'coastal', 'organic'][i];
+    if (PATTERN === 'grid') {
+      // MARWAR / JAIPUR: the walled city was laid out on a grid in 1727 — nine wards, wide straight
+      // bazaar streets. The one planned exception in a country of organic cities.
+      const cols = [], rows = [];
+      for (let k = -1; k <= 1; k++) { cols.push(cx + k * 34 + rand(-3, 3)); rows.push(cz + k * 34 + rand(-3, 3)); }
+      const grid = [];
+      for (let a = 0; a < cols.length; a++) { grid[a] = [];
+        for (let b = 0; b < rows.length; b++) grid[a][b] = roadNode(cols[a], rows[b]); }
+      for (let a = 0; a < cols.length; a++) for (let b = 0; b < rows.length; b++) {
+        if (a < cols.length - 1) roadEdge(grid[a][b], grid[a + 1][b], 9, 'bazaar');
+        if (b < rows.length - 1) roadEdge(grid[a][b], grid[a][b + 1], 9, 'bazaar');
+      }
+      trunks.push(grid[1][1]);
+      continue;
+    }
+    if (PATTERN === 'spine' || PATTERN === 'ghatfan' || PATTERN === 'coastal') {
+      // PURANI DILLI: one great bazaar spine — Chandni Chowk ran dead straight from the Fort to
+      // Fatehpuri Masjid — with a dense comb of katra lanes hanging off both sides.
+      // KASHI: the spine runs PARALLEL to the Ganga, and the galis fall away west toward the water.
+      // CHENNAI: the long road follows the shore, and everything inland hangs off it.
+      const along = PATTERN === 'ghatfan' ? 0 : PATTERN === 'coastal' ? Math.PI / 2 : Math.PI / 2;
+      const start = { x: cx - Math.sin(along) * reach, z: cz - Math.cos(along) * reach };
+      let cur = roadNode(clamp(start.x, -HALF + 6, HALF - 6), clamp(start.z, -HALF + 6, HALF - 6));
+      trunks.push(cur);
+      const spine = [cur];
+      let a2 = along;
+      for (let s = 0; s < 7; s++) {
+        a2 += rand(-.11, .11);                                  // even a "straight" bazaar drifts
+        const nx = cur.x + Math.sin(a2) * (reach * 2 / 7), nz = cur.z + Math.cos(a2) * (reach * 2 / 7);
+        if (!inWorld(nx, nz)) break;
+        const n2 = roadNode(nx, nz); const e = roadEdge(cur, n2, PATTERN === 'coastal' ? 10 : 11, 'bazaar');
+        if (!e) break; cur = n2; spine.push(n2);
+      }
+      for (const n of spine) {
+        // the comb of lanes: dense, short, narrow — the capillaries of an old quarter
+        for (const side of [-1, 1]) {
+          if (PATTERN === 'coastal' && side < 0) continue;       // nothing is built out into the sea
+          const toward = PATTERN === 'ghatfan' && side < 0 ? 3.2 : rand(3.4, 5.4);
+          if (Math.random() < .22) continue;
+          grow(n, a2 + side * (Math.PI / 2 + rand(-.22, .22)), toward, randi(2, 4), toward < 4.2 ? 'gali' : 'lane');
+        }
+        if (Math.random() < .35) grow(n, a2 + rand(-.6, .6) + Math.PI / 2, rand(6, 7.5), randi(1, 2), 'street');
+      }
+      continue;
+    }
+    if (PATTERN === 'arterial') {
+      // BAMBAI: reclaimed strips, so the arteries run long north–south, tied by short cross-streets.
+      const lanes = [];
+      for (let k = -1; k <= 1; k++) {
+        let cur2 = roadNode(cx + k * 30 + rand(-4, 4), cz - reach), col = [cur2];
+        let a3 = 0;
+        for (let s = 0; s < 6; s++) { a3 += rand(-.14, .14);
+          const nx = cur2.x + Math.sin(a3) * (reach * 2 / 6), nz = cur2.z + Math.cos(a3) * (reach * 2 / 6);
+          if (!inWorld(nx, nz)) break;
+          const n2 = roadNode(nx, nz); if (!roadEdge(cur2, n2, 9.5, 'artery')) break; cur2 = n2; col.push(n2); }
+        lanes.push(col);
+      }
+      trunks.push(lanes[1] ? lanes[1][0] : ROADS.nodes[ROADS.nodes.length - 1]);
+      for (let k = 0; k < lanes.length - 1; k++) {
+        const A = lanes[k], B = lanes[k + 1];
+        for (let s = 1; s < Math.min(A.length, B.length); s++) if (Math.random() < .7) roadEdge(A[s], B[s], rand(5, 7), 'street');
+      }
+      for (const col of lanes) for (const n of col) if (Math.random() < .4) grow(n, rand(0, TAU), rand(3.2, 5), randi(1, 3), 'gali');
+      continue;
+    }
+    // everywhere else: hubs, then arteries that wander outward and thin as they go
+    const hubs = [roadNode(cx + rand(-8, 8), cz + rand(-8, 8))];
+    const nH = 1 + randi(1, 2);
+    for (let h = 1; h <= nH; h++) {
+      const a = rand(0, TAU), r = rand(reach * .4, reach * .8);
+      const hx = cx + Math.cos(a) * r, hz = cz + Math.sin(a) * r;
+      if (inWorld(hx, hz)) { const n = roadNode(hx, hz); hubs.push(n); roadEdge(hubs[0], n, 8.5, 'artery'); }
+    }
+    trunks.push(hubs[0]);
+    for (const hub of hubs) {
+      const arms = randi(4, 6), base = rand(0, TAU);
+      for (let k = 0; k < arms; k++) grow(hub, base + k / arms * TAU + rand(-.3, .3), rand(7, 9), randi(3, 6), 'artery');
+    }
+  }
+  // loops: an organic city is not a tree — nearby dead ends grow into each other
+  for (let pass = 0; pass < 600; pass++) {
+    const a = ROADS.nodes[randi(0, ROADS.nodes.length - 1)], b = ROADS.nodes[randi(0, ROADS.nodes.length - 1)];
+    if (a === b || a.e.length > 3 || b.e.length > 3) continue;
+    const d = Math.hypot(a.x - b.x, a.z - b.z);
+    if (d < 8 || d > 30) continue;
+    if (a.e.some(e => e.a === b || e.b === b)) continue;
+    if (!inWorld((a.x + b.x) / 2, (a.z + b.z) / 2)) continue;
+    roadEdge(a, b, rand(4.5, 7), 'street');
+  }
+  // and the districts must be reachable from each other
+  for (let i = 0; i < trunks.length; i++) for (let j = i + 1; j < trunks.length; j++) {
+    const A = trunks[i], B = trunks[j];
+    if (Math.hypot(A.x - B.x, A.z - B.z) > CELL * 1.2) continue;
+    let na = A, nb = B, bd = 1e9;
+    for (const n of ROADS.nodes) { // meet in the middle, on real junctions
+      const mx2 = (A.x + B.x) / 2, mz2 = (A.z + B.z) / 2, d = Math.hypot(n.x - mx2, n.z - mz2);
+      if (d < bd) { bd = d; na = n; } }
+    roadEdge(A, na, 9.5, 'highway'); roadEdge(na, B, 9.5, 'highway');
+  }
+}
 
 // ---------- Renderer / scene ----------
 let renderer, scene, camera, clock, sun, composer;
@@ -814,10 +983,10 @@ function initThree() {
   daySkyTex = makeSky(); nightSkyTex = makeNightSky(); scene.background = daySkyTex;
   scene.fog = low ? new T.Fog('#ecc9a0', 42, 120) : new T.Fog('#ecc9a0', 60, 175);
   camera = new T.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, low ? 135 : 220);
-  const hemi = new T.HemisphereLight('#a8c4e8', '#6b5335', 0.42); scene.add(hemi); dayHemi = hemi;
-  const amb = new T.AmbientLight('#ffe9d0', 0.12); scene.add(amb);
+  const hemi = new T.HemisphereLight('#a8c4e8', '#6b5335', 0.30); scene.add(hemi); dayHemi = hemi;
+  const amb = new T.AmbientLight('#ffe9d0', 0.09); scene.add(amb);
   // low golden-hour sun for long cinematic shadows
-  sun = new T.DirectionalLight('#ffc178', 1.7); sun.position.set(36, 48, 20); sun.castShadow = !low;
+  sun = new T.DirectionalLight('#ffc178', 2.05); sun.position.set(36, 48, 20); sun.castShadow = !low;
   sun.shadow.mapSize.set(low ? 512 : 1536, low ? 512 : 1536); sun.shadow.bias = -0.0004;
   const sc = sun.shadow.camera; sc.left = -55; sc.right = 55; sc.top = 55; sc.bottom = -55; sc.near = 1; sc.far = 260;
   scene.add(sun); scene.add(sun.target);
@@ -840,86 +1009,76 @@ function makeGroundTexture() {
   for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
     g.fillStyle = mute(DISTRICTS[i].ground, .3); g.fillRect(mx * S / 3, mz * S / 3, S / 3 + 1, S / 3 + 1); }
   g.fillStyle = 'rgba(60,50,35,.06)'; for (let i = 0; i < 6000; i++) g.fillRect(Math.random() * S, Math.random() * S, 2, 2);
-  // sidewalks (light paving) — a band straddling each road
-  g.fillStyle = '#9a978f';
-  for (let v = -HALF; v <= HALF; v += STEP) { g.fillRect(px(v - SIDEW), 0, u(ROADW + 2 * SIDEW), S); g.fillRect(0, px(v - SIDEW), S, u(ROADW + 2 * SIDEW)); }
-  // paving joints on sidewalks
-  g.strokeStyle = 'rgba(0,0,0,.10)'; g.lineWidth = 1; g.setLineDash([]);
-  for (let v = -HALF; v <= HALF; v += 3) { g.beginPath(); g.moveTo(px(v), 0); g.lineTo(px(v), S); g.stroke(); g.beginPath(); g.moveTo(0, px(v)); g.lineTo(S, px(v)); g.stroke(); }
-  // roads: asphalt for paved lines, rough earth for dirt lanes
-  let ki = 0;
-  for (let v = -HALF; v <= HALF; v += STEP, ki++) {
-    const kIdx = Math.round((v + HALF) / STEP);
-    g.fillStyle = isDirtV(kIdx) ? '#8a6b4a' : '#3b3b41'; g.fillRect(px(v), 0, u(ROADW), S);
-    g.fillStyle = isDirtH(kIdx) ? '#8a6b4a' : '#3b3b41'; g.fillRect(0, px(v), S, u(ROADW));
-  }
-  // dirt texture: ruts, potholes, ragged edges
+  // every street is now painted from the road GRAPH, so the tarmac follows the same crooked
+  // lines the city was grown from — no straight bands, no repeating lattice.
+  const stroke = (e, col, wWorld) => { g.strokeStyle = col; g.lineWidth = u(wWorld);
+    g.lineCap = 'round'; g.lineJoin = 'round';
+    g.beginPath(); g.moveTo(px(e.a.x), px(e.a.z)); g.lineTo(px(e.b.x), px(e.b.z)); g.stroke(); };
+  for (const e of ROADS.edges) stroke(e, '#9a978f', e.w + 2 * SIDEW);   // paving either side
+  for (const e of ROADS.edges) stroke(e, e.dirt ? '#8a6b4a' : '#3b3b41', e.w);
+  // dirt lanes get ruts; tarmac gets grain
   g.globalAlpha = .35;
-  for (let v = -HALF; v <= HALF; v += STEP) { const kIdx = Math.round((v + HALF) / STEP);
-    if (isDirtV(kIdx)) for (let i = 0; i < 260; i++) { g.fillStyle = pick(['#6e5238', '#9c7d58', '#5c452e']);
-      g.beginPath(); g.ellipse(px(v) + rand(0, u(ROADW)), rand(0, S), rand(2, 7), rand(1.5, 4), 0, 0, TAU); g.fill(); }
-    if (isDirtH(kIdx)) for (let i = 0; i < 260; i++) { g.fillStyle = pick(['#6e5238', '#9c7d58', '#5c452e']);
-      g.beginPath(); g.ellipse(rand(0, S), px(v) + rand(0, u(ROADW)), rand(2, 7), rand(1.5, 4), 0, 0, TAU); g.fill(); } }
-  g.globalAlpha = 1;
-  // asphalt grain
+  for (const e of ROADS.edges) { if (!e.dirt) continue;
+    const n = Math.round(e.len * 1.6);
+    for (let i = 0; i < n; i++) { const t = Math.random(), o = rand(-e.w / 2, e.w / 2);
+      const wx = e.a.x + e.ux * e.len * t - e.uz * o, wz = e.a.z + e.uz * e.len * t + e.ux * o;
+      g.fillStyle = pick(['#6e5238', '#9c7d58', '#5c452e']);
+      g.beginPath(); g.ellipse(px(wx), px(wz), rand(2, 6), rand(1.5, 4), 0, 0, TAU); g.fill(); } }
   g.globalAlpha = .12;
   for (let i = 0; i < 9000; i++) { const x = Math.random() * S, y = Math.random() * S;
     g.fillStyle = Math.random() < .5 ? '#2e2e33' : '#4a4a52'; g.fillRect(x, y, 1.6, 1.6); }
   g.globalAlpha = 1;
-  // this is an OLD country, not Manhattan: earth eats into every road edge in ragged bites
-  for (let v = -HALF; v <= HALF; v += STEP) { const kIdx = Math.round((v + HALF) / STEP);
-    for (const e of [px(v), px(v) + u(ROADW)]) {
-      for (let t = 0; t < S; t += rand(8, 26)) { g.fillStyle = pick(['#8a7a5a', '#9a978f', '#7a6a4e']); g.globalAlpha = rand(.25, .6);
-        const bite = rand(1.5, u(.9));
-        g.beginPath(); g.ellipse(e + (e === px(v) ? bite * .3 : -bite * .3), t, bite, rand(4, 14), 0, 0, TAU); g.fill();
-        g.beginPath(); g.ellipse(t, e + (e === px(v) ? bite * .3 : -bite * .3), rand(4, 14), bite, 0, 0, TAU); g.fill(); } }
-    // potholes and tar-patch repairs on the paved lanes too
-    if (!isDirtV(kIdx)) for (let i = 0; i < 46; i++) { const hx = px(v) + rand(u(.4), u(ROADW - .4)), hy = rand(0, S);
-      g.globalAlpha = .8; g.fillStyle = '#1e1e22'; g.beginPath(); g.ellipse(hx, hy, rand(2, 6), rand(1.5, 4.5), rand(0, 3), 0, TAU); g.fill();
-      g.globalAlpha = .3; g.fillStyle = '#55555c'; g.beginPath(); g.ellipse(hx, hy, rand(6, 12), rand(4, 8), rand(0, 3), 0, TAU); g.fill(); }
-    if (!isDirtH(kIdx)) for (let i = 0; i < 46; i++) { const hy = px(v) + rand(u(.4), u(ROADW - .4)), hx = rand(0, S);
-      g.globalAlpha = .8; g.fillStyle = '#1e1e22'; g.beginPath(); g.ellipse(hx, hy, rand(2, 6), rand(1.5, 4.5), rand(0, 3), 0, TAU); g.fill();
-      g.globalAlpha = .3; g.fillStyle = '#55555c'; g.beginPath(); g.ellipse(hx, hy, rand(6, 12), rand(4, 8), rand(0, 3), 0, TAU); g.fill(); } }
+  // this is an OLD country: earth eats into every road edge in ragged bites, and the tar is patched
+  for (const e of ROADS.edges) {
+    const bites = Math.round(e.len * .9);
+    for (let i = 0; i < bites; i++) { const t = Math.random(), side = Math.random() < .5 ? -1 : 1;
+      const o = side * (e.w / 2 - rand(0, .6));
+      const wx = e.a.x + e.ux * e.len * t - e.uz * o, wz = e.a.z + e.uz * e.len * t + e.ux * o;
+      g.globalAlpha = rand(.25, .6); g.fillStyle = pick(['#8a7a5a', '#9a978f', '#7a6a4e']);
+      g.beginPath(); g.ellipse(px(wx), px(wz), rand(2, 7), rand(2, 7), 0, 0, TAU); g.fill(); }
+    if (!e.dirt) { const holes = Math.round(e.len * .35);
+      for (let i = 0; i < holes; i++) { const t = Math.random(), o = rand(-e.w / 2 + .4, e.w / 2 - .4);
+        const wx = e.a.x + e.ux * e.len * t - e.uz * o, wz = e.a.z + e.uz * e.len * t + e.ux * o;
+        g.globalAlpha = .8; g.fillStyle = '#1e1e22';
+        g.beginPath(); g.ellipse(px(wx), px(wz), rand(2, 6), rand(1.5, 4.5), rand(0, 3), 0, TAU); g.fill();
+        g.globalAlpha = .3; g.fillStyle = '#55555c';
+        g.beginPath(); g.ellipse(px(wx), px(wz), rand(6, 12), rand(4, 8), rand(0, 3), 0, TAU); g.fill(); } }
+  }
   g.globalAlpha = 1;
-  // curbs: broken, patchy — whole stretches missing
-  g.strokeStyle = 'rgba(20,20,24,.5)'; g.lineWidth = 2; g.setLineDash([rand(20, 60), rand(15, 45)]);
-  for (let v = -HALF; v <= HALF; v += STEP) { for (const e of [px(v), px(v) + u(ROADW)]) { g.beginPath(); g.moveTo(e, 0); g.lineTo(e, S); g.stroke(); g.beginPath(); g.moveTo(0, e); g.lineTo(S, e); g.stroke(); } }
+  // faded centre lines: only the metros ever painted them, and only on the wide roads
+  g.strokeStyle = 'rgba(240,210,120,.26)'; g.lineWidth = 2; g.setLineDash([10, 18]);
+  for (const e of ROADS.edges) { if (e.dirt || e.w < 7) continue;
+    if (![1, 6, 7].includes(districtAt((e.a.x + e.b.x) / 2, (e.a.z + e.b.z) / 2))) continue;
+    g.beginPath(); g.moveTo(px(e.a.x), px(e.a.z)); g.lineTo(px(e.b.x), px(e.b.z)); g.stroke(); }
   g.setLineDash([]);
-  // lane markings: only the metro districts ever painted them, and even there they've faded
-  g.strokeStyle = 'rgba(240,210,120,.28)'; g.lineWidth = 2; g.setLineDash([10, 18]);
-  for (let v = -HALF; v <= HALF; v += STEP) { const kIdx = Math.round((v + HALF) / STEP), p = px(v) + u(ROADW) / 2;
-    for (let band = 0; band < 3; band++) { const b0 = band * S / 3, mid = (band + .5) / 3 * WORLD - HALF;
-      if (!isDirtV(kIdx) && [1, 6, 7].includes(districtAt(v + STEP / 2, mid))) { g.beginPath(); g.moveTo(p, b0); g.lineTo(p, b0 + S / 3); g.stroke(); }
-      if (!isDirtH(kIdx) && [1, 6, 7].includes(districtAt(mid, v + STEP / 2))) { g.beginPath(); g.moveTo(b0, p); g.lineTo(b0 + S / 3, p); g.stroke(); } } }
+  // broken curbs along the paving edge
+  g.strokeStyle = 'rgba(20,20,24,.45)'; g.lineWidth = 2; g.setLineDash([18, 34]);
+  for (const e of ROADS.edges) { for (const side of [-1, 1]) { const o = side * e.w / 2;
+    g.beginPath(); g.moveTo(px(e.a.x - e.uz * o), px(e.a.z + e.ux * o));
+    g.lineTo(px(e.b.x - e.uz * o), px(e.b.z + e.ux * o)); g.stroke(); } }
   g.setLineDash([]);
-  // kolam dot-motifs on Chennai sidewalks (district 7: cell mx=1, mz=2)
-  (function kolams() {
-    const x0 = S / 3, x1 = 2 * S / 3, z0 = 2 * S / 3, z1 = S;
-    g.fillStyle = 'rgba(245,242,232,.85)';
-    for (let k = 0; k < 60; k++) {
-      const kx = rand(x0, x1), kz = rand(z0, z1);
-      const wx = kx / S * WORLD - HALF, wz = kz / S * WORLD - HALF;
-      if (!onSidewalk(wx, wz)) continue;
-      for (let ring = 0; ring < 3; ring++) { const n = 4 + ring * 4, rr = 2.5 + ring * 3;
-        for (let p2 = 0; p2 < n; p2++) { const a = p2 / n * TAU;
-          g.beginPath(); g.arc(kx + Math.cos(a) * rr, kz + Math.sin(a) * rr, 1.1, 0, TAU); g.fill(); } }
-    }
-  })();
-  // zebra crossings: only where two paved roads meet, and only in busier blocks
-  g.fillStyle = 'rgba(230,228,220,.75)';
-  for (let vx = -HALF; vx <= HALF; vx += STEP) for (let vz = -HALF; vz <= HALF; vz += STEP) {
-    const kx = Math.round((vx + HALF) / STEP), kz = Math.round((vz + HALF) / STEP);
-    if (isDirtV(kx) || isDirtH(kz)) continue;
-    const di3 = districtAt(vx + STEP / 2, vz + STEP / 2);
-    if (![1, 6, 7].includes(di3)) continue;
-    if (((kx * 31 + kz * 17) % 10) > 3) continue;
-    const ix = px(vx), iz = px(vz), rw = u(ROADW);
-    for (let s2 = 2; s2 < rw - 2; s2 += 7) {
-      g.fillRect(ix + s2, iz - u(1.6), 4, u(1.1));           // north arm
-      g.fillRect(ix + s2, iz + rw + u(0.5), 4, u(1.1));      // south arm
-      g.fillRect(ix - u(1.6), iz + s2, u(1.1), 4);           // west arm
-      g.fillRect(ix + rw + u(0.5), iz + s2, u(1.1), 4);      // east arm
-    }
+  // kolam dot-motifs on Chennai sidewalks
+  g.fillStyle = 'rgba(245,242,232,.85)';
+  for (let k = 0; k < 70; k++) {
+    const wx = rand(0, CELL) - CELL / 2, wz = rand(HALF - CELL, HALF - 4);
+    if (!onSidewalk(wx, wz)) continue;
+    const kx = px(wx), kz = px(wz);
+    for (let ring = 0; ring < 3; ring++) { const n = 4 + ring * 4, rr = 2.5 + ring * 3;
+      for (let p2 = 0; p2 < n; p2++) { const a = p2 / n * TAU;
+        g.beginPath(); g.arc(kx + Math.cos(a) * rr, kz + Math.sin(a) * rr, 1.1, 0, TAU); g.fill(); } }
+  }
+  // zebra crossings on the approach to big paved junctions in the metros
+  g.fillStyle = 'rgba(230,228,220,.7)';
+  for (const n of ROADS.nodes) {
+    if (n.e.length < 3) continue;
+    const di3 = districtAt(n.x, n.z); if (![1, 6, 7].includes(di3)) continue;
+    for (const e of n.e) { if (e.dirt || e.w < 7 || Math.random() < .5) continue;
+      const away = e.a === n ? 1 : -1, ox = e.ux * away, oz = e.uz * away;
+      const bx = n.x + ox * (e.w * .8), bz = n.z + oz * (e.w * .8);
+      for (let s2 = -e.w / 2 + .5; s2 < e.w / 2 - .5; s2 += 1.2) {
+        const wx = bx - oz * s2, wz = bz + ox * s2;
+        g.save(); g.translate(px(wx), px(wz)); g.rotate(Math.atan2(oz, ox));
+        g.fillRect(-u(.7), -u(.35), u(1.4), u(.7)); g.restore(); } }
   }
   const tex = new T.CanvasTexture(c); tex.anisotropy = 8; return tex;
 }
@@ -1012,6 +1171,20 @@ function makeFacadeTexture(style, floors) {
   ao.addColorStop(0, 'rgba(30,25,18,0)'); ao.addColorStop(1, 'rgba(30,25,18,.42)');
   g.fillStyle = ao; g.fillRect(0, S - fh * 1.4, S, fh * 1.4);
   g.globalAlpha = .05; for (let i = 0; i < 2400; i++) { g.fillStyle = Math.random() < .5 ? '#000' : '#fff'; g.fillRect(Math.random() * S, Math.random() * S, 2, 2); } g.globalAlpha = 1;
+  // WEATHER. Indian walls are written on by the monsoon: black streaks run down from every sill,
+  // the base of the wall is stained by splashback and soot, and the parapet catches the sky.
+  for (let i = 0; i < 46; i++) {
+    const sx = rand(0, S), sy = rand(S * .08, S * .8), len = rand(18, 90), w2 = rand(1.5, 6);
+    const gr = g.createLinearGradient(0, sy, 0, sy + len);
+    gr.addColorStop(0, 'rgba(40,34,26,.34)'); gr.addColorStop(1, 'rgba(40,34,26,0)');
+    g.fillStyle = gr; g.fillRect(sx, sy, w2, len);
+  }
+  { const gr = g.createLinearGradient(0, S * .82, 0, S);
+    gr.addColorStop(0, 'rgba(28,24,18,0)'); gr.addColorStop(1, 'rgba(28,24,18,.42)');
+    g.fillStyle = gr; g.fillRect(0, S * .82, S, S * .18);
+    const gs = g.createLinearGradient(0, 0, 0, S * .16);
+    gs.addColorStop(0, 'rgba(226,236,248,.16)'); gs.addColorStop(1, 'rgba(226,236,248,0)');
+    g.fillStyle = gs; g.fillRect(0, 0, S, S * .16); }
   const tex = new T.CanvasTexture(c); tex.wrapS = tex.wrapT = T.RepeatWrapping; if ('sRGBEncoding' in T) tex.encoding = T.sRGBEncoding; tex.anisotropy = 4; return tex;
 }
 function makeWindowTexture() { return makeFacadeTexture(0); }
@@ -1021,7 +1194,7 @@ function makeWindowTexture() { return makeFacadeTexture(0); }
 function decubeBuilding(x, z, w, h, d, rot, boxGeo, lowRise) {
   if (GFX !== 'low' && !lowRise) { // overhanging chhajja ledges at the floor lines
     const ledgeM = mat(pick(['#8a7a66', '#96846c', '#7c6e5c']), .92);
-    const nL = clamp(Math.round(h / 5.5), 1, 3);
+    const nL = clamp(Math.round(h / 8), 1, 2);
     for (let k = 1; k <= nL; k++) { const le = new T.Mesh(boxGeo, ledgeM);
       le.scale.set(w + .55, .16, d + .55); le.position.set(x, h * k / (nL + 1) + .6, z); le.rotation.y = rot; le.castShadow = true; scene.add(le); }
   }
@@ -1047,7 +1220,7 @@ function decubeBuilding(x, z, w, h, d, rot, boxGeo, lowRise) {
       tin.position.set(x + w * .12, h + .55, z + d * .1); tin.castShadow = true; scene.add(tin);
     }
   }
-  if (GFX !== 'low' && h > 8 && Math.random() < .3) { // rounded corner balcony tower, half-buried in the corner
+  if (GFX !== 'low' && h > 8 && Math.random() < .18) { // rounded corner balcony tower, half-buried in the corner
     const sx = pick([-1, 1]), sz2 = pick([-1, 1]);
     const bT = new T.Mesh(new T.CylinderGeometry(1, 1, h * .55, 12), mat(pick(['#cfc0a8', '#c0ae94', '#b8a88a']), .88));
     bT.position.set(x + sx * w / 2, h * .5, z + sz2 * d / 2); bT.castShadow = true; scene.add(bT);
@@ -1489,26 +1662,47 @@ function updateBathers(dt) {
   }
 }
 function buildCity() {
+  buildRoadNetwork();                 // the streets must exist before anything is drawn on them
   const gt = makeGroundTexture(); if ('sRGBEncoding' in T) gt.encoding = T.sRGBEncoding;
   ground = new T.Mesh(new T.PlaneGeometry(WORLD, WORLD), new T.MeshStandardMaterial({ map: gt, roughness: 1 }));
   ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
   buildSea(); buildGanga();
   winTexPools = {};
   for (const nf of [2, 3, 5, 8]) winTexPools[nf] = [makeFacadeTexture(0, nf), makeFacadeTexture(1, nf), makeFacadeTexture(2, nf), makeFacadeTexture(3, nf)];
-  // buildings on block cells (between roads)
+  // Buildings no longer fill cells in a lattice — they LINE THE STREETS. Each one is set back a
+  // little from the kerb it faces, turned square to its own street, so the built form follows the
+  // crooked network instead of a grid. Frontages vary, setbacks vary, nothing lines up.
   const boxGeo = new T.BoxGeometry(1, 1, 1);
-  for (let bx = -HALF + STEP; bx < HALF; bx += STEP) for (let bz = -HALF + STEP; bz < HALF; bz += STEP) {
-    // block interior centre
-    const cx = bx + (STEP - ROADW) / 2 + ROADW / 2 - STEP / 2 + STEP / 2; // = bx + ROADW/2 ... simplify below
-    const x0 = bx + ROADW, z0 = bz + ROADW, bw = STEP - ROADW - 1;
-    // split block into up to 2x2 buildings
-    const nx = Math.random() < .5 ? 1 : 2, nz = Math.random() < .5 ? 1 : 2;
-    const cw = bw / nx, cd = bw / nz;
-    for (let i = 0; i < nx; i++) for (let j = 0; j < nz; j++) {
-      // nothing lines up in an old city: every building sits at its own setback, slightly askew
-      const px2 = x0 + i * cw + cw / 2 + rand(-.7, .7), pz2 = z0 + j * cd + cd / 2 + rand(-.7, .7);
-      const rot = rand(-.055, .055);
-      if (Math.abs(px2) > HALF - 2 || Math.abs(pz2) > HALF - 2) continue;
+  const plots = [], occ = new Map(), OQ = 8;
+  const around = (x, z, r, fn) => { for (let gx = ((x - r + HALF) / OQ) | 0; gx <= ((x + r + HALF) / OQ) | 0; gx++)
+    for (let gz = ((z - r + HALF) / OQ) | 0; gz <= ((z + r + HALF) / OQ) | 0; gz++) { if (fn(gx + ',' + gz)) return true; } return false; };
+  const fits = (x, z, r) => !around(x, z, r, k => { const arr = occ.get(k);
+    return arr && arr.some(o => (o.x - x) * (o.x - x) + (o.z - z) * (o.z - z) < (o.r + r) * (o.r + r)); });
+  const claim = (x, z, r) => around(x, z, r, k => { let arr = occ.get(k); if (!arr) occ.set(k, arr = []); arr.push({ x, z, r }); return false; });
+  const DENS = [.95, .85, .9, .95, .8, .55, .9, .85, .5];  // Goa and Kerala breathe; the old cities are packed
+  for (const e of ROADS.edges) {
+    if (e.kind === 'highway') continue;
+    const di0 = districtAt((e.a.x + e.b.x) / 2, (e.a.z + e.b.z) / 2), dens = DENS[di0];
+    const gap = rand(9, 13);
+    for (let s = gap * .6; s < e.len - 5; s += gap) for (const side of [-1, 1]) {
+      if (Math.random() > dens) continue;
+      const frontage = rand(7, 12), depth = rand(8, 15);
+      const off = e.w / 2 + SIDEW + depth / 2 + rand(.2, 1.6);          // its own setback
+      const x = e.a.x + e.ux * s - e.uz * side * off, z = e.a.z + e.uz * s + e.ux * side * off;
+      const r = Math.max(frontage, depth) * .46;
+      if (Math.abs(x) > HALF - 3 || Math.abs(z) > HALF - 3) continue;
+      if (inBeach(x, z) || inGhats(x, z)) continue;
+      const rr2 = nearRoad(x, z); if (rr2 && rr2.d < rr2.e.w / 2 + SIDEW * .9) continue;  // never on another street
+      if (!farFromLandmarks(x, z, 15)) continue;
+      if (!fits(x, z, r)) continue;
+      claim(x, z, r);
+      plots.push({ x, z, rot: Math.atan2(-e.uz * side, e.ux * side) + rand(-.05, .05), w: frontage, d: depth });
+    }
+  }
+  for (const plot of plots) {
+    {
+      const px2 = plot.x, pz2 = plot.z, rot = plot.rot, cw = plot.w, cd = plot.d;
+      const _from = scene.children.length;   // remember every mesh this building adds, to cull it as one
       if (inBeach(px2, pz2) || inGhats(px2, pz2)) continue; // sand and ghats stay open to the sky
       const di2 = districtAt(px2, pz2), D = DISTRICTS[di2];
       // studied city profiles: Kerala/Goa are LOW with pitched roofs, Mumbai towers high,
@@ -1539,11 +1733,12 @@ function buildCity() {
       decubeBuilding(px2, pz2, w, h, d, rot, boxGeo, lowRise);
       addDistrictArchitecture(di2, px2, pz2, w, h, d, boxGeo);
       // water tank + rooftop clutter
-      if (Math.random() < .55) { const tk = new T.Mesh(new T.CylinderGeometry(.35, .35, .7, 10), mat('#3a3a3a')); tk.position.set(px2 + w * .2, h + .55, pz2 + d * .2); tk.castShadow = true; scene.add(tk); }
-      if (Math.random() < .4) { const ac = new T.Mesh(boxGeo, mat('#c9c4b8')); ac.scale.set(.5, .35, .5); ac.position.set(px2 - w * .25, h + .35, pz2 - d * .2); ac.castShadow = true; scene.add(ac); }
+      if (Math.random() < .38) { const tk = new T.Mesh(new T.CylinderGeometry(.35, .35, .7, 10), mat('#3a3a3a')); tk.position.set(px2 + w * .2, h + .55, pz2 + d * .2); tk.castShadow = true; scene.add(tk); }
+      if (Math.random() < .26) { const ac = new T.Mesh(boxGeo, mat('#c9c4b8')); ac.scale.set(.5, .35, .5); ac.position.set(px2 - w * .25, h + .35, pz2 - d * .2); ac.castShadow = true; scene.add(ac); }
       // ground-floor awning fixed to the wall base (no floating)
       if (Math.random() < .5) { const aw = new T.Mesh(boxGeo, mat(pick(['#c0392b', '#2980b9', '#e0b93c', '#16a085']))); aw.scale.set(w * .9, .16, .6); aw.position.set(px2, 1.7, pz2 + d / 2 + .25); aw.castShadow = true; scene.add(aw); }
       buildings.push({ x: px2, z: pz2, hw: w / 2 + .3, hd: d / 2 + .3 });
+      cityChunks.push({ x: px2, z: pz2, parts: scene.children.slice(_from) });
     }
   }
   buildLandmarks();
@@ -1672,6 +1867,25 @@ function buildLandmarks() {
     }
     g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   }
+}
+// Contact shadows. Without a dark smudge where a thing meets the ground, everything reads as
+// floating — and on the light graphics tier there are no real shadows at all. One shared texture,
+// one extra quad per body, and the whole street suddenly sits DOWN on the tarmac.
+let _shTex = null;
+function shadowTexture() {
+  if (_shTex) return _shTex;
+  const c = document.createElement('canvas'); c.width = c.height = 64; const q = c.getContext('2d');
+  const gr = q.createRadialGradient(32, 32, 2, 32, 32, 31);
+  gr.addColorStop(0, 'rgba(0,0,0,.85)'); gr.addColorStop(.55, 'rgba(0,0,0,.42)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  q.fillStyle = gr; q.fillRect(0, 0, 64, 64);
+  _shTex = new T.CanvasTexture(c); return _shTex;
+}
+const contactShadows = [];
+function addContactShadow(g, rx, rz, op) {
+  const m = new T.Mesh(new T.CircleGeometry(1, 14), new T.MeshBasicMaterial({
+    map: shadowTexture(), transparent: true, opacity: op || .5, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2; m.position.y = .02; m.scale.set(rx, rz || rx, 1); m.renderOrder = -1;
+  g.add(m); contactShadows.push({ m, host: g }); return m;
 }
 // tree: trunk + rounded canopy (or palm for coastal districts)
 let barkTex = null, frondTex = null, leafMats = null;
@@ -1891,8 +2105,27 @@ function genDelhiWires() { // Chandni Chowk's black wire spaghetti (district 0 c
     count++;
   }
 }
-function roadSpot() { for (let i = 0; i < 24; i++) { const x = rand(-HALF, HALF), z = rand(-HALF, HALF); if (onRoad(x, z) && !inGhats(x, z) && !inBeach(x, z)) return { x, z }; } return null; }
-function sidewalkSpot() { for (let i = 0; i < 60; i++) { const x = rand(-HALF + 4, HALF - 4), z = rand(-HALF + 4, HALF - 4); if (onSidewalk(x, z) && !blocked(x, z)) return { x, z }; } return null; }
+function roadSpot() { // somewhere on the carriageway of a real street
+  for (let i = 0; i < 24; i++) {
+    const e = ROADS.edges[randi(0, ROADS.edges.length - 1)];
+    if (!e || e.kind === 'gali') continue;
+    const t = rand(.1, .9), o = rand(-e.w * .3, e.w * .3);
+    const x = e.a.x + e.ux * e.len * t - e.uz * o, z = e.a.z + e.uz * e.len * t + e.ux * o;
+    if (!inGhats(x, z) && !inBeach(x, z) && Math.abs(x) < HALF - 2 && Math.abs(z) < HALF - 2) return { x, z, e };
+  }
+  return null;
+}
+function sidewalkSpot() { // the paving strip beside a street, clear of walls
+  for (let i = 0; i < 40; i++) {
+    const e = ROADS.edges[randi(0, ROADS.edges.length - 1)];
+    if (!e) continue;
+    const t = rand(.08, .92), side = Math.random() < .5 ? -1 : 1, o = side * (e.w / 2 + rand(.4, SIDEW - .3));
+    const x = e.a.x + e.ux * e.len * t - e.uz * o, z = e.a.z + e.uz * e.len * t + e.ux * o;
+    if (Math.abs(x) > HALF - 4 || Math.abs(z) > HALF - 4) continue;
+    if (!blocked(x, z)) return { x, z };
+  }
+  return null;
+}
 const LANDMARK_CENTRES = [];
 for (let i = 0; i < 9; i++) LANDMARK_CENTRES.push([((i % 3) - 1) * CELL, (((i / 3) | 0) - 1) * CELL]);
 const landmarks = LANDMARK_CENTRES.map(([x, z], i) => ({ x, z, d: i }));
@@ -1944,6 +2177,7 @@ function spawnCows(n) {
     const tuft = new T.Mesh(new T.SphereGeometry(.06, 6, 6), mat('#3a2f24', .9)); tuft.position.set(0, .52, -1.16); g.add(tuft);
     g.traverse(o => { if (o.isMesh) o.castShadow = true; });
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
+    addContactShadow(g, 1.05, 1.75, .45);
     cows.push({ g, dir: rand(0, TAU), speed: rand(.25, .6), t: rand(0, 10) }); }
 }
 
@@ -1998,6 +2232,7 @@ function spawnElephants(n) {
     const tail2 = new T.Mesh(new T.CylinderGeometry(.045, .03, 1.3, 6), hide2); tail2.position.set(0, 1.85, -2.05); tail2.rotation.x = .3; g.add(tail2);
     g.traverse(o => { if (o.isMesh) o.castShadow = true; });
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU); scene.add(g);
+    addContactShadow(g, 1.5, 2.3, .5);
     elephants.push({ g, dir: rand(0, TAU), speed: rand(.35, .55), t: rand(0, 10) });
   }
 }
@@ -2111,13 +2346,9 @@ function updateDogs(dt) {
   }
 }
 // ---------- galis: the old quarters' lanes are too narrow for cars — two- and three-wheelers only ----------
-const GALIS = [
-  { x: -HALF + 2 * STEP, z0: -HALF + 4, z1: -HALF + CELL - 4 },        // Purani Dilli gali
-  { x: -HALF + 3 * STEP, z0: -HALF + CELL + 4, z1: -HALF + 2 * CELL - 4 }, // Kashi gali down to the ghats
-];
-function inGali(x, z) {
-  for (const g of GALIS) { if (Math.abs(x - (g.x + ROADW / 2)) < ROADW / 2 + .3 && z > g.z0 && z < g.z1) return true; }
-  return false;
+function inGali(x, z) { // the thinnest lanes of the old quarters: no car fits down them
+  const r = nearRoad(x, z);
+  return !!r && r.e.kind === 'gali' && r.d < r.e.w / 2 + .4;
 }
 // North-Indian temple, studied from the real thing: raised plinth, sanctum, CURVILINEAR shikhara
 // tower (not a cone!), ribbed amalaka disc at the crown, gold kalasha pot finial, saffron flag.
@@ -2246,43 +2477,13 @@ function buildStreetShrines() {
     buildings.push({ x: p.x, z: p.z, hw: .55, hd: .5 });
   }
 }
-// the gali opens onto a surprise: a whole bazaar of carts and produce spread on ground tarps
-function buildGaliMarkets() {
-  for (const ga of GALIS) {
-    const cx = ga.x + ROADW / 2, zm = (ga.z0 + ga.z1) / 2;
-    for (let i = 0; i < 3; i++) { // thela carts along the lane
-      const p = { x: cx + pick([-2.6, 2.6]), z: zm + (i - 1) * 7 + rand(-1.5, 1.5) };
-      const cart = new T.Group();
-      const bed = new T.Mesh(new T.BoxGeometry(1.6, .14, 1), mat('#1e6a5a', .9)); bed.position.y = .8; cart.add(bed);
-      for (const sx of [-.6, .6]) { const wl = new T.Mesh(new T.TorusGeometry(.32, .05, 8, 16), mat('#3a2f24', .8)); wl.rotation.y = Math.PI / 2; wl.position.set(sx, .34, 0); cart.add(wl); }
-      const fruit = pick(['#e67e22', '#c0392b', '#e0b93c', '#4f9e2b', '#8e44ad']);
-      for (let ring = 0; ring < 3; ring++) { const n = 5 - ring;
-        for (let q = 0; q < n * n; q++) { const fx = (q % n - (n - 1) / 2) * .18, fz = ((q / n | 0) - (n - 1) / 2) * .18;
-          const fr = new T.Mesh(new T.SphereGeometry(.085, 8, 7), mat(fruit, .55)); fr.position.set(fx, .95 + ring * .14, fz); cart.add(fr); } }
-      cart.position.set(p.x, 0, p.z); cart.rotation.y = rand(0, TAU);
-      cart.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(cart);
-      buildings.push({ x: p.x, z: p.z, hw: 1, hd: .8, parts: [cart] });
-    }
-    for (let i = 0; i < 4; i++) { // produce heaped straight on tarps at ground level
-      const p = { x: cx + pick([-2.9, 2.9]) + rand(-.4, .4), z: zm + rand(-12, 12) };
-      const tarp = new T.Mesh(new T.PlaneGeometry(1.7, 1.4), new T.MeshStandardMaterial({ color: pick(['#2a5ba8', '#a89468', '#7a8a5a']), roughness: 1 }));
-      tarp.rotation.x = -Math.PI / 2; tarp.rotation.z = rand(0, TAU); tarp.position.set(p.x, .025, p.z); scene.add(tarp);
-      const veg = pick(['#4f9e2b', '#c0392b', '#e0b93c', '#7a4a8a', '#e67e22', '#2e7a3a']);
-      for (let v2 = 0; v2 < 10; v2++) { const it = new T.Mesh(new T.SphereGeometry(rand(.055, .1), 7, 6), mat(veg, .6));
-        it.position.set(p.x + rand(-.55, .55), .1, p.z + rand(-.45, .45)); it.castShadow = true; scene.add(it); }
-    }
-    // festoon of little flags strung across the lane
-    for (const fz of [zm - 10, zm + 10]) {
-      for (let k = 0; k < 9; k++) { const t = k / 8;
-        const fl = new T.Mesh(new T.ConeGeometry(.11, .3, 3), new T.MeshStandardMaterial({ color: pick(['#e91e63', '#ffc107', '#00bcd4', '#8bc34a', '#ff5722']), side: T.DoubleSide }));
-        fl.rotation.x = Math.PI; fl.position.set(cx - 3.2 + t * 6.4, 3.4 - Math.sin(t * Math.PI) * .7, fz); scene.add(fl); }
-    }
-  }
-}
 // municipal handpumps where the street bathes: an old uncle soaping up with his lota pot
 const pumpsHand = [];
 function buildHandpumps() {
-  for (const spot of [{ x: -HALF + 3 * STEP + 9, z: -HALF + 30 }, { x: -HALF + 2 * STEP + 9, z: -HALF + CELL + 44 }]) {
+  const spots = [];
+  for (let t = 0; t < 200 && spots.length < 2; t++) { const p = sidewalkSpot();   // wherever the old quarters have pavement
+    if (p && [0, 3].includes(districtAt(p.x, p.z)) && clearOf(p.x, p.z, 3)) spots.push(p); }
+  for (const spot of spots) {
     const g = new T.Group();
     const base = new T.Mesh(new T.BoxGeometry(1.6, .12, 1.6), mat('#9a978f', .9)); base.position.y = .06; g.add(base);
     const body = new T.Mesh(new T.CylinderGeometry(.09, .12, 1.1, 8), mat('#2e7a3a', .6)); body.position.y = .6; g.add(body);
@@ -2294,26 +2495,69 @@ function buildHandpumps() {
     pumpsHand.push(spot);
   }
 }
+// The galis are no longer two hand-placed corridors: they are the thinnest edges the network grew,
+// picked out of the old quarters and dressed — cobbles, bollards at the mouth, an arch overhead.
+const GALI_EDGES = [];
+function galiLocal(e, mx, mz) { return (lx, lz) => ({ x: mx + lx * e.uz + lz * e.ux, z: mz - lx * e.ux + lz * e.uz }); }
 function buildGalis() {
   const stoneM = mat('#7a7468', .95), postM = mat('#8a8478', .9);
-  for (const ga of GALIS) {
-    const cx = ga.x + ROADW / 2;
-    // worn cobble strip narrows the lane visually
+  const cands = ROADS.edges.filter(e => e.kind === 'gali' && e.len > 16 &&
+    [0, 3, 2, 6].includes(districtAt((e.a.x + e.b.x) / 2, (e.a.z + e.b.z) / 2)));
+  cands.sort((a, b) => b.len - a.len);
+  for (const e of cands.slice(0, 5)) {
+    GALI_EDGES.push(e);
+    const mx = (e.a.x + e.b.x) / 2, mz = (e.a.z + e.b.z) / 2, half = e.len / 2;
+    const L = galiLocal(e, mx, mz);
+    const grp = new T.Group(); grp.position.set(mx, 0, mz); grp.rotation.y = Math.atan2(e.ux, e.uz); scene.add(grp);
     const cob = document.createElement('canvas'); cob.width = 64; cob.height = 128; const cg = cob.getContext('2d');
     cg.fillStyle = '#6e6a60'; cg.fillRect(0, 0, 64, 128);
     for (let i = 0; i < 120; i++) { cg.fillStyle = pick(['#7c786c', '#5f5b52', '#87816f']);
       cg.beginPath(); cg.ellipse(rand(0, 64), rand(0, 128), rand(3, 6), rand(2, 4), 0, 0, TAU); cg.fill(); }
-    const ct = new T.CanvasTexture(cob); ct.wrapS = ct.wrapT = T.RepeatWrapping; ct.repeat.set(1, (ga.z1 - ga.z0) / 6);
-    const strip = new T.Mesh(new T.PlaneGeometry(3.4, ga.z1 - ga.z0), new T.MeshStandardMaterial({ map: ct, roughness: 1 }));
-    strip.rotation.x = -Math.PI / 2; strip.position.set(cx, .03, (ga.z0 + ga.z1) / 2); strip.receiveShadow = true; scene.add(strip);
-    for (const gz of [ga.z0, (ga.z0 + ga.z1) / 2, ga.z1]) { // stone bollards at the mouths — a scooter slips through, a car cannot
-      for (const bx of [-1.15, 0, 1.15]) { const post = new T.Mesh(new T.CylinderGeometry(.14, .17, .85, 8), postM);
-        post.position.set(cx + bx, .42, gz); post.castShadow = true; scene.add(post); } }
-    // old arch over each entrance
-    for (const gz of [ga.z0, ga.z1]) {
-      for (const px3 of [-2.6, 2.6]) { const pil = new T.Mesh(new T.BoxGeometry(.7, 4.4, .7), stoneM); pil.position.set(cx + px3, 2.2, gz); pil.castShadow = true; scene.add(pil);
-        buildings.push({ x: cx + px3, z: gz, hw: .4, hd: .4 }); }
-      const lin = new T.Mesh(new T.BoxGeometry(6.4, .7, .9), stoneM); lin.position.set(cx, 4.6, gz); lin.castShadow = true; scene.add(lin);
+    const ct = new T.CanvasTexture(cob); ct.wrapS = ct.wrapT = T.RepeatWrapping; ct.repeat.set(1, e.len / 6);
+    const strip = new T.Mesh(new T.PlaneGeometry(3.4, e.len), new T.MeshStandardMaterial({ map: ct, roughness: 1 }));
+    strip.rotation.x = -Math.PI / 2; strip.position.y = .03; strip.receiveShadow = true; grp.add(strip);
+    for (const lz of [-half + .6, 0, half - .6]) {   // bollards: a scooter slips through, a car cannot
+      for (const lx of [-1.15, 0, 1.15]) { const post = new T.Mesh(new T.CylinderGeometry(.14, .17, .85, 8), postM);
+        post.position.set(lx, .42, lz); post.castShadow = true; grp.add(post); } }
+    for (const lz of [-half + .5, half - .5]) {      // an old arch at each mouth
+      for (const lx of [-2.6, 2.6]) { const pil = new T.Mesh(new T.BoxGeometry(.7, 4.4, .7), stoneM);
+        pil.position.set(lx, 2.2, lz); pil.castShadow = true; grp.add(pil);
+        const w2 = L(lx, lz); buildings.push({ x: w2.x, z: w2.z, hw: .4, hd: .4 }); }
+      const lin = new T.Mesh(new T.BoxGeometry(6.4, .7, .9), stoneM); lin.position.set(0, 4.6, lz); lin.castShadow = true; grp.add(lin);
+    }
+  }
+}
+// the gali opens onto a surprise: a whole bazaar of carts and produce spread on ground tarps
+function buildGaliMarkets() {
+  for (const e of GALI_EDGES) {
+    const mx = (e.a.x + e.b.x) / 2, mz = (e.a.z + e.b.z) / 2, half = e.len / 2;
+    const L = galiLocal(e, mx, mz);
+    for (let i = 0; i < 3; i++) {                    // thela carts pushed against the walls
+      const p = L(pick([-2.6, 2.6]), rand(-half + 4, half - 4));
+      const cart = new T.Group();
+      const bed = new T.Mesh(new T.BoxGeometry(1.6, .14, 1), mat('#1e6a5a', .9)); bed.position.y = .8; cart.add(bed);
+      for (const sx of [-.6, .6]) { const wl = new T.Mesh(new T.TorusGeometry(.32, .05, 8, 16), mat('#3a2f24', .8));
+        wl.rotation.y = Math.PI / 2; wl.position.set(sx, .34, 0); cart.add(wl); }
+      const fruit = pick(['#e67e22', '#c0392b', '#e0b93c', '#4f9e2b', '#8e44ad']);
+      for (let ring = 0; ring < 3; ring++) { const n = 5 - ring;
+        for (let q = 0; q < n * n; q++) { const fx = (q % n - (n - 1) / 2) * .18, fz = ((q / n | 0) - (n - 1) / 2) * .18;
+          const fr = new T.Mesh(new T.SphereGeometry(.085, 8, 7), mat(fruit, .55)); fr.position.set(fx, .95 + ring * .14, fz); cart.add(fr); } }
+      cart.position.set(p.x, 0, p.z); cart.rotation.y = rand(0, TAU);
+      cart.traverse(o => { if (o.isMesh) o.castShadow = true; }); scene.add(cart);
+      buildings.push({ x: p.x, z: p.z, hw: 1, hd: .8, parts: [cart] });
+    }
+    for (let i = 0; i < 4; i++) {                    // produce heaped straight on tarps at ground level
+      const p = L(pick([-2.9, 2.9]) + rand(-.4, .4), rand(-half + 3, half - 3));
+      const tarp = new T.Mesh(new T.PlaneGeometry(1.7, 1.4), new T.MeshStandardMaterial({ color: pick(['#2a5ba8', '#a89468', '#7a8a5a']), roughness: 1 }));
+      tarp.rotation.x = -Math.PI / 2; tarp.rotation.z = rand(0, TAU); tarp.position.set(p.x, .025, p.z); scene.add(tarp);
+      const veg = pick(['#4f9e2b', '#c0392b', '#e0b93c', '#7a4a8a', '#e67e22', '#2e7a3a']);
+      for (let v2 = 0; v2 < 10; v2++) { const it = new T.Mesh(new T.SphereGeometry(rand(.055, .1), 7, 6), mat(veg, .6));
+        it.position.set(p.x + rand(-.55, .55), .1, p.z + rand(-.45, .45)); it.castShadow = true; scene.add(it); }
+    }
+    for (const fz of [-half * .5, half * .5]) {      // festoons of little flags strung across the lane
+      for (let k = 0; k < 9; k++) { const t = k / 8, p = L(-3.2 + t * 6.4, fz);
+        const fl = new T.Mesh(new T.ConeGeometry(.11, .3, 3), new T.MeshStandardMaterial({ color: pick(['#e91e63', '#ffc107', '#00bcd4', '#8bc34a', '#ff5722']), side: T.DoubleSide }));
+        fl.rotation.x = Math.PI; fl.position.set(p.x, 3.4 - Math.sin(t * Math.PI) * .7, p.z); scene.add(fl); }
     }
   }
 }
@@ -2747,7 +2991,7 @@ const VEH_SPECS = {
   truck:  { len: 5.6, spd: 15, acc: 10, seat: { x: .35, y: .55, z: 1.2 } },
   suv:    { len: 4.6, spd: 19, acc: 13, seat: { x: .35, y: .45, z: .2 } },
   police: { len: 4.5, spd: 21, acc: 15, seat: { x: .35, y: .35, z: .2 } },
-  moto:   { len: 2.2, spd: 20, acc: 15, open: true, seat: { x: 0, y: .55, z: -.1 } },
+  moto:   { len: 2.2, spd: 20, acc: 15, open: true, seat: { x: 0, y: -.16, z: -.1 } },
   bus:    { len: 9.5, spd: 14, acc: 9,  seat: { x: .4, y: .5, z: 3.4 } },
 };
 // street-plausible Indian paint jobs, light enough to keep the kits' texture detail
@@ -2798,11 +3042,21 @@ function buildVehModel(k) {
   m.rotation.y = M.yawFix;
   m.position.y = -M.minY * M.scale; // sit on the road
   const paint = (VEH_PAINTS[k] && k !== 'taxi' && k !== 'police') ? pick(VEH_PAINTS[k]) : null;
-  m.traverse(o => { if (o.isMesh) { o.castShadow = true;
-    o.material = o.material.clone();
-    // never pure white: if the kit texture ever fails to decode, the car still shows a real colour
-    o.material.color = new T.Color('#cfcfcf');
-    if (paint && /body/i.test(o.name)) o.material.color = new T.Color(paint); } });
+  // Painting by mesh NAME failed on half the kit — a van whose body mesh isn't called "body" stayed
+  // factory white. So the bodywork is found by SIZE instead: the biggest panels are the car.
+  const parts = [];
+  m.traverse(o => { if (o.isMesh) { o.castShadow = true; o.material = o.material.clone();
+    o.geometry.computeBoundingBox(); const bb = o.geometry.boundingBox;
+    parts.push({ o, vol: (bb.max.x - bb.min.x) * (bb.max.y - bb.min.y) * (bb.max.z - bb.min.z) }); } });
+  const big = parts.reduce((a, p2) => Math.max(a, p2.vol), 0);
+  for (const { o, vol } of parts) {
+    const n = o.name || '', mn = (o.material && o.material.name) || '';
+    if (/glass|window|windscreen|screen/i.test(n + mn)) { o.material.color = new T.Color('#2b3239'); o.material.roughness = .18; o.material.metalness = .2; continue; }
+    if (/wheel|tyre|tire|rim/i.test(n + mn)) { o.material.color = new T.Color('#1b1b1e'); continue; }
+    if (/light|lamp|head/i.test(n + mn)) { o.material.color = new T.Color('#f2e6c8'); continue; }
+    const isBody = /body|chassis|hull|cabin|door|roof|bonnet|boot|panel/i.test(n + mn) || vol > big * .35;
+    o.material.color = new T.Color(isBody && paint ? paint : isBody ? '#b8564a' : '#8d8d92');
+  }
   g.add(m);
   g.userData.seat = M.seat; g.userData.dim = M.dim;
   g.userData.maxSpd = M.spd; g.userData.acc = M.acc;
@@ -2854,7 +3108,7 @@ function buildEnfield() {
   const bar = new T.Mesh(new T.CylinderGeometry(.03, .03, .72, 8), chrome); bar.rotation.z = Math.PI / 2; bar.position.set(0, 1.28, .82); g.add(bar);
   const lamp = new T.Mesh(new T.SphereGeometry(.13, 12, 10), chromeLight(true)); lamp.position.set(0, 1.18, 1.05); g.add(lamp);
   const fenderF = new T.Mesh(new T.CylinderGeometry(.56, .56, .14, 12, 1, false, Math.PI * .1, Math.PI * .55), chrome); fenderF.rotation.z = Math.PI / 2; fenderF.position.set(0, .5, .95); g.add(fenderF);
-  g.userData.seat = { x: 0, y: .5, z: -.28 };
+  g.userData.seat = { x: 0, y: -.12, z: -.28 };  // hips land ON the saddle, not above it
   g.userData.dim = { w: .45, l: 1.15 }; g.userData.maxSpd = 19; g.userData.acc = 14;
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
   return g;
@@ -2908,7 +3162,7 @@ function buildBicycle() {
     grip.rotation.z = Math.PI / 2; grip.position.set(sx, 1.02, .38); g.add(grip); }
   const bell = new T.Mesh(new T.SphereGeometry(.03, 8, 6), chrome); bell.position.set(.1, 1.04, .44); g.add(bell);
   g.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  g.userData.seat = { x: 0, y: .42, z: -.3 };
+  g.userData.seat = { x: 0, y: .02, z: -.3 };   // hips land ON the saddle, not above it
   g.userData.dim = { w: .35, l: 1.0 }; g.userData.maxSpd = 7.5; g.userData.acc = 5.5;
   return g;
 }
@@ -2943,13 +3197,9 @@ function buildRamps() {
   const rM = mat('#7a5a34', .95), sM = mat('#5c4326', .95); // weathered wood planks
   let placed = 0;
   for (let tries = 0; tries < 500 && placed < 4; tries++) {
-    const p = roadSpot(); if (!p) continue;
-    const kx = Math.round((p.x + HALF) / STEP), kz = Math.round((p.z + HALF) / STEP);
-    // sit on a paved road, aligned with it
-    const fx = ((p.x % STEP) + STEP) % STEP, alongZ = fx < ROADW && dirtV.has(kx);
-    const alongX = !alongZ && dirtH.has(kz);
-    if (!alongZ && !alongX) continue; // stunt ramps hide on the dirt lanes, Vice-City style
-    const yaw = alongZ ? 0 : Math.PI / 2;
+    const p = roadSpot(); if (!p || !p.e) continue;
+    if (!p.e.dirt || p.e.len < 14) continue;      // stunt ramps hide down the dirt lanes, Vice-City style
+    const yaw = Math.atan2(p.e.ux, p.e.uz);       // laid along whichever way the lane runs
     const len = 8.5, w = 4.6, h = 2.6;
     const angle = Math.atan2(h, len);
     const slabLen = Math.sqrt(len * len + h * h);
@@ -3047,6 +3297,7 @@ function spawnVehicles(n) {
     g.position.set(p.x, 0, p.z); g.rotation.y = rand(0, TAU);
     scene.add(g);
     const dim = g.userData.dim || { w: .95, l: 2.2 };
+    addContactShadow(g, (dim.w || 1) * 1.45, (dim.l || 2) * 1.02, .45);
     const v = { g, kind, yaw: g.rotation.y, speed: 0, ai: true, aiDir: rand(0, TAU), aiTimer: 0,
       hw: dim.w, hl: dim.l,
       horn: kind === 'cycle' ? 4 : (kind === 'truck' || kind === 'bus') ? 2 :
@@ -3063,7 +3314,9 @@ function spawnVehicles(n) {
         outfit: pick(['kurta', 'kurta', 'khadi', 'silk']), hair: pick(['crop', 'crop', 'part', 'curly']) };
       const d = makeHuman(o); const seat = g.userData.seat;
       g.add(d); d.position.set(seat.x, seat.y, seat.z);
-      if (d.userData.human) { d.userData.human.seated = true; animateChar(d, false, .03, 0); }
+      if (d.userData.human) { d.userData.human.seated = true;
+        if (kind === 'moto' || kind === 'enfield') d.userData.human.bike = true;
+        animateChar(d, false, .03, 0); }
       v.driver = { g: d, fare: kind === 'cycle' ? randi(15, 40) : randi(40, 90) };
     }
     else if (HERO && kind !== 'cycle' && r < .6 && Math.random() < .55) {
@@ -3165,7 +3418,7 @@ function tryEnterExit() {
   if (player.inVehicle) { // step out at the door
     const v = player.inVehicle;
     Radio.setOn(false);
-    const u = player.g.userData; if (u.human) { u.human.seated = false; u.human.pedal = undefined; }
+    const u = player.g.userData; if (u.human) { u.human.seated = false; u.human.pedal = undefined; u.human.bike = false; }
     scene.add(player.g);
     const door = doorWorld(v);
     player.pos.set(door.x, 0, door.z); player.g.position.copy(player.pos);
@@ -3190,7 +3443,10 @@ function acceptRide() {
   v.hired = true; v.fareDue = n.fare; v.ai = true;
   // hop in the back seat
   v.g.add(player.g); player.g.position.set(0, .06, -.68); player.g.rotation.set(0, 0, 0); // tucked INSIDE the cab
-  const u = player.g.userData; if (u.human) u.human.seated = true;
+  const u = player.g.userData;
+  if (u.human) { u.human.seated = true;
+    u.human.bike = (v.kind === 'moto' || v.kind === 'enfield');   // straddle, don't sit like in a car
+    if (v.kind !== 'cycle') u.human.pedal = undefined; }
   player.riding = v; player.rideT = 0; player.rideDur = rand(16, 26);
   Radio.setOn(true);
   toast('\ud83d\udee9 Chalo! \u20b9' + n.fare, '#8ef58e');
@@ -3506,7 +3762,8 @@ const Radio = {
     { name: 'Radio Mirchi 98.3 (Bollywood)', url: 'https://radioindia.net/radio/mirchi98/icecast.audio' },
     { name: 'Bombay Beats', url: 'https://radioindia.net/radio/sc-bb/icecast.audio' },
     { name: 'Radio City 91.1 Hindi', url: 'https://prclive4.listenon.in/Hindi' },
-    { name: 'AIR Vividh Bharati', url: 'https://airhlspush.pc.cdn.bitgravity.com/httppush/hlspbaudio005/hlspbaudio00564kbps.m3u8' },
+    { name: 'Hungama Hindi', url: 'https://stream.zeno.fm/0r0xa792kwzuv' },
+    { name: 'Suno 1024 Bollywood', url: 'https://stream.zeno.fm/8wv4dpv9dm0uv' },
   ],
   init() { // enrich with live-verified stations from the public directory (runs in the player's browser)
     try {
@@ -3530,7 +3787,8 @@ const Radio = {
   setOn(v) { this.ensure(); this.on = v; this.fails = 0;
     if (v) this.play(); else { try { this.el.pause(); } catch (e) {} } },
   switch() { this.ensure(); this.fails = 0; this.idx = (this.idx + 1) % this.stations.length;
-    if (this.on) this.play(); return this.stations[this.idx]; },
+    this.on = true; this.play();                 // always wake the set back up, even after a dead stream
+    return this.stations[this.idx]; },
   tick() {}
 };
 // ---------- UI helpers ----------
@@ -3857,6 +4115,9 @@ function nearPlayerSpot(rmin, rmax, wantSidewalk) {
 // The city is built from thousands of hand-placed details — single fruits on a cart, marigolds on
 // the steps, bones in the ash. Each one is its own draw call, and a laptop chokes long before the
 // GPU does. None of them is legible past a few metres, so they switch off once you walk away.
+// Streets full of buildings line up to the horizon now, and every ledge and chhatri is its own
+// draw call. Past the fog line they are invisible anyway, so a whole building switches off at once.
+const cityChunks = [];
 const tinyProps = [];
 function registerTinyProps() {
   const TMP = new T.Vector3();
@@ -3884,6 +4145,12 @@ function recycleLife(dt) {
   for (const c of cows) c.g.visible = c.g.position.distanceToSquared(player.pos) < R2;
   for (const m of monkeys) m.g.visible = m.g.position.distanceToSquared(player.pos) < R2;
   for (const e of elephants) e.g.visible = e.g.position.distanceToSquared(player.pos) < R2;
+  const CR2 = GFX === 'low' ? 82 * 82 : 130 * 130;   // fog swallows them well before this
+  for (const ch of cityChunks) { const dx = ch.x - player.pos.x, dz = ch.z - player.pos.z;
+    const vis = dx * dx + dz * dz < CR2;
+    if (ch.vis !== vis) { ch.vis = vis; for (const m of ch.parts) m.visible = vis; } }
+  const SR2 = GFX === 'low' ? 42 * 42 : 66 * 66;   // a smudge on the ground reads only from close
+  for (const c of contactShadows) c.m.visible = c.host.position.distanceToSquared(player.pos) < SR2;
   const TR2 = GFX === 'low' ? 34 * 34 : 52 * 52;   // the little details: legible close up, noise beyond
   for (const t of tinyProps) { const dx = t.x - player.pos.x, dz = t.z - player.pos.z;
     t.o.visible = dx * dx + dz * dz < TR2; }
@@ -3975,7 +4242,21 @@ function updateVehicles(dt) {
       hornSound(rand(.3, .65), .09 * (1 - d / 30), hv.horn == null ? 0 : hv.horn); } }
   for (const v of vehicles) { if (v.driver && v.g.position.distanceToSquared(player.pos) < 70 * 70) animateChar(v.driver.g, false, dt, 0); }
   for (const v of vehicles) { if (v === player.inVehicle || !v.ai) continue;
-    v.aiTimer -= dt; if (v.aiTimer <= 0) { v.aiDir = Math.round(v.aiDir / (Math.PI / 2)) * (Math.PI / 2) + (Math.random() < .3 ? (Math.random() < .5 ? Math.PI / 2 : -Math.PI / 2) : 0); v.aiTimer = rand(2, 5); }
+    // drivers no longer guess at right angles on a lattice: they aim for the next junction and
+    // pick their turn there, the way you actually drive through a city
+    if (!v.node) { const r0 = nearRoad(v.g.position.x, v.g.position.z);
+      if (r0) { v.node = Math.random() < .5 ? r0.e.a : r0.e.b; v.from = r0.e; } }
+    if (v.node) {
+      const dxn = v.node.x - v.g.position.x, dzn = v.node.z - v.g.position.z;
+      if (dxn * dxn + dzn * dzn < 36) {                       // arrived: choose the next street
+        const opts = v.node.e.filter(e => !((v.hw || .95) > .7 && e.kind === 'gali'));
+        const pool = opts.length > 1 ? opts.filter(e => e !== v.from) : opts;
+        const e2 = pool.length ? pool[randi(0, pool.length - 1)] : null;
+        if (e2) { v.from = e2; v.node = e2.a === v.node ? e2.b : e2.a; }
+      }
+      v.aiDir = Math.atan2(v.node.x - v.g.position.x, v.node.z - v.g.position.z);
+    }
+    v.aiTimer -= dt;
     // brake for whoever is in the road ahead (player, cows, pedestrians) — with an angry horn
     let blockAhead = false;
     const ax = v.g.position.x + Math.sin(v.aiDir) * 4, az = v.g.position.z + Math.cos(v.aiDir) * 4;
@@ -4008,7 +4289,7 @@ function updateVehicles(dt) {
     const nx = v.g.position.x + Math.sin(v.aiDir) * v.speed * dt, nz = v.g.position.z + Math.cos(v.aiDir) * v.speed * dt;
     // traffic stays ON the road (not on sidewalks) and off obstacles
     if (onRoad(nx, nz) && !blocked(nx, nz) && !inGhats(nx, nz) && !((v.hw || .95) > .7 && inGali(nx, nz)) && Math.abs(nx) < HALF - 1 && Math.abs(nz) < HALF - 1) { v.g.position.x = nx; v.g.position.z = nz; v.yaw = lerp(v.yaw, v.aiDir, .1); v.g.rotation.y = v.yaw; }
-    else { v.aiDir += (Math.random() < .5 ? 1 : -1) * Math.PI / 2; v.aiTimer = rand(1, 2.5); }
+    else { v.node = null; v.from = null; v.aiDir += (Math.random() < .5 ? 1 : -1) * rand(.8, 1.9); v.aiTimer = rand(1, 2.5); }
   }
 }
 function updateCops(dt) {
@@ -4022,6 +4303,11 @@ function updateCops(dt) {
   if (!near && wanted > 0) { wantedTimer -= dt; if (wantedTimer <= 0) { wanted--; wantedTimer = 9; updateStars(); if (wanted === 0) { cops.forEach(c => scene.remove(c.g)); cops.length = 0; toast('LOST THE COPS', '#8ef58e'); } } }
   else if (near) wantedTimer = Math.max(wantedTimer, 6);
   while (cops.length > Math.max(wanted, 0)) { scene.remove(cops.pop().g); }
+}
+function damage(n) {                       // taking a hit: crashes, punches, falls
+  player.health = clamp(player.health - n, 0, 100);
+  const el = $('hpFill'); if (el) el.style.width = player.health + '%';
+  if (player.health <= 0) wasted();
 }
 function wasted() { toast('WASTED', '#ff4d4d'); player.cash -= Math.floor(player.cash * .1); wanted = 0; heat = 0; cops.forEach(c => scene.remove(c.g)); cops.length = 0; updateStars();
   player.health = 100; player.fuel = 60; player.pos.copy(findSpawn()); if (player.inVehicle) { player.inVehicle = null; player.g.visible = true; } }
@@ -4162,8 +4448,12 @@ function prerenderMap() {
   for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
     g.fillStyle = mute(DISTRICTS[i].ground, .15); g.fillRect(mx * S / 3, mz * S / 3, S / 3 + 1, S / 3 + 1); }
   const u = w => w / WORLD * S, px = v => (v + HALF) / WORLD * S;
-  g.fillStyle = '#3f4046';
-  for (let v = -HALF; v <= HALF; v += STEP) { g.fillRect(px(v), 0, u(ROADW), S); g.fillRect(0, px(v), S, u(ROADW)); }
+  g.lineCap = 'round'; g.lineJoin = 'round';
+  for (const e of ROADS.edges) {                       // the map is the network, drawn as it really runs
+    g.strokeStyle = e.kind === 'gali' ? '#4a4b52' : '#3f4046';
+    g.lineWidth = Math.max(1.5, u(e.w + 1.5));
+    g.beginPath(); g.moveTo(px(e.a.x), px(e.a.z)); g.lineTo(px(e.b.x), px(e.b.z)); g.stroke();
+  }
   g.fillStyle = '#f2ede2';
   for (let i = 0; i < 9; i++) { const mx = i % 3, mz = (i / 3) | 0;
     g.beginPath(); g.arc((mx + .5) * S / 3, (mz + .5) * S / 3, 7, 0, TAU); g.fill(); }
@@ -4233,7 +4523,7 @@ function boot() {
   if (T.ColorManagement) T.ColorManagement.enabled = true;
   initThree(); buildCity(); buildMissions(); initPreview(); wireCreator(); applyHand();
   $('loading').classList.add('hide');
-  const BUILD = 'build 36'; if ($('buildTag')) $('buildTag').textContent = BUILD;
+  const BUILD = 'build 37'; if ($('buildTag')) $('buildTag').textContent = BUILD;
   Radio.init(); // fetch tonight's real Indian stations (works online; harmless offline)
   // load the rigged human; the creator shows the procedural fallback until ready
   const btn = $('enterBtn'); btn.disabled = true; btn.textContent = 'Loading your Raja…';
@@ -4251,6 +4541,12 @@ function boot() {
       if (gg && gg.index) tris += gg.index.count / 3; else if (gg && gg.attributes.position) tris += gg.attributes.position.count / 3; } });
     return { meshes, skinned, tris: Math.round(tris), calls: renderer.info.render.calls, buildings: buildings.length, npcs: npcs.length, vehicles: vehicles.length }; };
   window.__adapt = () => ({ base: ADAPT.base, scale: +ADAPT.scale.toFixed(2), bloomOff: ADAPT.bloomOff, shadowsOff: ADAPT.shadowsOff, ratio: renderer.getPixelRatio() });
+  window.__rider = () => { for (const v of vehicles) { if ((v.kind === 'moto' || v.kind === 'enfield' || v.kind === 'cycle') && v.driver) {
+    const bx = new T.Box3().setFromObject(v.driver.g);
+    return { kind: v.kind, feetY: +bx.min.y.toFixed(2), headY: +bx.max.y.toFixed(2) }; } } return 'no rider'; };
+  window.__net = () => ({ nodes: ROADS.nodes.length, edges: ROADS.edges.length,
+    galis: ROADS.edges.filter(e => e.kind === 'gali').length, buildings: buildings.length,
+    kinds: ROADS.edges.reduce((a, e) => (a[e.kind] = (a[e.kind] || 0) + 1, a), {}) });
   window.__probe = (w) => { const hits = []; scene.traverse(o => { if (o.isMesh && o.geometry && o.geometry.parameters && Math.abs((o.geometry.parameters.width || 0) - w) < .01) {
     const wp = o.getWorldPosition(new T.Vector3()); hits.push([+wp.x.toFixed(1), +wp.y.toFixed(1), +wp.z.toFixed(1)]); } }); return hits.slice(0, 8); };
   window.__vend = () => ({ vendors: vendors.length, patrons: patrons.length, spots: vendorSpots.length,
