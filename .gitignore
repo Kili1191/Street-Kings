@@ -60,3 +60,8 @@ veh-*.png
 b39-*.png
 b41-*.png
 b42-*.png
+node_modules
+artifact.html
+smokeart.mjs
+crashtest.mjs
+veh-*.png
